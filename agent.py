@@ -47,12 +47,12 @@ class Agent:
         segmentation = net(image)
         _, action = torch.max(segmentation, dim=1)
 
-        distribution = Categorical(torch.softmax(segmentation, dim=1).permute(0, 2, 3, 1))  # Permute to sample on last dimension
+        distribution = Categorical(probs=torch.softmax(segmentation, dim=1).permute(0, 2, 3, 1))  # Permute to sample on last dimension
         # ???
         sample = distribution.sample()
-        log_probs = distribution.log_prob(sample)#.reshape(action.shape[0], -1).sum(-1)
+        log_probs = distribution.log_prob(action)#.reshape(action.shape[0], -1).sum(-1)
 
-        return action, log_probs
+        return action, log_probs, segmentation
 
     @torch.no_grad()
     def get_reward(self, img, segmentation, rewardnet, gt, device):
@@ -63,32 +63,50 @@ class Agent:
             img = img.unsqueeze(0)
         img = img.float().to(device)
 
+        if type(gt) == numpy.ndarray:
+            gt = torch.from_numpy(gt)
+        if len(gt.shape) == 2:
+            gt = gt.unsqueeze(0)
+        gt = gt.float().to(device)
+
         # DICE
-        # dice = torch.ones((len(segmentation)), device=device)
-        # # p = torch.argmax(nn.functional.softmax(segmentation, dim=1), dim=1).unsqueeze(1)
-        # p = nn.functional.softmax(segmentation.float(), dim=1)
-        # for i in range(len(dice)):
-        #     dice[i] = differentiable_dice_score(p[i, ...].unsqueeze(0), torch.tensor(gt)[i, ...].unsqueeze(0))
-        #     plt.figure()
-        #     plt.title(dice[i])
-        #     plt.imshow(segmentation.cpu().numpy()[0])
-        #
-        #     plt.figure()
-        #     plt.imshow(gt)
-        #
-        #     plt.show()
+        dice = torch.zeros((len(segmentation), 256, 256), device=device)
+        # p = torch.argmax(nn.functional.softmax(segmentation, dim=1), dim=1).unsqueeze(1)
+        p = nn.functional.softmax(segmentation.float(), dim=1)
+        test = torch.stack((torch.zeros((256, 256)), torch.ones((256, 256)))).to(device)
+        for i in range(len(dice)):
+            #dice_val = differentiable_dice_score(p[i, ...].unsqueeze(0), gt[i, ...].unsqueeze(0), bg=False)
+            # if dice_val < 0.7:
+            #     dice_val = 0
+
+            # bidon, tout blanc = 1 reward
+            action = torch.argmax(p[i, ...], dim=0)
+
+            dice[i] = (action == gt[i]).float()
+
+            # dice_val = differentiable_dice_score(test.unsqueeze(0), gt[i, ...].unsqueeze(0), bg=False)
+            # plt.figure()
+            # #plt.title(dice_val)
+            # plt.imshow(action.cpu().numpy())
+            #
+            # plt.figure()
+            # plt.imshow(gt.cpu().numpy()[0])
+            #
+            # plt.figure()
+            # plt.imshow(dice[i].cpu().numpy())
+            # plt.show()
 
         # REWARD NETWORK
-        stack = torch.stack((img, segmentation.unsqueeze(1)), dim=1).squeeze(2)
-
-        if device not in ['cpu']:
-            stack = stack.cuda(device)
-
-        r = rewardnet(stack)
-
-        reward = torch.argmax(r, dim=-1)
+        # stack = torch.stack((img, segmentation.unsqueeze(1)), dim=1).squeeze(2)
+        #
+        # if device not in ['cpu']:
+        #     stack = stack.cuda(device)
+        #
+        # r = rewardnet(stack)
+        #
+        # reward = torch.argmax(r, dim=-1)
         # reward = torch.where(reward == 0, torch.tensor(-1).to(device), reward)
-        return reward #dice / 100
+        return dice
 
     def play_step(self, buffer: ReplayBuffer, net: nn.Module, rewardnet: nn.Module, epsilon: float = 0.0, device: str = 'cuda:0') -> Tuple[float, bool]:
         """
@@ -104,11 +122,10 @@ class Agent:
 
         img, gt_mask = self.dataset.get_new_image()
 
-        action, log_prob = self.get_action(img, net, epsilon, device)
+        action, log_prob, seg = self.get_action(img, net, epsilon, device)
 
         # get reward
-        reward = self.get_reward(img, action, rewardnet, gt_mask, device)
-
+        reward = self.get_reward(img, seg, rewardnet, gt_mask, device)
         exp = Experience(img,
                          action.cpu().detach().numpy(),
                          reward.cpu().detach().numpy(),
