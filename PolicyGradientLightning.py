@@ -188,6 +188,6 @@ if __name__ == "__main__":
 
     model = PolicyGradient()
 
-    trainer = pl.Trainer(max_epochs=500, logger=logger, log_every_n_steps=1, gpus=1)
+    trainer = pl.Trainer(max_epochs=100, logger=logger, log_every_n_steps=1, gpus=1)
 
     trainer.fit(model)

@@ -48,9 +48,9 @@ class Agent:
         _, action = torch.max(segmentation, dim=1)
 
         distribution = Categorical(probs=torch.softmax(segmentation, dim=1).permute(0, 2, 3, 1))  # Permute to sample on last dimension
-        # ???
-        sample = distribution.sample()
-        log_probs = distribution.log_prob(action)#.reshape(action.shape[0], -1).sum(-1)
+        # ??? USE SAMPLE OR NOT? Policy gradient seems to only work with action rather than sample
+        # sample = distribution.sample()
+        log_probs = distribution.log_prob(action)
 
         return action, log_probs, segmentation
 
@@ -69,32 +69,32 @@ class Agent:
             gt = gt.unsqueeze(0)
         gt = gt.float().to(device)
 
+        # SIMPLE COMPARISON WITH GT
+        actions = torch.argmax(segmentation, dim=1)
+        simple = (actions == gt).float()
+
         # DICE
-        dice = torch.zeros((len(segmentation), 256, 256), device=device)
-        # p = torch.argmax(nn.functional.softmax(segmentation, dim=1), dim=1).unsqueeze(1)
-        p = nn.functional.softmax(segmentation.float(), dim=1)
-        test = torch.stack((torch.zeros((256, 256)), torch.ones((256, 256)))).to(device)
-        for i in range(len(dice)):
-            #dice_val = differentiable_dice_score(p[i, ...].unsqueeze(0), gt[i, ...].unsqueeze(0), bg=False)
-            # if dice_val < 0.7:
-            #     dice_val = 0
-
-            # bidon, tout blanc = 1 reward
-            action = torch.argmax(p[i, ...], dim=0)
-
-            dice[i] = (action == gt[i]).float()
-
-            # dice_val = differentiable_dice_score(test.unsqueeze(0), gt[i, ...].unsqueeze(0), bg=False)
-            # plt.figure()
-            # #plt.title(dice_val)
-            # plt.imshow(action.cpu().numpy())
-            #
-            # plt.figure()
-            # plt.imshow(gt.cpu().numpy()[0])
-            #
-            # plt.figure()
-            # plt.imshow(dice[i].cpu().numpy())
-            # plt.show()
+        # dice = torch.zeros((len(segmentation), 256, 256), device=device)
+        # p = nn.functional.softmax(segmentation.float(), dim=1)
+        # for i in range(len(dice)):
+        #     #dice_val = differentiable_dice_score(p[i, ...].unsqueeze(0), gt[i, ...].unsqueeze(0), bg=False)
+        #     # if dice_val < 0.7:
+        #     #     dice_val = 0
+        #
+        #     # reward simple, action == gt
+        #     action = torch.argmax(p[i, ...], dim=0)
+        #     dice[i] = (action == gt[i]).float()
+        #     # dice_val = differentiable_dice_score(test.unsqueeze(0), gt[i, ...].unsqueeze(0), bg=False)
+        #     # plt.figure()
+        #     # #plt.title(dice_val)
+        #     # plt.imshow(action.cpu().numpy())
+        #     #
+        #     # plt.figure()
+        #     # plt.imshow(gt.cpu().numpy()[0])
+        #     #
+        #     # plt.figure()
+        #     # plt.imshow(dice[i].cpu().numpy())
+        #     # plt.show()
 
         # REWARD NETWORK
         # stack = torch.stack((img, segmentation.unsqueeze(1)), dim=1).squeeze(2)
@@ -105,8 +105,9 @@ class Agent:
         # r = rewardnet(stack)
         #
         # reward = torch.argmax(r, dim=-1)
-        # reward = torch.where(reward == 0, torch.tensor(-1).to(device), reward)
-        return dice
+        # # reward = torch.where(reward == 0, torch.tensor(-1).to(device), reward)
+
+        return simple
 
     def play_step(self, buffer: ReplayBuffer, net: nn.Module, rewardnet: nn.Module, epsilon: float = 0.0, device: str = 'cuda:0') -> Tuple[float, bool]:
         """
