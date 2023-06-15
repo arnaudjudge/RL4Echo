@@ -30,5 +30,5 @@ class ReplayBuffer:
         indices = np.random.choice(len(self.buffer), batch_size, replace=False)
         imgs, masks, rewards, log_probs, gt_mask = zip(*[self.buffer[idx] for idx in indices])
 
-        return (np.array(imgs), np.array(masks), np.array(rewards, dtype=np.float32),
+        return (np.array(imgs), np.array(masks), np.array(rewards),
                 np.array(log_probs), np.array(gt_mask))
