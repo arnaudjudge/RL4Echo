@@ -29,7 +29,7 @@ class PPOLightning(pl.LightningModule):
 
         sd = torch.load('./supervised/supervised_v16.ckpt')
         self.net = UNet(input_shape=(1, 256, 256), output_shape=(2, 256, 256))
-        self.net.load_state_dict(sd)
+        # self.net.load_state_dict(sd)
         self.net.to(device='cuda:0')
 
         self.reward_net = get_resnet(input_channels=2, num_classes=2)
@@ -37,16 +37,16 @@ class PPOLightning(pl.LightningModule):
         self.reward_net.load_state_dict(sd)
         self.reward_net.to(device='cuda:0')
 
-        self.buffer = ReplayBuffer(capacity=1000)
+        self.buffer = ReplayBuffer(capacity=100)
         self.dataset = RLDataset(self.buffer,
                                  data_path='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/',
                                  csv_file='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/processed.csv',
-                                 sample_size=64)
+                                 sample_size=32)
         self.agent = Agent(self.buffer, self.dataset)
 
         self.epsilon = 0.1
 
-        self.populate(self.buffer, 1000)
+        self.populate(self.buffer, 100)
 
     def forward(self, x):
         return self.net.forward(x)
@@ -65,18 +65,18 @@ class PPOLightning(pl.LightningModule):
     def train_dataloader(self) -> DataLoader:
         """Initialize the Replay Buffer dataset used for retrieving experiences"""
         dataloader = DataLoader(dataset=self.dataset,
-                                batch_size=64,
+                                batch_size=32,
                                 )
         return dataloader
 
     def val_dataloader(self) -> DataLoader:
         """Initialize the Replay Buffer dataset used for retrieving experiences"""
-        val_buffer = ReplayBuffer(100)
-        val_dataset = RLDataset(val_buffer,
+        #val_buffer = ReplayBuffer(100)
+        val_dataset = RLDataset(self.buffer,
                                 data_path='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/',
                                 csv_file='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/processed.csv',
                                 sample_size=16)
-        self.populate(val_buffer, 100)
+        #self.populate(val_buffer, 100)
 
         dataloader = DataLoader(dataset=val_dataset,
                                 batch_size=1,
@@ -88,7 +88,7 @@ class PPOLightning(pl.LightningModule):
         return batch[0].device.index if self.on_gpu else 'cpu'
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.net.parameters(), lr=3e-4)
+        return torch.optim.Adam(self.net.parameters(), lr=1e-3)
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch) -> OrderedDict:
         """
@@ -132,12 +132,12 @@ class PPOLightning(pl.LightningModule):
         """
         b_imgs, _, _, b_log_probs, b_gt = batch
 
-        actions, log_probs = self.agent.get_action(b_imgs, self.net, epsilon=0.0, device=self.get_device(batch))
+        actions, log_probs, seg = self.agent.get_action(b_imgs, self.net, epsilon=0.0, device=self.get_device(batch))
 
-        reward = self.agent.get_reward(b_imgs, actions, self.reward_net, b_gt, self.get_device(batch))
+        reward = self.agent.get_reward(b_imgs, seg, self.reward_net, b_gt, self.get_device(batch))
 
         # importance ratio
-        log_probs = log_probs.unsqueeze(1)
+        #log_probs = log_probs.unsqueeze(1)
         assert b_log_probs.shape == log_probs.shape
         ratio = (log_probs - b_log_probs).exp()
 
@@ -145,13 +145,7 @@ class PPOLightning(pl.LightningModule):
         clipped = ratio.clamp(1 - self.epsilon, 1 + self.epsilon)
 
         # min trick
-        # loss = -(torch.min(ratio*reward, clipped*reward).mean())
-        loss = -(torch.min((ratio.permute((1, 2, 3, 0))*reward).permute((3, 0, 1, 2)),
-                           (clipped.permute((1, 2, 3, 0))*reward).permute((3, 0, 1, 2)))).mean()
-        #loss = -(clipped.permute((1, 2, 3, 0)) * reward).mean()
-
-        # policy grad
-        #loss = -(log_probs.permute((1, 2, 3, 0))*reward).permute((3, 0, 1, 2)).mean()
+        loss = -torch.min(reward * ratio, reward * clipped).mean()
 
         return loss, reward, ratio, actions
 
@@ -188,13 +182,19 @@ class PPOLightning(pl.LightningModule):
 
         def put_text(img, text):
             img = img.copy().astype(np.uint8)*255
-            return cv2.putText(img, str(text), (0, 30), cv2.FONT_HERSHEY_COMPLEX, 1, (125), 2)
+            return cv2.putText(img, "{:.3f}".format(text), (0, 30), cv2.FONT_HERSHEY_COMPLEX, 1, (125), 2)
 
-        tb_logger.add_image(f"Prediction", torch.tensor(
-            put_text(viz_batch[1][idx].cpu().detach().numpy(), viz_batch[2][idx].item())).unsqueeze(0), viz_batch[6])
+        # tb_logger.add_image(f"Prediction", torch.tensor(
+        #     put_text(viz_batch[1][idx].cpu().detach().numpy(), viz_batch[2][idx].item())).unsqueeze(0), viz_batch[6])
+        #
+        # tb_logger.add_image(f"Previous prediction", torch.tensor(
+        #     put_text(viz_batch[3][idx].squeeze(0).cpu().detach().numpy(), viz_batch[4][idx].item())).unsqueeze(0), viz_batch[6])
+        tb_logger.add_image(f"Prediction", torch.tensor(viz_batch[1][idx].cpu().detach().numpy()).unsqueeze(0),
+                            viz_batch[6])
 
-        tb_logger.add_image(f"Previous prediction", torch.tensor(
-            put_text(viz_batch[3][idx].squeeze(0).cpu().detach().numpy(), viz_batch[4][idx].item())).unsqueeze(0), viz_batch[6])
+        tb_logger.add_image(f"Previous prediction",
+                            torch.tensor(viz_batch[3][idx].squeeze(0).cpu().detach().numpy()).unsqueeze(0),
+                            viz_batch[6])
 
 
 if __name__ == "__main__":
@@ -205,6 +205,6 @@ if __name__ == "__main__":
 
     model = PPOLightning()
 
-    trainer = pl.Trainer(max_epochs=150, logger=logger, log_every_n_steps=1, gpus=1)
+    trainer = pl.Trainer(max_epochs=100, logger=logger, log_every_n_steps=1, gpus=1)
 
     trainer.fit(model)

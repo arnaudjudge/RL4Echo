@@ -130,7 +130,7 @@ class Agent:
         exp = Experience(img,
                          action.cpu().detach().numpy(),
                          reward.cpu().detach().numpy(),
-                         log_prob.cpu().detach().numpy(),
+                         log_prob.squeeze(0).cpu().detach().numpy(),
                          gt_mask)
 
         buffer.append(exp)
