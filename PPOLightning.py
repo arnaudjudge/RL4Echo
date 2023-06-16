@@ -28,8 +28,8 @@ class PPOLightning(pl.LightningModule):
         super().__init__(*args, **kwargs)
 
         sd = torch.load('./supervised/supervised_v16.ckpt')
-        self.net = UNet(input_shape=(1, 256, 256), output_shape=(2, 256, 256))
-        # self.net.load_state_dict(sd)
+        self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
+        #self.net.load_state_dict(sd)
         self.net.to(device='cuda:0')
 
         self.reward_net = get_resnet(input_channels=2, num_classes=2)
@@ -44,7 +44,7 @@ class PPOLightning(pl.LightningModule):
                                  sample_size=32)
         self.agent = Agent(self.buffer, self.dataset)
 
-        self.epsilon = 0.1
+        self.epsilon = 0.2
 
         self.populate(self.buffer, 100)
 
@@ -137,7 +137,6 @@ class PPOLightning(pl.LightningModule):
         reward = self.agent.get_reward(b_imgs, seg, self.reward_net, b_gt, self.get_device(batch))
 
         # importance ratio
-        #log_probs = log_probs.unsqueeze(1)
         assert b_log_probs.shape == log_probs.shape
         ratio = (log_probs - b_log_probs).exp()
 

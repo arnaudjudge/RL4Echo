@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 from torch.distributions import OneHotCategorical
 from torch.distributions.categorical import Categorical
+from torch.distributions.binomial import Binomial
+from torch.distributions.bernoulli import Bernoulli
 from vital.vital.metrics.train.functional import differentiable_dice_score
 
 from replaybuffer import ReplayBuffer, Experience
@@ -44,18 +46,18 @@ class Agent:
         if device not in ['cpu']:
             image = image.cuda(device)
 
-        segmentation = net(image)
-        _, action = torch.max(segmentation, dim=1)
+        logits = torch.sigmoid(net(image))
+        actions = torch.round(logits)
 
-        distribution = Categorical(probs=torch.softmax(segmentation, dim=1).permute(0, 2, 3, 1))  # Permute to sample on last dimension
+        distribution = Bernoulli(probs=logits)
         # ??? USE SAMPLE OR NOT? Policy gradient seems to only work with action rather than sample
         sample = distribution.sample()
-        random = torch.rand(action.shape).to(device)
-        explored_actions = torch.where(random >= epsilon, action, sample)
+        random = torch.rand(actions.shape).to(device)
+        explored_actions = torch.where(random >= epsilon, actions, sample)
 
         log_probs = distribution.log_prob(explored_actions)
 
-        return action, log_probs, segmentation
+        return actions.squeeze(1), log_probs.squeeze(1), logits.squeeze(1)
 
     @torch.no_grad()
     def get_reward(self, img, segmentation, rewardnet, gt, device):
@@ -73,7 +75,7 @@ class Agent:
         gt = gt.float().to(device)
 
         # SIMPLE COMPARISON WITH GT
-        actions = torch.argmax(segmentation, dim=1)
+        actions = torch.round(segmentation)
         simple = (actions == gt).float()
 
         # DICE

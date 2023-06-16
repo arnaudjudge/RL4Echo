@@ -28,7 +28,7 @@ class PolicyGradient(pl.LightningModule):
         super().__init__(*args, **kwargs)
 
         sd = torch.load('./supervised/supervised_v16.ckpt')
-        self.net = UNet(input_shape=(1, 256, 256), output_shape=(2, 256, 256))
+        self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
         # self.net.load_state_dict(sd)
         self.net.to(device='cuda:0')
 
