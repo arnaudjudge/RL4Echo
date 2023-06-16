@@ -49,8 +49,11 @@ class Agent:
 
         distribution = Categorical(probs=torch.softmax(segmentation, dim=1).permute(0, 2, 3, 1))  # Permute to sample on last dimension
         # ??? USE SAMPLE OR NOT? Policy gradient seems to only work with action rather than sample
-        # sample = distribution.sample()
-        log_probs = distribution.log_prob(action)
+        sample = distribution.sample()
+        random = torch.rand(action.shape).to(device)
+        explored_actions = torch.where(random >= epsilon, action, sample)
+
+        log_probs = distribution.log_prob(explored_actions)
 
         return action, log_probs, segmentation
 
