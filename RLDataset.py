@@ -66,7 +66,7 @@ class RLDataset(IterableDataset):
 
         path_dict = json.loads(self.df.iloc[idx]['relative_path'].replace("\'", "\""))
 
-        img = nib.load(self.data_path + '/raw/' + path_dict['raw']).get_fdata().sum(axis=2)
+        img = nib.load('/data/icardio/processed' + '/raw/' + path_dict['raw']).get_fdata().sum(axis=2)
         img = np.expand_dims(resize_image(img, size=self.img_size), 0)
         img = (img - img.min()) / (img.max() - img.min())
 

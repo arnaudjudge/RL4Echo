@@ -16,7 +16,7 @@ from typing import Tuple
 
 from agent import Agent
 from RLDataset import RLDataset
-from replaybuffer import ReplayBuffer
+from replaybuffer import ReplayBuffer, Experience
 from rewardnet.reward_net import get_resnet
 
 from tqdm import tqdm
@@ -37,7 +37,7 @@ class PolicyGradient(pl.LightningModule):
         self.reward_net.load_state_dict(sd)
         self.reward_net.to(device='cuda:0')
 
-        self.buffer = ReplayBuffer(capacity=100)
+        self.buffer = ReplayBuffer(capacity=500)
         self.dataset = RLDataset(self.buffer,
                                  data_path='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/',
                                  csv_file='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/processed.csv',
@@ -46,7 +46,7 @@ class PolicyGradient(pl.LightningModule):
 
         self.epsilon = 0.1
 
-        self.populate(self.buffer, 100)
+        self.populate(self.buffer, 500)
 
     def forward(self, x):
         return self.net.forward(x)
@@ -130,13 +130,23 @@ class PolicyGradient(pl.LightningModule):
         Returns:
             Tensor, mean loss for the batch
         """
-        b_imgs, _, _, b_log_probs, b_gt = batch
+        b_imgs, b_actions, b_rewards, b_log_probs, b_gt = batch
 
-        actions, log_probs, seg = self.agent.get_action(b_imgs, self.net, epsilon=0.0, device=self.get_device(batch))
+        actions, log_probs, seg = self.agent.get_action(b_imgs, b_actions, self.net, epsilon=0.0, device=self.get_device(batch))
 
         reward = self.agent.get_reward(b_imgs, seg, self.reward_net, b_gt, self.get_device(batch))
 
-        loss = -(reward * log_probs).mean()
+        loss = -(b_rewards * log_probs).mean()
+
+        for i in range(len(b_imgs)):
+            exp = Experience(b_imgs[i, ...].cpu().detach().numpy(),
+                             actions[i, ...].unsqueeze(0).cpu().detach().numpy(),
+                             reward[i, ...].unsqueeze(0).cpu().detach().numpy(),
+                             log_probs[i, ...].cpu().detach().numpy(),
+                             b_gt[i, ...].cpu().detach().numpy())
+
+            self.buffer.append(exp)
+
 
         return loss, reward, torch.zeros_like(loss), actions
 
@@ -175,9 +185,16 @@ class PolicyGradient(pl.LightningModule):
             img = img.copy().astype(np.uint8)*255
             return cv2.putText(img, "{:.3f}".format(text), (0, 30), cv2.FONT_HERSHEY_COMPLEX, 1, (125), 2)
 
-        tb_logger.add_image(f"Prediction", torch.tensor(viz_batch[1][idx].cpu().detach().numpy()).unsqueeze(0), viz_batch[6])
+        tb_logger.add_image(f"Prediction", torch.tensor(
+            put_text(viz_batch[1][idx].cpu().detach().numpy(), viz_batch[2][idx].float().mean().item())).unsqueeze(0),
+                            viz_batch[6])
 
-        tb_logger.add_image(f"Previous prediction", torch.tensor(viz_batch[3][idx].squeeze(0).cpu().detach().numpy()).unsqueeze(0), viz_batch[6])
+        tb_logger.add_image(f"Previous prediction", torch.tensor(
+            put_text(viz_batch[3][idx].squeeze(0).cpu().detach().numpy(),
+                     viz_batch[4][idx].float().mean().item())).unsqueeze(0), viz_batch[6])
+        # tb_logger.add_image(f"Prediction", torch.tensor(viz_batch[1][idx].cpu().detach().numpy()).unsqueeze(0), viz_batch[6])
+        #
+        # tb_logger.add_image(f"Previous prediction", torch.tensor(viz_batch[3][idx].squeeze(0).cpu().detach().numpy()).unsqueeze(0), viz_batch[6])
 
 
 if __name__ == "__main__":
@@ -188,6 +205,6 @@ if __name__ == "__main__":
 
     model = PolicyGradient()
 
-    trainer = pl.Trainer(max_epochs=100, logger=logger, log_every_n_steps=1, gpus=1)
+    trainer = pl.Trainer(max_epochs=1000, logger=logger, log_every_n_steps=1, gpus=1)
 
     trainer.fit(model)

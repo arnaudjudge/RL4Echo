@@ -1,5 +1,6 @@
 import collections
 import numpy as np
+import torch
 from typing import Tuple
 
 Experience = collections.namedtuple(
@@ -14,6 +15,7 @@ class ReplayBuffer:
 
     def __init__(self, capacity: int) -> None:
         self.buffer = collections.deque(maxlen=capacity)
+        self.buffer_priority = collections.deque(maxlen=capacity)
 
     def __len__(self) -> int:
         return len(self.buffer)
@@ -25,9 +27,11 @@ class ReplayBuffer:
             experience: tuple (state, action, reward, log_prob)
         """
         self.buffer.append(experience)
+        self.buffer_priority.append(experience[2].mean())
 
     def sample(self, batch_size: int) -> Tuple:
-        indices = np.random.choice(len(self.buffer), batch_size, replace=False)
+        #probs = torch.softmax(torch.tensor(self.buffer_priority), dim=0).cpu().numpy()
+        indices = np.random.choice(len(self.buffer), batch_size, replace=False) #, p=probs)
         imgs, masks, rewards, log_probs, gt_mask = zip(*[self.buffer[idx] for idx in indices])
 
         return (np.array(imgs), np.array(masks), np.array(rewards),
