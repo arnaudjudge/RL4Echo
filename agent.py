@@ -76,7 +76,7 @@ class Agent:
         # random = torch.rand(actions.shape).to(device)
         # explored_actions = torch.where(random >= epsilon, actions, sample)
 
-        log_probs = distribution.log_prob(prev_actions)#.mean(dim=(2,3))
+        log_probs = distribution.log_prob(prev_actions).mean(dim=(2,3))
 
         return actions.squeeze(1), log_probs, logits.squeeze(1)
 
@@ -111,14 +111,6 @@ class Agent:
         # #reward = torch.argmax(r, dim=-1)
         # reward = r.squeeze(1).repeat(256, 256, 1).permute(2, 0, 1)
         # reward = torch.where(reward == 0, torch.tensor(-1).to(device), reward)
-
-        # reward = dice
-        #
-        # reward.repeat(256, 256, 1).permute(2, 0, 1)
-        #
-        # reward = torch.argmax(r, dim=-1)
-        # # reward = torch.where(reward == 0, torch.tensor(-1).to(device), reward)
-
 
         return simple.mean(dim=(1,2), keepdim=True)
 
