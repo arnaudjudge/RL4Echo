@@ -70,7 +70,7 @@ class Agent:
         logits = torch.sigmoid(net(image))
         # actions = torch.round(logits)
 
-        distribution = Normal(loc=logits, scale=torch.ones_like(logits))
+        distribution = Bernoulli(probs=logits)
         if prev_actions is None:
             prev_actions = distribution.sample()
         actions = distribution.sample()
@@ -113,17 +113,6 @@ class Agent:
         # reward = r.squeeze(1).repeat(256, 256, 1).permute(2, 0, 1)
         # reward = torch.where(reward == 0, torch.tensor(-1).to(device), reward)
 
-        # x = torch.tensor(np.arange(0, 1, 0.01))
-        # y_np = scale_reward(x).detach().cpu().numpy()
-
-        # reward = scale_reward(simple.mean(dim=(1,2), keepdim=True))
-
-        # if len(reward) > 1:
-        #
-        #     plt.figure()
-        #     plt.plot(x, y_np)
-        #     plt.scatter(simple.mean(dim=(1,2), keepdim=True).detach().cpu().numpy(), reward.detach().cpu().numpy())
-        #     plt.show()
         return simple.mean(dim=(1,2), keepdim=True)
 
     def play_step(self, buffer: ReplayBuffer, net: nn.Module, rewardnet: nn.Module, epsilon: float = 0.0, device: str = 'cuda:0') -> Tuple[float, bool]:
