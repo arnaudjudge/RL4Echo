@@ -43,7 +43,7 @@ class PPOLightning(pl.LightningModule):
         self.dataset = RLDataset(self.buffer,
                                  data_path='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/',
                                  csv_file='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/processed.csv',
-                                 sample_size=32)
+                                 sample_size=500)
         self.agent = Agent(self.buffer, self.dataset)
 
         self.epsilon = 0.1
@@ -81,10 +81,23 @@ class PPOLightning(pl.LightningModule):
         #self.populate(val_buffer, 100)
 
         dataloader = DataLoader(dataset=val_dataset,
-                                batch_size=1,
+                                batch_size=8,
                                 )
         return dataloader
 
+    def test_dataloader(self) -> DataLoader:
+        """Initialize the Replay Buffer dataset used for retrieving experiences"""
+        test_buffer = ReplayBuffer(100)
+        test_dataset = RLDataset(test_buffer,
+                                data_path='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/',
+                                csv_file='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/processed.csv',
+                                sample_size=100)
+        self.populate(test_buffer, 100)
+
+        dataloader = DataLoader(dataset=test_dataset,
+                                batch_size=8,
+                                )
+        return dataloader
     def get_device(self, batch) -> str:
         """Retrieve device currently being used by minibatch"""
         return batch[0].device.index if self.on_gpu else 'cpu'
@@ -123,7 +136,7 @@ class PPOLightning(pl.LightningModule):
         self.log_dict(logs)
         return OrderedDict({'loss': loss, 'log': logs, 'progress_bar': logs})
 
-    def compute_policy_loss(self, batch, **kwargs):
+    def compute_policy_loss(self, batch, sample=True, **kwargs):
         """
             Compute unsupervised loss to maximise reward using policy gradient method.
         Args:
@@ -134,7 +147,8 @@ class PPOLightning(pl.LightningModule):
         """
         b_imgs, b_actions, b_rewards, b_log_probs, b_gt = batch
 
-        actions, log_probs, seg = self.agent.get_action(b_imgs, b_actions, self.net, epsilon=0.0, device=self.get_device(batch))
+        actions, log_probs, seg = self.agent.get_action(b_imgs, b_actions, self.net, epsilon=0.0,
+                                                        device=self.get_device(batch), sample=sample)
 
         reward = self.agent.get_reward(b_imgs, seg, self.reward_net, b_gt, self.get_device(batch))
 
@@ -146,13 +160,13 @@ class PPOLightning(pl.LightningModule):
         clipped = ratio.clamp(1 - self.epsilon, 1 + self.epsilon)
 
         # min trick
-        loss = -torch.min(reward * ratio, reward * clipped).mean()
+        loss = -torch.min(b_rewards * ratio, b_rewards * clipped).mean()
 
         for i in range(len(b_imgs)):
             exp = Experience(b_imgs[i, ...].cpu().detach().numpy(),
                              actions[i, ...].unsqueeze(0).cpu().detach().numpy(),
                              reward[i, ...].unsqueeze(0).cpu().detach().numpy(),
-                             log_probs[i, ...].squeeze(0).cpu().detach().numpy(),
+                             log_probs[i, ...].cpu().detach().numpy(),
                              b_gt[i, ...].cpu().detach().numpy())
 
             self.buffer.append(exp)
@@ -162,7 +176,7 @@ class PPOLightning(pl.LightningModule):
     def validation_step(self, batch, batch_idx: int):
         device = self.get_device(batch)
 
-        loss, reward, ratio, actions = self.compute_policy_loss(batch)
+        loss, reward, ratio, actions = self.compute_policy_loss(batch, sample=True)
 
         logs = {'val_loss': loss,
                 "val_reward": torch.mean(reward.type(torch.float)),
@@ -173,7 +187,7 @@ class PPOLightning(pl.LightningModule):
         self.log_dict(logs)
         return logs
 
-    def log_tb_images(self, viz_batch) -> None:
+    def log_tb_images(self, viz_batch, prefix="") -> None:
 
         # Get tensorboard logger
         tb_logger = None
@@ -186,18 +200,33 @@ class PPOLightning(pl.LightningModule):
 
         idx = random.randint(0, len(viz_batch[0])-1)
 
-        tb_logger.add_image(f"Image", viz_batch[0][idx], viz_batch[6])
-        tb_logger.add_image(f"GroundTruth", viz_batch[5][idx].unsqueeze(0), viz_batch[6])
+        tb_logger.add_image(f"{prefix}Image", viz_batch[0][idx], viz_batch[6])
+        tb_logger.add_image(f"{prefix}GroundTruth", viz_batch[5][idx].unsqueeze(0), viz_batch[6])
 
         def put_text(img, text):
             img = img.copy().astype(np.uint8)*255
             return cv2.putText(img, "{:.3f}".format(text), (0, 30), cv2.FONT_HERSHEY_COMPLEX, 1, (125), 2)
 
-        tb_logger.add_image(f"Prediction", torch.tensor(
-            put_text(viz_batch[1][idx].cpu().detach().numpy(), viz_batch[2][idx].float().mean().item())).unsqueeze(0), viz_batch[6])
+        tb_logger.add_image(f"{prefix}Prediction", torch.tensor(
+            put_text(viz_batch[1][idx].cpu().detach().numpy(), viz_batch[2][idx].float().mean().item())).unsqueeze(0),
+                            viz_batch[6])
 
-        tb_logger.add_image(f"Previous prediction", torch.tensor(
-            put_text(viz_batch[3][idx].squeeze(0).cpu().detach().numpy(), viz_batch[4][idx].float().mean().item())).unsqueeze(0), viz_batch[6])
+        tb_logger.add_image(f"{prefix}Previous prediction", torch.tensor(
+            put_text(viz_batch[3][idx].squeeze(0).cpu().detach().numpy(),
+                     viz_batch[4][idx].float().mean().item())).unsqueeze(0), viz_batch[6])
+
+    def test_step(self, batch, batch_idx: int):
+        device = self.get_device(batch)
+
+        loss, reward, ratio, actions = self.compute_policy_loss(batch, sample=False)
+
+        logs = {'test_loss': loss,
+                "test_reward": torch.mean(reward.type(torch.float)),
+                }
+        self.log_tb_images((batch[0], actions, reward, batch[1], batch[2], batch[4], batch_idx), prefix='test_')
+
+        self.log_dict(logs)
+        return logs
 
 
 if __name__ == "__main__":
@@ -211,3 +240,5 @@ if __name__ == "__main__":
     trainer = pl.Trainer(max_epochs=100, logger=logger, log_every_n_steps=1, gpus=1)
 
     trainer.fit(model)
+
+    trainer.test(model)

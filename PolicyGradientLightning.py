@@ -37,16 +37,16 @@ class PolicyGradient(pl.LightningModule):
         self.reward_net.load_state_dict(sd)
         self.reward_net.to(device='cuda:0')
 
-        self.buffer = ReplayBuffer(capacity=1000)
+        self.buffer = ReplayBuffer(capacity=500)
         self.dataset = RLDataset(self.buffer,
                                  data_path='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/',
                                  csv_file='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/processed.csv',
-                                 sample_size=1000)
+                                 sample_size=500)
         self.agent = Agent(self.buffer, self.dataset)
 
         self.epsilon = 0.1
 
-        self.populate(self.buffer, 1000)
+        self.populate(self.buffer, 500)
 
     def forward(self, x):
         return self.net.forward(x)
@@ -146,7 +146,8 @@ class PolicyGradient(pl.LightningModule):
         """
         b_imgs, b_actions, b_rewards, b_log_probs, b_gt = batch
 
-        actions, log_probs, seg = self.agent.get_action(b_imgs, b_actions, self.net, epsilon=0.0, device=self.get_device(batch), sample=sample)
+        actions, log_probs, seg = self.agent.get_action(b_imgs, b_actions, self.net, epsilon=0.0,
+                                                        device=self.get_device(batch), sample=sample)
 
         reward = self.agent.get_reward(b_imgs, seg, self.reward_net, b_gt, self.get_device(batch))
 
