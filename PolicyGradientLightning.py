@@ -27,20 +27,20 @@ class PolicyGradient(pl.LightningModule):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-        sd = torch.load('./supervised/supervised_v16.ckpt')
+        #sd = torch.load('./supervised/supervised_v16.ckpt')
         self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
         # self.net.load_state_dict(sd)
         self.net.to(device='cuda:0')
 
         self.reward_net = get_resnet(input_channels=2, num_classes=2)
-        sd = torch.load('./rewardnet/reward_model_state_dict_autodataset_50k.ckpt')
-        self.reward_net.load_state_dict(sd)
+        #sd = torch.load('./rewardnet/reward_model_state_dict_autodataset_50k.ckpt')
+        #self.reward_net.load_state_dict(sd)
         self.reward_net.to(device='cuda:0')
 
         self.buffer = ReplayBuffer(capacity=500)
         self.dataset = RLDataset(self.buffer,
-                                 data_path='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/',
-                                 csv_file='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/processed.csv',
+                                 data_path='/data/icardio/subset/',
+                                 csv_file='/data/icardio/subset/subset.csv',
                                  sample_size=500)
         self.agent = Agent(self.buffer, self.dataset)
 

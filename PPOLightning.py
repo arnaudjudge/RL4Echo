@@ -28,21 +28,20 @@ class PPOLightning(pl.LightningModule):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-        sd = torch.load('supervised/supervised_overfit.ckpt')
         self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
-        #self.net.load_state_dict(sd)
+        # sd = torch.load('supervised/supervised_overfit.ckpt')
+        # self.net.load_state_dict(sd)
         self.net.to(device='cuda:0')
 
         self.reward_net = get_resnet_regression(input_channels=2)
-        sd = torch.load('./dicenet/dice_model_state_dict_10k.ckpt')
-        # sd = torch.load('./equalnet/equal_state_dict.ckpt')
-        self.reward_net.load_state_dict(sd)
+        # sd = torch.load('./dicenet/dice_model_state_dict_10k.ckpt')
+        # self.reward_net.load_state_dict(sd)
         self.reward_net.to(device='cuda:0')
 
         self.buffer = ReplayBuffer(capacity=500)
         self.dataset = RLDataset(self.buffer,
-                                 data_path='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/',
-                                 csv_file='/home/local/USHERBROOKE/juda2901/dev/data/icardio/processed/processed.csv',
+                                 data_path='/data/icardio/subset/',
+                                 csv_file='/data/icardio/subset/subset.csv',
                                  sample_size=500)
         self.agent = Agent(self.buffer, self.dataset)
 
