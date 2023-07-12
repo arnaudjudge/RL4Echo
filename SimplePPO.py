@@ -24,7 +24,7 @@ from tqdm import tqdm
 from simpledatamodule import SectorDataModule
 
 
-class SimplePG(pl.LightningModule):
+class SimplePPO(pl.LightningModule):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -32,9 +32,15 @@ class SimplePG(pl.LightningModule):
         self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
         self.net.to(device='cuda:0')
 
+        self.critic = get_resnet(input_channels=1, num_classes=1)
+        self.net.to(device='cuda:0')
+
         self.agent = Agent(None, None)
 
-        self.epsilon = 0.1
+        self.clip_value = 0.2
+        self.k_steps = 1
+
+        self.automatic_optimization = False
 
     def forward(self, x):
         return self.net.forward(x)
@@ -44,7 +50,8 @@ class SimplePG(pl.LightningModule):
         return batch[0].device.index if self.on_gpu else 'cpu'
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.net.parameters(), lr=1e-2)
+        return torch.optim.Adam(self.net.parameters(), lr=1e-3), \
+               torch.optim.Adam(self.critic.parameters(), lr=1e-3)
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch) -> OrderedDict:
         """
@@ -57,24 +64,52 @@ class SimplePG(pl.LightningModule):
             Training loss and log metrics
         """
         device = self.get_device(batch)
+        opt_net, opt_critic = self.optimizers()
 
         b_img, b_gt = batch
 
-        segmentations = torch.sigmoid(self.forward(b_img))
-        actions = torch.round(segmentations)
-        rewards = self.agent.get_reward(b_img, segmentations, None, b_gt, device)
+        # get actions, lp, reward, etc from pi (stays constant for all steps k)
+        prev_actions, prev_log_probs, prev_segmentations = self.agent.get_action(b_img, None, self.net, epsilon=0.0,
+                                                                                 device=self.get_device(batch),
+                                                                                 sample=True)
 
-        # calculates training loss
-        loss, reward, actions, log_probs = self.compute_policy_loss((b_img, actions, rewards, b_gt), sample=True)
+        prev_rewards = self.agent.get_reward(b_img, prev_segmentations, None, b_gt, device)
 
-        logs = {
-            'loss': loss,
-            'reward': torch.mean(reward.type(torch.float)),
-            'log_probs': log_probs.mean()
-        }
+        v = torch.sigmoid(self.critic(b_img).unsqueeze(-1))
 
-        self.log_dict(logs, prog_bar=True)
-        return OrderedDict({'loss': loss, 'log': logs, 'progress_bar': logs})
+        adv = prev_rewards - v.detach()
+        # adv = (adv - adv.mean()) / (adv.std() + 1e-10)
+
+        # iterate with pi prime k times
+        for k in range(self.k_steps):
+            # calculates training loss
+            loss, rewards, actions, log_probs, ratio = self.compute_policy_loss((b_img, prev_actions, adv,
+                                                                                 prev_log_probs, b_gt), sample=True)
+
+            v = self.critic(b_img).unsqueeze(-1)
+            critic_loss = nn.MSELoss()(v, prev_rewards)
+
+            opt_net.zero_grad()
+            self.manual_backward(loss, retain_graph=True)
+            opt_net.step()
+
+            opt_critic.zero_grad()
+            self.manual_backward(critic_loss)
+            opt_critic.step()
+
+            logs = {
+                'loss': loss,
+                'critic_loss': critic_loss,
+                'advantage': adv.mean(),
+                'v': v.mean(),
+                'prev_reward': torch.mean(prev_rewards.type(torch.float)),
+                'reward': torch.mean(rewards.type(torch.float)),
+                'log_probs': log_probs.mean(),
+                'ratio': ratio.mean(),
+            }
+            self.log_dict(logs, prog_bar=True)
+
+        # return OrderedDict({'loss': loss, 'log': logs, 'progress_bar': logs})
 
     def compute_policy_loss(self, batch, sample=True, **kwargs):
         """
@@ -85,28 +120,37 @@ class SimplePG(pl.LightningModule):
         Returns:
             Tensor, mean loss for the batch
         """
-        b_imgs, b_actions, b_rewards, b_gt = batch
+        b_imgs, b_actions, b_rewards, b_log_probs, b_gt = batch
 
         actions, log_probs, seg = self.agent.get_action(b_imgs, b_actions, self.net, epsilon=0.0,
                                                         device=self.get_device(batch), sample=sample)
 
         reward = self.agent.get_reward(b_imgs, seg, None, b_gt, self.get_device(batch))
 
-        loss = -(b_rewards * log_probs).mean()
+        # importance ratio
+        assert b_log_probs.shape == log_probs.shape
+        ratio = (log_probs - b_log_probs).exp()
 
-        return loss, reward, actions, log_probs
+        # clamp with epsilon value
+        clipped = ratio.clamp(1 - self.clip_value, 1 + self.clip_value)
+
+        # min trick
+        loss = -torch.min(b_rewards * ratio, b_rewards * clipped).mean()
+
+        return loss, reward, actions, log_probs, ratio
 
     def validation_step(self, batch, batch_idx: int):
         device = self.get_device(batch)
 
         b_img, b_gt = batch
 
-        prev_segmentations = torch.sigmoid(self.forward(b_img))
-        prev_actions = torch.round(prev_segmentations)
+        prev_actions, prev_log_probs, prev_segmentations = self.agent.get_action(b_img, None, self.net, epsilon=0.0,
+                                                                                 device=self.get_device(batch),
+                                                                                 sample=True)
         prev_rewards = self.agent.get_reward(b_img, prev_segmentations, None, b_gt, device)
 
         # calculates training loss
-        loss, reward, actions, log_probs = self.compute_policy_loss((b_img, prev_actions, prev_rewards, b_gt), sample=True)
+        loss, reward, actions, log_probs, _ = self.compute_policy_loss((b_img, prev_actions, prev_rewards, prev_log_probs, b_gt), sample=True)
 
         logs = {'val_loss': loss,
                 "val_reward": torch.mean(reward.type(torch.float)),
@@ -151,12 +195,14 @@ class SimplePG(pl.LightningModule):
 
         b_img, b_gt = batch
 
-        segmentations = torch.sigmoid(self.forward(b_img))
-        prev_actions = torch.round(segmentations)
-        prev_rewards = self.agent.get_reward(b_img, segmentations, None, b_gt, device)
+        prev_actions, prev_log_probs, prev_segmentations = self.agent.get_action(b_img, None, self.net, epsilon=0.0,
+                                                                                 device=self.get_device(batch),
+                                                                                 sample=False)
+        prev_rewards = self.agent.get_reward(b_img, prev_segmentations, None, b_gt, device)
 
         # calculates training loss
-        loss, reward, actions, log_probs = self.compute_policy_loss((b_img, prev_actions, prev_rewards, b_gt), sample=False)
+        loss, reward, actions, log_probs, _ = self.compute_policy_loss(
+            (b_img, prev_actions, prev_rewards, prev_log_probs, b_gt), sample=False)
 
         logs = {'test_loss': loss,
                 "test_reward": torch.mean(reward.type(torch.float)),
@@ -174,15 +220,14 @@ if __name__ == "__main__":
     torch.manual_seed(0)
     np.random.seed(0)
 
-    logger = TensorBoardLogger('logs', name='simplePG')
+    logger = TensorBoardLogger('logs', name='simplePPO')
 
-    model = SimplePG()
+    model = SimplePPO()
     dl = SectorDataModule('/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/',
                           '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/subset.csv')
-    dl.setup()
 
-    trainer = pl.Trainer(max_epochs=1000, logger=logger, log_every_n_steps=1, gpus=1)
+    trainer = pl.Trainer(max_epochs=100, logger=logger, log_every_n_steps=1, gpus=1)
 
-    trainer.fit(train_dataloaders=dl.train_dataloader(), val_dataloaders=dl.val_dataloader(), model=model)
+    trainer.fit(train_dataloaders=dl, model=model)
 
-    trainer.test(model=model, dataloaders=dl.test_dataloader())
+    trainer.test(model=model, dataloaders=dl)
