@@ -16,8 +16,6 @@ import numpy as np
 from typing import Tuple
 
 from agent import Agent
-from RLDataset import RLDataset
-from replaybuffer import ReplayBuffer, Experience
 from rewardnet.reward_net import get_resnet
 
 from tqdm import tqdm
@@ -31,14 +29,12 @@ class SimplePPO(pl.LightningModule):
         super().__init__(*args, **kwargs)
 
         self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
-        self.net.to(device='cuda:0')
 
         self.critic = get_resnet(input_channels=1, num_classes=1)
-        self.net.to(device='cuda:0')
 
-        self.agent = Agent(None, None)
+        self.agent = Agent()
 
-        self.clip_value = 0.1
+        self.clip_value = 0.2
         self.k_steps = 5
 
         self.automatic_optimization = False
@@ -88,6 +84,7 @@ class SimplePPO(pl.LightningModule):
             # calculates training loss
             loss, rewards, actions, log_probs, ratio = self.compute_policy_loss((b_img, prev_actions, adv,
                                                                                  prev_log_probs, b_gt), sample=True)
+            approx_kl_div = torch.mean((torch.exp(ratio) - 1) - ratio)
 
             v = self.critic(b_img).unsqueeze(-1)
             critic_loss = nn.MSELoss()(v, prev_rewards)
@@ -109,6 +106,7 @@ class SimplePPO(pl.LightningModule):
                 'reward': torch.mean(rewards.type(torch.float)),
                 'log_probs': log_probs.mean(),
                 'ratio': ratio.mean(),
+                'approx_kl_div': approx_kl_div,
             }
             self.log_dict(logs, prog_bar=True)
 

@@ -11,9 +11,6 @@ from torch.distributions.normal import Normal
 from vital.vital.metrics.train.functional import differentiable_dice_score
 from torchmetrics import Dice
 
-from replaybuffer import ReplayBuffer, Experience
-from RLDataset import RLDataset
-
 import numpy as np
 from typing import Tuple
 import matplotlib.pyplot as plt
@@ -37,10 +34,6 @@ class Agent:
         env: training environment
         replay_buffer: replay buffer storing experiences
     """
-
-    def __init__(self, replay_buffer: ReplayBuffer, dataset: RLDataset) -> None:
-        self.replay_buffer = replay_buffer
-        self.dataset = dataset
 
     def get_action(self, img: np.array, prev_actions: np.array, net: nn.Module, epsilon: float, device: str, sample: bool = True) -> Tuple:
         """
@@ -80,10 +73,11 @@ class Agent:
             actions = distribution.sample()
         else:
             actions = torch.round(logits)
-        # random = torch.rand(actions.shape).to(device)
-        # explored_actions = torch.where(random >= epsilon, actions, sample)
 
-        log_probs = distribution.log_prob(prev_actions)#.mean(dim=(2,3))
+        # if prev_actions is None:
+        #     prev_actions = actions.clone()
+
+        log_probs = distribution.log_prob(prev_actions)
 
         return actions.squeeze(1), log_probs, logits.squeeze(1)
 
@@ -133,32 +127,3 @@ class Agent:
         #self.baseline = self.baseline / 2 + simple.mean() / 2
 
         return simple.mean(dim=(1,2), keepdim=True)
-
-    def play_step(self, buffer: ReplayBuffer, net: nn.Module, rewardnet: nn.Module, epsilon: float = 0.0, device: str = 'cuda:0') -> Tuple[float, bool]:
-        """
-        Carries out a single interaction step between the agent and the environment
-        Args:
-            net: neural net used for segmentation (unet)
-            rewardnet: neural net used for reward calculation
-            epsilon: value to determine likelihood of taking a random action
-            device: current device
-        Returns:
-            reward, done
-        """
-
-        img, gt_mask = self.dataset.get_new_image()
-
-        action, log_prob, seg = self.get_action(img, None, net, epsilon, device)
-
-        # get reward
-        reward = self.get_reward(img, seg, rewardnet, gt_mask, device)
-        exp = Experience(img,
-                         action.cpu().detach().numpy(), #np.expand_dims(gt_mask, axis=0),
-                         reward.cpu().detach().numpy(), #torch.ones_like(reward).cpu().detach().numpy(),
-                         log_prob.squeeze(0).cpu().detach().numpy(),
-                         gt_mask)
-
-        buffer.append(exp)
-
-        return reward, log_prob
-

@@ -16,8 +16,6 @@ import numpy as np
 from typing import Tuple
 
 from agent import Agent
-from RLDataset import RLDataset
-from replaybuffer import ReplayBuffer, Experience
 from rewardnet.reward_net import get_resnet
 
 from tqdm import tqdm
@@ -31,9 +29,8 @@ class SimplePG(pl.LightningModule):
         super().__init__(*args, **kwargs)
 
         self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
-        self.net.to(device='cuda:0')
 
-        self.agent = Agent(None, None)
+        self.agent = Agent()
 
         self.epsilon = 0.1
 
