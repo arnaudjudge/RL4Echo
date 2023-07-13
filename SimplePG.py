@@ -44,7 +44,7 @@ class SimplePG(pl.LightningModule):
         return batch[0].device.index if self.on_gpu else 'cpu'
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.net.parameters(), lr=1e-2)
+        return torch.optim.Adam(self.net.parameters(), lr=1e-4)
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch) -> OrderedDict:
         """
@@ -92,7 +92,7 @@ class SimplePG(pl.LightningModule):
 
         reward = self.agent.get_reward(b_imgs, seg, None, b_gt, self.get_device(batch))
 
-        loss = -(b_rewards * log_probs).mean()
+        loss = -((b_rewards - b_rewards.mean()) / b_rewards.std() * log_probs).mean()
 
         return loss, reward, actions, log_probs
 
@@ -101,9 +101,10 @@ class SimplePG(pl.LightningModule):
 
         b_img, b_gt = batch
 
-        prev_segmentations = torch.sigmoid(self.forward(b_img))
-        prev_actions = torch.round(prev_segmentations)
-        prev_rewards = self.agent.get_reward(b_img, prev_segmentations, None, b_gt, device)
+        with torch.no_grad():
+            prev_segmentations = torch.sigmoid(self.forward(b_img))
+            prev_actions = torch.round(prev_segmentations)
+            prev_rewards = self.agent.get_reward(b_img, prev_segmentations, None, b_gt, device)
 
         # calculates training loss
         loss, reward, actions, log_probs = self.compute_policy_loss((b_img, prev_actions, prev_rewards, b_gt), sample=True)
@@ -181,7 +182,7 @@ if __name__ == "__main__":
                           '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/subset.csv')
     dl.setup()
 
-    trainer = pl.Trainer(max_epochs=1000, logger=logger, log_every_n_steps=1, gpus=1)
+    trainer = pl.Trainer(max_epochs=10, logger=logger, log_every_n_steps=1, gpus=1)
 
     trainer.fit(train_dataloaders=dl.train_dataloader(), val_dataloaders=dl.val_dataloader(), model=model)
 

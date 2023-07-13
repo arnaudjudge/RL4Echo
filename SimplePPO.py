@@ -37,8 +37,8 @@ class SimplePPO(pl.LightningModule):
 
         self.agent = Agent(None, None)
 
-        self.clip_value = 0.2
-        self.k_steps = 1
+        self.clip_value = 0.1
+        self.k_steps = 5
 
         self.automatic_optimization = False
 
@@ -69,11 +69,13 @@ class SimplePPO(pl.LightningModule):
         b_img, b_gt = batch
 
         # get actions, lp, reward, etc from pi (stays constant for all steps k)
-        prev_actions, prev_log_probs, prev_segmentations = self.agent.get_action(b_img, None, self.net, epsilon=0.0,
-                                                                                 device=self.get_device(batch),
-                                                                                 sample=True)
-
-        prev_rewards = self.agent.get_reward(b_img, prev_segmentations, None, b_gt, device)
+        # use no grad since it can come from RB, must be like this to reuse gradient in for loop
+        with torch.no_grad():
+            _, prev_log_probs, prev_segmentations = self.agent.get_action(b_img, None, self.net, epsilon=0.0,
+                                                                                     device=self.get_device(batch),
+                                                                                     sample=True)
+            prev_actions = torch.round(prev_segmentations)
+            prev_rewards = self.agent.get_reward(b_img, prev_segmentations, None, b_gt, device)
 
         v = torch.sigmoid(self.critic(b_img).unsqueeze(-1))
 
