@@ -4,6 +4,7 @@ import cv2
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 
@@ -182,8 +183,9 @@ if __name__ == "__main__":
                           '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/subset.csv')
     dl.setup()
 
-    trainer = pl.Trainer(max_epochs=10, logger=logger, log_every_n_steps=1, gpus=1)
+    checkpoint_callback = ModelCheckpoint(monitor="val_reward", mode='max')
+    trainer = pl.Trainer(max_epochs=10, logger=logger, log_every_n_steps=1, gpus=1, callbacks=[checkpoint_callback])
 
-    trainer.fit(train_dataloaders=dl.train_dataloader(), val_dataloaders=dl.val_dataloader(), model=model)
+    trainer.fit(train_dataloaders=dl, model=model)
 
-    trainer.test(model=model, dataloaders=dl.test_dataloader())
+    trainer.test(model=model, dataloaders=dl, ckpt_path="best")
