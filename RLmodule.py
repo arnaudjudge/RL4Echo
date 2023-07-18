@@ -34,7 +34,7 @@ class RLmodule(pl.LightningModule):
     def get_actor(self):
         raise NotImplementedError
 
-    def get_reward_func(self):
+    def get_actor(self):
         raise NotImplementedError
 
     def get_device(self, batch) -> str:
