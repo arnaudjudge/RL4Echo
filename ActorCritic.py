@@ -29,11 +29,13 @@ class Critic(nn.Module):
 
 class ActorCritic(nn.Module):
 
-    def __init__(self):
+    def __init__(self, eps_greedy_term=0.0):
         super().__init__()
 
         self.actor = Actor()
         self.critic = Critic()
+
+        self.eps_greedy_term = eps_greedy_term
 
     def get_optimizers(self):
         return torch.optim.Adam(self.actor.net.parameters(), lr=1e-3), \
@@ -44,6 +46,9 @@ class ActorCritic(nn.Module):
 
         if sample:
             actions = distribution.sample()
+
+            random = torch.rand(logits.shape).to(actions.device)
+            actions = torch.where(random >= self.eps_greedy_term, actions, torch.round(logits))
         else:
             actions = torch.round(logits)
 
