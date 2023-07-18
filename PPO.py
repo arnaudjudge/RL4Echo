@@ -36,9 +36,8 @@ class PPO(RLmodule):
     def get_reward_func(self):
         return accuracy_reward
 
-    @torch.no_grad()
+    @torch.no_grad()  # no grad since tensors are reused in PPO's for loop
     def rollout(self, imgs, gt, inject_gt=0.0, sample=True):
-        # use no grad since it can come from RB, must be like this to reuse gradient in for loop
         actions = self.actor.act(imgs, sample=sample)
 
         # find random indexes and replace actions with gt with probability 'inject_gt'
