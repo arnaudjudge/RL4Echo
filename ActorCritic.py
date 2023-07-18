@@ -60,7 +60,7 @@ class ActorCritic(nn.Module):
 
         """
         logits, distribution = self.actor(imgs)
-        log_probs = distribution.log_prob(actions)#.mean(dim=(-1, -2))
+        log_probs = distribution.log_prob(actions)
 
         actions = distribution.sample()
 

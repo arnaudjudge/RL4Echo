@@ -41,8 +41,8 @@ class PPO(RLmodule):
         # use no grad since it can come from RB, must be like this to reuse gradient in for loop
         actions = self.actor.act(imgs, sample=sample)
 
-        # TODO: make this use random > epsilon so you can use very small fractions
-        idx = np.random.choice(len(actions), size=int(inject_gt*len(actions)), replace=False)
+        # find random indexes and replace actions with gt with probability 'inject_gt'
+        idx = np.random.choice(len(actions), size=(np.random.random(size=len(actions)) < inject_gt).sum(), replace=False)
         if len(idx) > 0:
             actions[idx, ...] = gt.unsqueeze(1)[idx, ...]
 
@@ -65,7 +65,8 @@ class PPO(RLmodule):
         b_img, b_gt = batch
 
         # get actions, lp, reward, etc from pi (stays constant for all steps k)
-        prev_actions, prev_sampled_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, inject_gt=self.train_gt_inject_frac)
+        prev_actions, prev_sampled_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt,
+                                                                                        inject_gt=self.train_gt_inject_frac)
 
         # iterate with pi prime k times
         for k in range(self.k_steps):
