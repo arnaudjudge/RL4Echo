@@ -34,13 +34,18 @@ class PPO(RLmodule):
 
     def get_reward_func(self):
         return accuracy_reward
-    @torch.no_grad()
-    def rollout(self, imgs, gt):
-        actions = self.actor.act(imgs, sample=False)
-        _, _, log_probs, _ = self.actor.evaluate(imgs, actions)
 
+    @torch.no_grad()
+    def rollout(self, imgs, gt, inject_gt=0.0):
+        actions = self.actor.act(imgs, sample=False)
+
+        idx = np.random.choice(len(actions), size=int(inject_gt*len(actions)), replace=False)
+        if len(idx) > 0:
+            actions[idx, ...] = gt.unsqueeze(1)[idx, ...]
+
+        sampled_actions, _, log_probs, _ = self.actor.evaluate(imgs, actions)
         rewards = self.reward_func(actions, gt.unsqueeze(1))
-        return actions, log_probs, rewards
+        return actions, sampled_actions, log_probs, rewards
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch) -> OrderedDict:
         """
@@ -58,7 +63,7 @@ class PPO(RLmodule):
 
         # get actions, lp, reward, etc from pi (stays constant for all steps k)
         # use no grad since it can come from RB, must be like this to reuse gradient in for loop
-        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
+        prev_actions, prev_sampled_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, inject_gt=1.0)
 
         # iterate with pi prime k times
         for k in range(self.k_steps):
@@ -129,7 +134,7 @@ class PPO(RLmodule):
         device = self.get_device(batch)
         b_img, b_gt = batch
 
-        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
+        prev_actions, prev_sampled_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
 
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt), sample=True)
@@ -137,7 +142,9 @@ class PPO(RLmodule):
         logs = {'val_loss': loss,
                 "val_reward": torch.mean(prev_rewards.type(torch.float)),
                 }
-        self.log_tb_images((b_img[0, ...].unsqueeze(0), prev_actions[0, ...].unsqueeze(0), prev_rewards[0, ...].unsqueeze(0), b_gt[0, ...].unsqueeze(0),
+
+        sampled_action_rewards = self.reward_func(prev_sampled_actions, b_gt.unsqueeze(1))
+        self.log_tb_images((b_img[0, ...].unsqueeze(0), prev_sampled_actions[0, ...].unsqueeze(0), sampled_action_rewards[0, ...].unsqueeze(0), b_gt[0, ...].unsqueeze(0),
                             batch_idx))
 
         self.log_dict(logs)
@@ -170,8 +177,7 @@ class PPO(RLmodule):
     def test_step(self, batch, batch_idx: int):
         b_img, b_gt = batch
 
-        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
-
+        prev_actions, prev_sampled_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt), sample=True)
 
