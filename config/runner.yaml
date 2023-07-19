@@ -3,7 +3,7 @@ work_dir: ${hydra:runtime.cwd}
 defaults:
   - _self_
   - logger: tensorboard
-  - model: pg
+  - model: ppo
   - datamodule: sector
   - callbacks: default
 
