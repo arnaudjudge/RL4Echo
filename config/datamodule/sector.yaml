@@ -1,0 +1,4 @@
+_target_: SectorDataModule.SectorDataModule
+
+data_path: '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/'
+csv_file: '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/subset.csv'

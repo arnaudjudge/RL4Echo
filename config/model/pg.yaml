@@ -1,0 +1,4 @@
+defaults:
+  - RLModule
+
+_target_: PolicyGradient.PolicyGradient

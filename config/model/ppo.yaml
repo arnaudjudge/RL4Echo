@@ -1,0 +1,7 @@
+defaults:
+  - RLModule
+
+_target_: PPO.PPO
+
+clip_value: 0.2
+k_steps_per_batch: 5

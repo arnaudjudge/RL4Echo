@@ -1,0 +1,33 @@
+import hydra
+from hydra.utils import instantiate
+from omegaconf import OmegaConf
+from pytorch_lightning import Trainer
+
+from RLmodule import RLmodule
+from utils.instantiators import instantiate_callbacks
+
+OmegaConf.register_new_resolver(
+    "get_class_name", lambda name: name.split('.')[-1]
+)
+
+
+@hydra.main(version_base=None, config_path="./config", config_name="runner")
+def main(cfg):
+
+    logger = instantiate(cfg.logger)
+
+    model: RLmodule = instantiate(cfg.model)
+    datamodule = instantiate(cfg.datamodule)
+
+    callbacks = instantiate_callbacks(cfg.callbacks)
+
+    trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
+
+    trainer.fit(train_dataloaders=datamodule, model=model)
+    trainer.test(model=model, dataloaders=datamodule, ckpt_path="best")
+
+
+if __name__ == "__main__":
+    main()
+
+

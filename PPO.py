@@ -16,12 +16,13 @@ from SectorDataModule import SectorDataModule
 
 class PPO(RLmodule):
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, clip_value: float = 0.2, k_steps_per_batch: int = 5,  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-        self.clip_value = 0.2
-        self.k_steps = 5
+        self.clip_value = clip_value
+        self.k_steps = k_steps_per_batch
 
+        # since optimization is done manually, this flag needs to be set
         self.automatic_optimization = False
 
     def get_actor(self):
@@ -114,22 +115,4 @@ class PPO(RLmodule):
         }
 
         return loss, critic_loss, metrics
-
-
-if __name__ == "__main__":
-    torch.manual_seed(0)
-    np.random.seed(0)
-
-    logger = TensorBoardLogger('logs', name='PPO')
-
-    model = PPO()
-    dl = SectorDataModule('/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/',
-                          '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/subset.csv')
-
-    checkpoint_callback = ModelCheckpoint(monitor="val_reward", mode='max')
-    trainer = pl.Trainer(max_epochs=10, logger=logger, log_every_n_steps=1, gpus=1, callbacks=[checkpoint_callback])
-
-    trainer.fit(train_dataloaders=dl, model=model)
-
-    trainer.test(model=model, dataloaders=dl, ckpt_path="best")
 

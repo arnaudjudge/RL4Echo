@@ -80,21 +80,3 @@ class PolicyGradient(RLmodule):
 
         return loss, torch.zeros_like(loss), metrics
 
-
-if __name__ == "__main__":
-    torch.manual_seed(0)
-    np.random.seed(0)
-
-    logger = TensorBoardLogger('logs', name='PolicyGradient')
-
-    model = PolicyGradient()
-    dl = SectorDataModule('/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/',
-                          '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/subset.csv')
-
-    checkpoint_callback = ModelCheckpoint(monitor="val_reward", mode='max')
-    trainer = pl.Trainer(max_epochs=10, logger=logger, log_every_n_steps=1, gpus=1, callbacks=[checkpoint_callback])
-
-    trainer.fit(train_dataloaders=dl, model=model)
-
-    trainer.test(model=model, dataloaders=dl, ckpt_path="best")
-
