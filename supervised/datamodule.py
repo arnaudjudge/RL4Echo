@@ -41,10 +41,9 @@ class SectorDataset(Dataset):
         self.df = self.df[(self.df['passed'] == True) & (self.df['relative_path'].notna())]
 
         if test:
-            self.df = self.df.iloc[-1000:]
+            self.df = self.df.iloc[-100:]
         else:
-            self.df = self.df.iloc[:10000]
-            # self.df = self.df.iloc[:-1000]
+            self.df = self.df.iloc[:-100]
 
         self.img_size = img_size
 
@@ -61,7 +60,7 @@ class SectorDataset(Dataset):
         mask = nib.load(self.data_path + '/mask/' + path_dict['mask']).get_fdata()[:, :, 0]
         mask = resize_image(mask, size=self.img_size)
 
-        return torch.tensor(img, dtype=torch.float), torch.tensor(mask, dtype=torch.float)
+        return torch.from_numpy(img), torch.from_numpy(mask)
 
 
 class SectorDataModule(pl.LightningDataModule):
@@ -106,13 +105,13 @@ class SectorDataModule(pl.LightningDataModule):
     # define your dataloaders
     # again, here defined for train, validate and test, not for predict as the project is not there yet.
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=32, num_workers=8)
+        return DataLoader(self.train, batch_size=32, num_workers=16)
 
     def val_dataloader(self):
-        return DataLoader(self.validate, batch_size=32, num_workers=8)
+        return DataLoader(self.validate, batch_size=32, num_workers=16)
 
     def test_dataloader(self):
-        return DataLoader(self.test, batch_size=32, num_workers=8)
+        return DataLoader(self.test, batch_size=32, num_workers=16)
 
 
 if __name__ == "__main__":

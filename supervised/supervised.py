@@ -13,16 +13,24 @@ import nibabel as nib
 import numpy as np
 
 
+class DiceLoss(nn.Module):
+    def __init__(self):
+        super(DiceLoss, self).__init__()
+
+    def forward(self, output, target):
+        intersection = torch.sum(target * output)
+        return 1 - ((2. * intersection) / (torch.sum(target) + torch.sum(output)))
+
 class SupervisedOptimizer(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.net = UNet(input_shape=(1, 256, 256), output_shape=(2, 256, 256))
+        self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
 
         self.loss = nn.BCELoss()
 
     def forward(self, x):
-        return self.net.forward(x)
+        return self.net.forward(x.type(torch.cuda.FloatTensor))
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=0.001)
@@ -30,12 +38,14 @@ class SupervisedOptimizer(pl.LightningModule):
     def training_step(self, batch, *args, **kwargs) -> Dict:
         x, y = batch
 
-        y_hat = self.forward(x)
+        y_hat = torch.sigmoid(self.forward(x))
 
-        loss = -differentiable_dice_score(y_hat, y)
+        #loss = -differentiable_dice_score(y_hat, y)
+        loss = self.loss(y_hat.squeeze(1), y)
 
         logs = {
             'loss': loss,
+            # 'dice' : differentiable_dice_score(y_hat, y)
         }
 
         self.log_dict(logs)
@@ -44,27 +54,30 @@ class SupervisedOptimizer(pl.LightningModule):
     def validation_step(self, batch, batch_idx: int):
 
         imgs, y_true = batch
-        y_pred = self.forward(imgs)
+        y_pred = torch.sigmoid(self.forward(imgs))
 
-        loss = -differentiable_dice_score(y_pred, y_true)
+        #loss = -differentiable_dice_score(y_pred, y_true)
+        loss = self.loss(y_pred.squeeze(1), y_true)
 
-        y_pred = torch.argmax(nn.functional.softmax(y_pred, dim=1), dim=1)
+        y_pred = torch.round(y_pred.squeeze(1))
 
         if batch_idx % 100:  # Log every 10 batches
             self.log_tb_images((imgs, y_true, y_pred, batch_idx))
 
-        logs = {'val_loss': loss}
+        logs = {'val_loss': loss,
+                # 'dice': differentiable_dice_score(y_pred, y_true)
+                }
         self.log_dict(logs)
 
         return logs
 
     def test_step(self, batch, batch_idx):
         imgs, y_true = batch
-        y_pred = self.forward(imgs)
+        y_pred = torch.sigmoid(self.forward(imgs))
 
         loss = -differentiable_dice_score(y_pred, y_true)
 
-        y_pred = torch.argmax(nn.functional.softmax(y_pred, dim=1), dim=1)
+        y_pred = torch.round(y_pred)
 
         affine = np.diag(np.asarray([1, 1, 1, 0]))
         hdr = nib.Nifti1Header()
@@ -96,4 +109,4 @@ class SupervisedOptimizer(pl.LightningModule):
         tb_logger.add_image(f"Prediction", viz_batch[2][idx].unsqueeze(0), viz_batch[3])
 
     def save(self) -> None:
-        torch.save(self.net.state_dict(), './supervised.ckpt')
+        torch.save(self.net.state_dict(), 'supervised.ckpt')
