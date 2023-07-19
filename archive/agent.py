@@ -14,7 +14,6 @@ from torchmetrics import Dice
 import numpy as np
 from typing import Tuple
 import matplotlib.pyplot as plt
-from reward_scaling import scale_reward
 
 
 def dice_coefficient(y_true, y_pred):
@@ -77,7 +76,7 @@ class Agent:
         # if prev_actions is None:
         #     prev_actions = actions.clone()
 
-        log_probs = distribution.log_prob(prev_actions)
+        log_probs = distribution.log_prob(prev_actions).mean(dim=(-1, -2))
 
         return actions.squeeze(1), log_probs, logits.squeeze(1)
 
@@ -112,18 +111,5 @@ class Agent:
         # #reward = torch.argmax(r, dim=-1)
         # reward = r.squeeze(1).repeat(256, 256, 1).permute(2, 0, 1)
         # reward = torch.where(reward == 0, torch.tensor(-1).to(device), reward)
-
-        # x = torch.tensor(np.arange(0, 1, 0.01))
-        # y_np = scale_reward(x).detach().cpu().numpy()
-
-        #reward = scale_reward(simple.mean(dim=(1,2), keepdim=True))
-
-        # if len(reward) > 1:
-        #
-        #     plt.figure()
-        #     plt.plot(x, y_np)
-        #     plt.scatter(simple.mean(dim=(1,2), keepdim=True).detach().cpu().numpy(), reward.detach().cpu().numpy())
-
-        #self.baseline = self.baseline / 2 + simple.mean() / 2
 
         return simple.mean(dim=(1,2), keepdim=True)
