@@ -10,7 +10,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from Actors import PGActor
 from RLmodule import RLmodule
 from Reward import accuracy_reward
-from simpledatamodule import SectorDataModule
+from SectorDataModule import SectorDataModule
 
 
 class PolicyGradient(RLmodule):

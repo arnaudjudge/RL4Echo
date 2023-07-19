@@ -20,7 +20,7 @@ from rewardnet.reward_net import get_resnet
 
 from tqdm import tqdm
 
-from simpledatamodule import SectorDataModule
+from SectorDataModule import SectorDataModule
 
 
 class SimplePG(pl.LightningModule):
