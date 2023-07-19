@@ -5,7 +5,7 @@ from vital.vital.models.segmentation.unet import UNet
 from rewardnet.reward_net import get_resnet
 
 
-class Actor(nn.Module):
+class UnetActor(nn.Module):
 
     def __init__(self):
         super().__init__()
@@ -32,7 +32,7 @@ class ActorCritic(nn.Module):
     def __init__(self, eps_greedy_term=0.0):
         super().__init__()
 
-        self.actor = Actor()
+        self.actor = UnetActor()
         self.critic = Critic()
 
         self.eps_greedy_term = eps_greedy_term
@@ -42,6 +42,15 @@ class ActorCritic(nn.Module):
                torch.optim.Adam(self.critic.net.parameters(), lr=1e-3)
 
     def act(self, imgs, sample=True):
+        """
+            Get actions from actor based on batch of images
+        Args:
+            imgs: batch of images
+            sample: bool, use sample from distribution or deterministic method
+
+        Returns:
+            Actions
+        """
         logits, distribution = self.actor(imgs)
 
         if sample:
@@ -56,13 +65,13 @@ class ActorCritic(nn.Module):
 
     def evaluate(self, imgs, actions):
         """
-
+            Evaluate images with both actor and critic
         Args:
             imgs: (state) images to evaluate
             actions: segmentation taken over images
 
         Returns:
-
+            actions (sampled), logits from actor predictions, log_probs, value function estimate from critic
         """
         logits, distribution = self.actor(imgs)
         log_probs = distribution.log_prob(actions)
