@@ -1,26 +1,12 @@
-from collections import OrderedDict
-from typing import Any
-import cv2
-import torch
-import torch.nn as nn
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import TensorBoardLogger
-from torch.utils.data import DataLoader
-
-from torchmetrics import Dice
-from vital.vital.models.segmentation.unet import UNet
-from vital.vital.metrics.train.functional import differentiable_dice_score
 import random
-import numpy as np
+from typing import Any
 from typing import Tuple
 
-from agent import Agent
-from rewardnet.reward_net import get_resnet
-
-from tqdm import tqdm
-
-from simpledatamodule import SectorDataModule
+import cv2
+import numpy as np
+import pytorch_lightning as pl
+import torch
+from pytorch_lightning.loggers import TensorBoardLogger
 
 
 class RLmodule(pl.LightningModule):
@@ -30,6 +16,8 @@ class RLmodule(pl.LightningModule):
 
         self.actor = self.get_actor()
         self.reward_func = self.get_reward_func()
+
+        self.train_gt_inject_frac = 0.0
 
     def get_actor(self):
         raise NotImplementedError
@@ -57,9 +45,9 @@ class RLmodule(pl.LightningModule):
         if len(idx) > 0:
             actions[idx, ...] = gt.unsqueeze(1)[idx, ...]
 
-        sampled_actions, _, log_probs, _ = self.actor.evaluate(imgs, actions)
+        _, _, log_probs, _ = self.actor.evaluate(imgs, actions)
         rewards = self.reward_func(actions, gt.unsqueeze(1))
-        return actions, sampled_actions, log_probs, rewards
+        return actions, log_probs, rewards
 
     def log_tb_images(self, viz_batch, prefix="") -> None:
         """
@@ -94,7 +82,7 @@ class RLmodule(pl.LightningModule):
             put_text(viz_batch[1][idx].cpu().detach().numpy(), viz_batch[2][idx].float().mean().item())).unsqueeze(0),
                             viz_batch[4])
 
-    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch) -> OrderedDict:
+    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch):
         """
             Defines training steo, calculates loss based on the minibatch recieved.
             Optionally backprop through networks with self.automatic_optimization = False flag,
@@ -134,7 +122,7 @@ class RLmodule(pl.LightningModule):
         """
         b_img, b_gt = batch
 
-        prev_actions, prev_sampled_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
+        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
 
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt))
@@ -166,7 +154,7 @@ class RLmodule(pl.LightningModule):
         """
         b_img, b_gt = batch
 
-        prev_actions, prev_sampled_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
+        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt))
 

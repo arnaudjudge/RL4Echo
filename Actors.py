@@ -27,8 +27,64 @@ class Critic(nn.Module):
         return torch.sigmoid(self.net(x))
 
 
-class ActorCritic(nn.Module):
+class PGActor(nn.Module):
+    """
+        Simple policy gradient actor
+    """
+    def __init__(self, eps_greedy_term=0.0):
+        super().__init__()
 
+        self.actor = UnetActor()
+
+        self.eps_greedy_term = eps_greedy_term
+
+    def get_optimizers(self):
+        return torch.optim.Adam(self.actor.net.parameters(), lr=1e-3)
+
+    def act(self, imgs, sample=True):
+        """
+            Get actions from actor based on batch of images
+        Args:
+            imgs: batch of images
+            sample: bool, use sample from distribution or deterministic method
+
+        Returns:
+            Actions
+        """
+        logits, distribution = self.actor(imgs)
+
+        if sample:
+            actions = distribution.sample()
+
+            random = torch.rand(logits.shape).to(actions.device)
+            actions = torch.where(random >= self.eps_greedy_term, actions, torch.round(logits))
+        else:
+            actions = torch.round(logits)
+
+        return actions
+
+    def evaluate(self, imgs, actions):
+        """
+            Evaluate images with both actor and critic
+        Args:
+            imgs: (state) images to evaluate
+            actions: segmentation taken over images
+
+        Returns:
+            actions (sampled), logits from actor predictions, log_probs, placeholder value function estimate from critic
+        """
+        logits, distribution = self.actor(imgs)
+        log_probs = distribution.log_prob(actions)
+
+        actions = distribution.sample()
+
+        return actions, logits, log_probs, torch.zeros(len(actions))
+
+
+class ActorCritic(nn.Module):
+    """
+        ActorCritic actor class, evaluates actor and value function approximate
+    """
     def __init__(self, eps_greedy_term=0.0):
         super().__init__()
 
