@@ -11,19 +11,22 @@ from torch.utils.data import random_split, DataLoader
 
 
 class SectorDataset(Dataset):
-    def __init__(self, data_path, csv_file, img_size=(256, 256), test=False):
+    def __init__(self, data_path, csv_file, subset_frac=1.0, test_frac=0.1, test=False, *args, **kwargs):
         super().__init__()
         self.data_path = data_path
 
         self.df = pd.read_csv(csv_file, index_col=0)
         self.df = self.df[(self.df['passed'] == True) & (self.df['relative_path'].notna())]
 
-        if test:
-            self.df = self.df.iloc[-100:]
-        else:
-            self.df = self.df.iloc[:-9000]
+        # only use subset
+        self.df = self.df.iloc[:int(subset_frac*len(self.df))]
 
-        self.img_size = img_size
+        # split according to test_frac
+        test_len = int(test_frac * len(self.df))
+        if test:
+            self.df = self.df.iloc[-test_len:]
+        else:
+            self.df = self.df.iloc[:-test_len]
 
     def __len__(self):
         return len(self.df.index)
@@ -42,10 +45,10 @@ class SectorDataModule(pl.LightningDataModule):
     DataModule used for semantic segmentation in geometric generalization project
     """
 
-    def __init__(self, data_path, csv_file):
+    def __init__(self, *args, **kwargs):
         super().__init__()
-        self.data_path = data_path
-        self.csv_file = csv_file
+        self.args = args
+        self.kwargs = kwargs
 
     def prepare_data(self):
         """
@@ -67,14 +70,14 @@ class SectorDataModule(pl.LightningDataModule):
         # the stage is used in the Pytorch Lightning trainer method, which you can call as fit (training, evaluation) or test, also you can use it for predict, not implemented here
 
         if stage == "fit" or stage is None:
-            train_set_full = SectorDataset(self.data_path, self.csv_file)
+            train_set_full = SectorDataset(*self.args, **self.kwargs)
             train_set_size = int(len(train_set_full) * 0.9)
             valid_set_size = len(train_set_full) - train_set_size
             self.train, self.validate = random_split(train_set_full, [train_set_size, valid_set_size])
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
-            self.test = SectorDataset(self.data_path, self.csv_file, test=True)
+            self.test = SectorDataset(*self.args, **self.kwargs, test=True)
 
     # define your dataloaders
     # again, here defined for train, validate and test, not for predict as the project is not there yet.
@@ -89,11 +92,13 @@ class SectorDataModule(pl.LightningDataModule):
 
 
 if __name__ == "__main__":
-    dl = SectorDataModule('/home/local/USHERBROOKE/juda2901/dev/data/icardio/test/', '/home/local/USHERBROOKE/juda2901/dev/data/icardio/test/subset.csv')
+    dl = SectorDataModule('/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/',
+                          '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/subset.csv',
+                          0.1,
+                          0.1)
+
     dl.setup()
     for i in range(1):
-       batch = next(iter(dl.train_dataloader()))
-       print(batch[0].shape)
-       print(batch[1].shape)
-
-
+        batch = next(iter(dl.train_dataloader()))
+        print(batch[0].shape)
+        print(batch[1].shape)
