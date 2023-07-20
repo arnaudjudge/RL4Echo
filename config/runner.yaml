@@ -7,6 +7,8 @@ defaults:
   - datamodule: sector
   - callbacks: default
 
+seed: 0
+
 trainer:
   _target_: pytorch_lightning.Trainer
   max_epochs: 10

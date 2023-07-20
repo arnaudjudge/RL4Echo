@@ -1,4 +1,6 @@
 import hydra
+import numpy as np
+import torch
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 from pytorch_lightning import Trainer
@@ -11,8 +13,10 @@ OmegaConf.register_new_resolver(
 )
 
 
-@hydra.main(version_base=None, config_path="./config", config_name="runner")
+@hydra.main(version_base=None, config_path="config", config_name="runner")
 def main(cfg):
+    torch.manual_seed(cfg.seed)
+    np.random.seed(cfg.seed)
 
     logger = instantiate(cfg.logger)
 
