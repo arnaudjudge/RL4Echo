@@ -21,7 +21,7 @@ def main(cfg):
     logger = instantiate(cfg.logger)
 
     model: RLmodule = instantiate(cfg.model)
-    datamodule = instantiate(cfg.datamodule)
+    datamodule = instantiate(cfg.datamodule, seed=cfg.seed)
 
     callbacks = instantiate_callbacks(cfg.callbacks)
 

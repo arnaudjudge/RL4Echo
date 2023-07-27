@@ -11,7 +11,7 @@ from torch.utils.data import random_split, DataLoader
 
 
 class SectorDataset(Dataset):
-    def __init__(self, data_path, csv_file, subset_frac=1.0, test_frac=0.1, test=False, *args, **kwargs):
+    def __init__(self, data_path, csv_file, subset_frac=1.0, test_frac=0.1, seed=0, test=False, *args, **kwargs):
         super().__init__()
         self.data_path = data_path
 
@@ -19,7 +19,7 @@ class SectorDataset(Dataset):
         self.df = self.df[(self.df['passed'] == True) & (self.df['relative_path'].notna())]
 
         # only use subset
-        self.df = self.df.iloc[:int(subset_frac*len(self.df))]
+        self.df = self.df.sample(n=int(subset_frac*len(self.df)), random_state=seed)
 
         # split according to test_frac
         test_len = int(test_frac * len(self.df))
