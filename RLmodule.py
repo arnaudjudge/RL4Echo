@@ -45,7 +45,7 @@ class RLmodule(pl.LightningModule):
         if len(idx) > 0:
             actions[idx, ...] = gt.unsqueeze(1)[idx, ...]
 
-        _, _, log_probs, _ = self.actor.evaluate(imgs, actions)
+        _, _, log_probs, _, _ = self.actor.evaluate(imgs, actions)
         rewards = self.reward_func(actions, gt.unsqueeze(1))
         return actions, log_probs, rewards
 

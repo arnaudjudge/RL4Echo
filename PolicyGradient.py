@@ -65,7 +65,7 @@ class PolicyGradient(RLmodule):
         """
         b_img, b_actions, b_rewards, b_log_probs, b_gt = batch
 
-        _, logits, log_probs, _ = self.actor.evaluate(b_img, b_actions)
+        _, logits, log_probs, _, _ = self.actor.evaluate(b_img, b_actions)
         reward = self.reward_func(torch.round(logits), b_gt.unsqueeze(1))
 
         # Policy Gradient loss

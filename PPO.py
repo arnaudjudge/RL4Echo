@@ -16,11 +16,17 @@ from SectorDataModule import SectorDataModule
 
 class PPO(RLmodule):
 
-    def __init__(self, clip_value: float = 0.2, k_steps_per_batch: int = 5,  *args: Any, **kwargs: Any) -> None:
+    def __init__(self,
+                 clip_value: float = 0.2,
+                 k_steps_per_batch: int = 5,
+                 entropy_coeff: float = 0.0,
+                 *args: Any,
+                 **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
         self.clip_value = clip_value
         self.k_steps = k_steps_per_batch
+        self.entropy_coeff = entropy_coeff
 
         # since optimization is done manually, this flag needs to be set
         self.automatic_optimization = False
@@ -84,7 +90,7 @@ class PPO(RLmodule):
         """
         b_img, b_actions, b_rewards, b_log_probs, b_gt = batch
 
-        _, logits, log_probs, v = self.actor.evaluate(b_img, b_actions)
+        _, logits, log_probs, entropy, v = self.actor.evaluate(b_img, b_actions)
         reward = self.reward_func(torch.round(logits), b_gt.unsqueeze(1))
 
         adv = b_rewards - v
@@ -98,10 +104,10 @@ class PPO(RLmodule):
         clipped = ratio.clamp(1 - self.clip_value, 1 + self.clip_value)
 
         # min trick
-        loss = -torch.min(adv * ratio, adv * clipped).mean()
+        loss = -torch.min(adv * ratio, adv * clipped).mean() + (-self.entropy_coeff * entropy.mean())
 
         # Critic loss
-        critic_loss = nn.MSELoss()(v, b_rewards)
+        critic_loss = nn.MSELoss()(v, b_rewards.mean(dim=(1, 2, 3), keepdim=True))
 
         # metrics dict
         metrics = {

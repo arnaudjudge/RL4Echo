@@ -78,7 +78,7 @@ class PGActor(nn.Module):
 
         actions = distribution.sample()
 
-        return actions, logits, log_probs, torch.zeros(len(actions))
+        return actions, logits, log_probs, torch.zeros(len(actions)), torch.zeros(len(actions))
 
 
 class ActorCritic(nn.Module):
@@ -133,9 +133,10 @@ class ActorCritic(nn.Module):
         log_probs = distribution.log_prob(actions)
 
         actions = distribution.sample()
+        entropy = distribution.entropy()
 
         v = self.critic(imgs).unsqueeze(-1).unsqueeze(-1)
 
-        return actions, logits, log_probs, v
+        return actions, logits, log_probs, entropy, v
 
 
