@@ -1,4 +1,5 @@
 import numpy as np
+import skimage.morphology
 import torch
 from matplotlib import pyplot as plt
 from scipy import ndimage
@@ -22,7 +23,7 @@ def accuracy_reward_map(sampled_pred, deterministic_pred, gt):
     mean_matrix = torch.zeros_like(sampled_pred)
     for i in range(len(sampled_pred)):
 
-        if mean_matrix.mean() > 0.7:
+        if mean_matrix.mean() > 0.9:
             mask = deterministic_pred[i, 0, ...].cpu().numpy()
             # plt.figure()
             # plt.imshow(mask)
@@ -56,6 +57,55 @@ def accuracy_reward_map(sampled_pred, deterministic_pred, gt):
             mean_matrix[i, ...] = mean[i]
 
     return mean_matrix
+
+
+@torch.no_grad()
+def morphological(pred, imgs):
+    rew = torch.zeros_like(pred)
+    for i in range(len(rew)):
+        mask = pred[i, 0, ...].cpu().numpy()
+        # plt.figure()
+        # plt.imshow(mask)
+
+        # Find each blob in the image
+        lbl, num = ndimage.label(mask)
+        # Count the number of elements per label
+        count = np.bincount(lbl.flat)
+        if not np.any(count[1:]):
+            rew[i, ...] = 0
+        else:
+            # Select the largest blob
+            maxi = np.argmax(count[1:]) + 1
+            # Keep only the other blobs
+            lbl[lbl != maxi] = 0
+
+            dil = skimage.morphology.binary_closing(lbl)
+            # plt.figure()
+            # plt.imshow(dil)
+            # #
+            # print(dil.shape)
+            # print(gt.shape)
+
+            map = (dil == mask)
+            # plt.figure()
+            # plt.imshow(map)
+
+            im = imgs[i, 0, 0, ...].cpu().numpy()
+            im_roi = (im != 0.0)
+            # plt.figure()
+            # plt.imshow(im_roi)
+
+            mask_in_roi = (im_roi == mask)
+
+
+            # plt.figure()
+            # plt.imshow(map & mask_in_roi)
+            # plt.title((map & mask_in_roi).mean())
+            #
+            # plt.show()
+            rew[i, ...] = torch.from_numpy(map & mask_in_roi)
+
+    return rew
 
 
 @torch.no_grad()
