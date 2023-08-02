@@ -5,6 +5,9 @@ from matplotlib import pyplot as plt
 from scipy import ndimage
 from torchmetrics.functional import dice
 
+"""
+Reward functions must each have pred, img, gt as input parameters
+"""
 
 @torch.no_grad()
 def accuracy(pred, imgs, gt):
@@ -92,7 +95,7 @@ def morphological(pred, imgs, gt=None):
 
 
 @torch.no_grad()
-def dice_reward(pred, gt):
+def dice_reward(pred, img, gt):
     dice_score = torch.zeros((len(pred), 1, 1, 1)).to(pred.device)
     for i in range(len(dice_score)):
         dice_score[i, ...] = dice(pred[i, ...], gt[i, ...].to(int))
