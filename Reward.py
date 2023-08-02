@@ -7,7 +7,7 @@ from torchmetrics.functional import dice
 
 
 @torch.no_grad()
-def accuracy_reward(pred, gt):
+def accuracy(pred, imgs, gt):
     actions = torch.round(pred)
     assert actions.shape == gt.shape
     simple = (actions == gt).float()
@@ -15,7 +15,7 @@ def accuracy_reward(pred, gt):
 
 
 @torch.no_grad()
-def accuracy_reward_map(sampled_pred, deterministic_pred, gt):
+def accuracy_map(sampled_pred, deterministic_pred, gt):
     actions = torch.round(sampled_pred)
     assert actions.shape == gt.shape
     simple = (actions == gt).float()
@@ -60,12 +60,10 @@ def accuracy_reward_map(sampled_pred, deterministic_pred, gt):
 
 
 @torch.no_grad()
-def morphological(pred, imgs):
+def morphological(pred, imgs, gt=None):
     rew = torch.zeros_like(pred)
     for i in range(len(rew)):
         mask = pred[i, 0, ...].cpu().numpy()
-        # plt.figure()
-        # plt.imshow(mask)
 
         # Find each blob in the image
         lbl, num = ndimage.label(mask)
@@ -80,29 +78,14 @@ def morphological(pred, imgs):
             lbl[lbl != maxi] = 0
 
             dil = skimage.morphology.binary_closing(lbl)
-            # plt.figure()
-            # plt.imshow(dil)
-            # #
-            # print(dil.shape)
-            # print(gt.shape)
-
             map = (dil == mask)
-            # plt.figure()
-            # plt.imshow(map)
 
-            im = imgs[i, 0, 0, ...].cpu().numpy()
+            # image region of interest (non-black pixels)
+            im = imgs[i, 0, ...].cpu().numpy()
             im_roi = (im != 0.0)
-            # plt.figure()
-            # plt.imshow(im_roi)
 
             mask_in_roi = (im_roi == mask)
 
-
-            # plt.figure()
-            # plt.imshow(map & mask_in_roi)
-            # plt.title((map & mask_in_roi).mean())
-            #
-            # plt.show()
             rew[i, ...] = torch.from_numpy(map & mask_in_roi)
 
     return rew

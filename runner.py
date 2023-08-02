@@ -20,7 +20,8 @@ def main(cfg):
 
     logger = instantiate(cfg.logger)
 
-    model: RLmodule = instantiate(cfg.model)
+    reward = instantiate(cfg.reward, _partial_=True)
+    model: RLmodule = instantiate(cfg.model, reward=reward)
     datamodule = instantiate(cfg.datamodule, seed=cfg.seed)
 
     callbacks = instantiate_callbacks(cfg.callbacks)

@@ -10,7 +10,6 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from Actors import ActorCritic
 from RLmodule import RLmodule
-from Reward import accuracy_reward
 from SectorDataModule import SectorDataModule
 
 
@@ -33,9 +32,6 @@ class PPO(RLmodule):
 
     def get_actor(self):
         return ActorCritic()
-
-    def get_reward_func(self):
-        return accuracy_reward
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch):
         """
@@ -91,7 +87,7 @@ class PPO(RLmodule):
         b_img, b_actions, b_rewards, b_log_probs, b_gt = batch
 
         _, logits, log_probs, entropy, v = self.actor.evaluate(b_img, b_actions)
-        reward = self.reward_func(torch.round(logits), b_gt.unsqueeze(1))
+        reward = self.reward_func(torch.round(logits), b_img, b_gt.unsqueeze(1))
 
         adv = b_rewards - v
 

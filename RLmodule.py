@@ -11,11 +11,11 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 class RLmodule(pl.LightningModule):
 
-    def __init__(self, train_gt_injection_frac: float = 0.0, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, reward, train_gt_injection_frac: float = 0.0, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
         self.actor = self.get_actor()
-        self.reward_func = self.get_reward_func()
+        self.reward_func = reward
 
         self.train_gt_inject_frac = train_gt_injection_frac
 
@@ -46,7 +46,7 @@ class RLmodule(pl.LightningModule):
             actions[idx, ...] = gt.unsqueeze(1)[idx, ...]
 
         _, _, log_probs, _, _ = self.actor.evaluate(imgs, actions)
-        rewards = self.reward_func(actions, gt.unsqueeze(1))
+        rewards = self.reward_func(actions, imgs, gt.unsqueeze(1))
         return actions, log_probs, rewards
 
     def log_tb_images(self, viz_batch, prefix="") -> None:

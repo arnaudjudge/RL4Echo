@@ -9,7 +9,6 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from Actors import PGActor
 from RLmodule import RLmodule
-from Reward import accuracy_reward
 from SectorDataModule import SectorDataModule
 
 
@@ -20,9 +19,6 @@ class PolicyGradient(RLmodule):
 
     def get_actor(self):
         return PGActor()
-
-    def get_reward_func(self):
-        return accuracy_reward
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch):
         """
@@ -66,7 +62,7 @@ class PolicyGradient(RLmodule):
         b_img, b_actions, b_rewards, b_log_probs, b_gt = batch
 
         _, logits, log_probs, _, _ = self.actor.evaluate(b_img, b_actions)
-        reward = self.reward_func(torch.round(logits), b_gt.unsqueeze(1))
+        reward = self.reward_func(torch.round(logits), b_img, b_gt.unsqueeze(1))
 
         # Policy Gradient loss
         loss = -((b_rewards - b_rewards.mean()) / b_rewards.std() * log_probs).mean()
