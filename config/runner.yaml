@@ -1,5 +1,5 @@
 work_dir: ${hydra:runtime.cwd}
-run_name: test
+run_name: default
 
 defaults:
   - _self_
