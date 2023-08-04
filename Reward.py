@@ -1,13 +1,16 @@
 import numpy as np
 import skimage.morphology
 import torch
+from bdicardio.utils.ransac_utils import ransac_sector_extraction
 from matplotlib import pyplot as plt
 from scipy import ndimage
+from scipy.ndimage import binary_fill_holes
 from torchmetrics.functional import dice
 
 """
 Reward functions must each have pred, img, gt as input parameters
 """
+
 
 @torch.no_grad()
 def accuracy(pred, imgs, gt):
@@ -83,13 +86,57 @@ def morphological(pred, imgs, gt=None):
             dil = skimage.morphology.binary_closing(lbl)
             map = (dil == mask)
 
-            # image region of interest (non-black pixels)
+            # image region of interest (non-black pixels) in the main blob
             im = imgs[i, 0, ...].cpu().numpy()
             im_roi = (im != 0.0)
 
+            # is this better?
+            im_roi, num = ndimage.label(im_roi)
+            # Count the number of elements per label
+            count = np.bincount(im_roi.flat)
+            if not np.any(count[1:]):
+                print("???")
+            # Select the largest blob
+            maxi = np.argmax(count[1:]) + 1
+            # Keep only the other blobs
+            im_roi[im_roi != maxi] = 0
+            im_roi = skimage.morphology.binary_closing(im_roi)
+            im_roi = binary_fill_holes(im_roi)
+
             mask_in_roi = (im_roi == mask)
 
-            rew[i, ...] = torch.from_numpy(map & mask_in_roi)
+            # ransac
+            ransac = np.ones_like(map)
+            try:
+                ransac, *_ = ransac_sector_extraction(lbl, slim_factor=0.01, circle_center_tol=0.5, plot=False)
+                ransac = (ransac == mask)
+            except:
+                pass
+            # plt.figure()
+            # plt.imshow(imgs[i, 0, ...].cpu().numpy())
+            # plt.imshow(mask, alpha=0.5)
+            #
+            # plt.figure()
+            # plt.imshow(map)
+            #
+            # plt.figure()
+            # plt.imshow(mask_in_roi)
+            #
+            # plt.figure()
+            # plt.imshow(ransac)
+            #
+            # print(map.mean())
+            # print(mask_in_roi.mean())
+            # print(ransac.mean())
+            #
+            # plt.figure()
+            # plt.imshow((map & ransac) | mask_in_roi)
+            # plt.title(((map & ransac) | mask_in_roi).mean())
+            #
+            # plt.show()
+
+            #better than just all & ?
+            rew[i, ...] = torch.from_numpy((map & ransac) | mask_in_roi)
 
     return rew
 
