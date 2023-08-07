@@ -5,7 +5,6 @@ from hydra.utils import instantiate
 from omegaconf import OmegaConf
 from pytorch_lightning import Trainer
 
-from RLmodule import RLmodule
 from utils.instantiators import instantiate_callbacks
 
 OmegaConf.register_new_resolver(
@@ -13,15 +12,15 @@ OmegaConf.register_new_resolver(
 )
 
 
-@hydra.main(version_base=None, config_path="config", config_name="runner")
+@hydra.main(version_base=None, config_path="../config", config_name="supervised_runner")
 def main(cfg):
+    print(OmegaConf.to_yaml(cfg))
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
 
     logger = instantiate(cfg.logger)
 
-    reward = instantiate(cfg.reward, _partial_=True)
-    model: RLmodule = instantiate(cfg.model, reward=reward)
+    model = instantiate(cfg.model)
     datamodule = instantiate(cfg.datamodule, seed=cfg.seed)
 
     callbacks = instantiate_callbacks(cfg.callbacks)
@@ -32,7 +31,5 @@ def main(cfg):
     trainer.test(model=model, dataloaders=datamodule, ckpt_path="best")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
-
-
