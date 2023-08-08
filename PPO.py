@@ -102,7 +102,7 @@ class PPO(RLmodule):
         loss = -torch.min(adv * ratio, adv * clipped).mean() + (-self.entropy_coeff * entropy.mean())
 
         # Critic loss
-        critic_loss = nn.MSELoss()(v, b_rewards.mean(dim=(1, 2, 3), keepdim=True))
+        critic_loss = nn.MSELoss()(v, b_rewards)
 
         # metrics dict
         metrics = {
