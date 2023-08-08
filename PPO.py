@@ -5,10 +5,9 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from Actors import ActorCritic
+from Actors import ActorCritic, ActorCriticUnetCritic
 from RLmodule import RLmodule
 from SectorDataModule import SectorDataModule
 
@@ -31,7 +30,7 @@ class PPO(RLmodule):
         self.automatic_optimization = False
 
     def get_actor(self):
-        return ActorCritic()
+        return ActorCriticUnetCritic()
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], nb_batch):
         """

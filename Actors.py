@@ -151,7 +151,7 @@ class ActorCritic(nn.Module):
         return actions, logits, log_probs, entropy, v
 
 
-class ActorCritic_UnetCritic(nn.Module):
+class ActorCriticUnetCritic(nn.Module):
     """
         ActorCritic actor class, evaluates actor and value function approximate
         Value function is represented as a grid/matrix, unet is value function approximator
