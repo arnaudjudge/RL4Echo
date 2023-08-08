@@ -5,3 +5,4 @@ csv_file: '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset_1k/sub
 
 subset_frac: 1.0
 test_frac: 0.1
+available_gt: 0.0

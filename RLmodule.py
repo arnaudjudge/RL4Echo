@@ -8,16 +8,16 @@ import pytorch_lightning as pl
 import torch
 from pytorch_lightning.loggers import TensorBoardLogger
 
+from Reward import accuracy
+
 
 class RLmodule(pl.LightningModule):
 
-    def __init__(self, reward, train_gt_injection_frac: float = 0.0, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, reward, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
         self.actor = self.get_actor()
         self.reward_func = reward
-
-        self.train_gt_inject_frac = train_gt_injection_frac
 
     def get_actor(self):
         raise NotImplementedError
@@ -26,7 +26,7 @@ class RLmodule(pl.LightningModule):
         return self.actor.get_optimizers()
 
     @torch.no_grad()  # no grad since tensors are reused in PPO's for loop
-    def rollout(self, imgs: torch.tensor, gt: torch.tensor, inject_gt: float = 0.0, sample: bool =True):
+    def rollout(self, imgs: torch.tensor, gt: torch.tensor, use_gt: torch.tensor = None, sample: bool =True):
         """
             Rollout the policy over a batch of images and ground truth pairs
         Args:
@@ -40,10 +40,8 @@ class RLmodule(pl.LightningModule):
         """
         actions = self.actor.act(imgs, sample=sample)
 
-        # find random indexes and replace actions with gt with probability 'inject_gt'
-        idx = np.random.choice(len(actions), size=(np.random.random(size=len(actions)) < inject_gt).sum(), replace=False)
-        if len(idx) > 0:
-            actions[idx, ...] = gt.unsqueeze(1)[idx, ...]
+        if use_gt is not None:
+            actions[use_gt, ...] = gt.unsqueeze(1)[use_gt, ...]
 
         _, _, log_probs, _, _ = self.actor.evaluate(imgs, actions)
         rewards = self.reward_func(actions, imgs, gt.unsqueeze(1))
@@ -120,15 +118,18 @@ class RLmodule(pl.LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt = batch
+        b_img, b_gt, *_ = batch
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
 
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt))
 
+        acc = accuracy(prev_actions, b_img, b_gt.unsqueeze(1))
+
         logs = {'val_loss': loss,
                 "val_reward": torch.mean(prev_rewards.type(torch.float)),
+                "val_acc": acc.mean(),
                 }
 
         self.log_tb_images((b_img[0, ...].unsqueeze(0),
@@ -152,18 +153,19 @@ class RLmodule(pl.LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt = batch
+        b_img, b_gt, *_ = batch
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt))
+        acc = accuracy(prev_actions, b_img, b_gt.unsqueeze(1))
 
         logs = {'test_loss': loss,
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
                 }
         self.log_tb_images((b_img[0, ...].unsqueeze(0),
                             prev_actions[0, ...].unsqueeze(0),
-                            prev_rewards[0, ...].unsqueeze(0),
+                            acc[0, ...].unsqueeze(0),
                             b_gt[0, ...].unsqueeze(0),
                             batch_idx), prefix='test_')
 

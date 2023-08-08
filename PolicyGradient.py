@@ -20,7 +20,7 @@ class PolicyGradient(RLmodule):
     def get_actor(self):
         return PGActor()
 
-    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch):
+    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], nb_batch):
         """
             Defines PPO training steo
             Get actions, log_probs and rewards from current policy
@@ -32,10 +32,10 @@ class PolicyGradient(RLmodule):
         Returns:
             Training loss and log metrics or None
         """
-        b_img, b_gt = batch
+        b_img, b_gt, b_use_gt = batch
 
         # get actions, log_probs, rewards, etc from pi (stays constant for all steps k)
-        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, inject_gt=self.train_gt_inject_frac)
+        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_use_gt)
 
         # calculates training loss
         loss, _, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,

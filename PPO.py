@@ -33,7 +33,7 @@ class PPO(RLmodule):
     def get_actor(self):
         return ActorCritic()
 
-    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch):
+    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], nb_batch):
         """
             Defines PPO training steo
             Get actions, log_probs and rewards from current policy
@@ -47,10 +47,10 @@ class PPO(RLmodule):
         """
         opt_net, opt_critic = self.optimizers()
 
-        b_img, b_gt = batch
+        b_img, b_gt, b_use_gt = batch
 
         # get actions, log_probs, rewards, etc from pi (stays constant for all steps k)
-        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, inject_gt=self.train_gt_inject_frac)
+        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_use_gt)
 
         # iterate with pi prime k times
         for k in range(self.k_steps):
@@ -87,8 +87,8 @@ class PPO(RLmodule):
         b_img, b_actions, b_rewards, b_log_probs, b_gt = batch
 
         _, logits, log_probs, entropy, v = self.actor.evaluate(b_img, b_actions)
-        reward = self.reward_func(torch.round(logits), b_img, b_gt.unsqueeze(1))
 
+        assert b_rewards.shape == v.shape
         adv = b_rewards - v
 
         # PPO loss
@@ -109,8 +109,7 @@ class PPO(RLmodule):
         metrics = {
                 'v': v.mean(),
                 'advantage': adv.mean(),
-                'prev_reward': b_rewards.mean(),
-                'reward': reward.mean(),
+                'reward': b_rewards.mean(),
                 'log_probs': log_probs.mean(),
                 'ratio': ratio.mean(),
                 'approx_kl_div': torch.mean((torch.exp(ratio) - 1) - ratio),

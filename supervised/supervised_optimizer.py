@@ -38,7 +38,7 @@ class SupervisedOptimizer(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=0.001)
 
     def training_step(self, batch, *args, **kwargs) -> Dict:
-        x, y = batch
+        x, y, *_ = batch
 
         y_hat = torch.sigmoid(self.forward(x))
 
@@ -52,8 +52,7 @@ class SupervisedOptimizer(pl.LightningModule):
         return logs
 
     def validation_step(self, batch, batch_idx: int):
-
-        b_img, b_gt = batch
+        b_img, b_gt, *_ = batch
         y_pred = torch.sigmoid(self.forward(b_img))
 
         loss = self.loss(y_pred.squeeze(1), b_gt)
@@ -75,7 +74,7 @@ class SupervisedOptimizer(pl.LightningModule):
         return logs
 
     def test_step(self, batch, batch_idx):
-        b_img, b_gt = batch
+        b_img, b_gt, *_ = batch
         y_pred = torch.sigmoid(self.forward(b_img))
 
         loss = self.loss(y_pred, b_gt.unsqueeze(1))  # -differentiable_dice_score(y_pred, y_true)
@@ -98,17 +97,20 @@ class SupervisedOptimizer(pl.LightningModule):
                 'test_acc': acc.mean(),
                 }
 
-        self.log_tb_images((b_img[0, ...].unsqueeze(0),
-                            y_pred[0, ...].unsqueeze(0),
-                            acc[0, ...].unsqueeze(0),
-                            b_gt[0, ...].unsqueeze(0),
-                            batch_idx), prefix='test_')
+        print(acc.mean())
+
+        for i in range(len(b_img)):
+            self.log_tb_images((b_img[i, ...].unsqueeze(0),
+                                y_pred[i, ...].unsqueeze(0),
+                                acc[i, ...].unsqueeze(0),
+                                b_gt[i, ...].unsqueeze(0),
+                                batch_idx), prefix='test_', i=i)
 
         self.log_dict(logs)
         return logs
 
     # TODO: REMOVE THIS CODE DUPLICATE
-    def log_tb_images(self, viz_batch, prefix="") -> None:
+    def log_tb_images(self, viz_batch, prefix="", i=1) -> None:
         """
             Log images to tensor board (Could this be simply for any logger without change?)
         Args:
@@ -130,8 +132,8 @@ class SupervisedOptimizer(pl.LightningModule):
 
         idx = random.randint(0, len(viz_batch[0]) - 1)
 
-        tb_logger.add_image(f"{prefix}Image", viz_batch[0][idx], viz_batch[4])
-        tb_logger.add_image(f"{prefix}GroundTruth", viz_batch[3][idx].unsqueeze(0), viz_batch[4])
+        tb_logger.add_image(f"{prefix}Image", viz_batch[0][idx], viz_batch[4]*(i+1))
+        tb_logger.add_image(f"{prefix}GroundTruth", viz_batch[3][idx].unsqueeze(0), viz_batch[4]*(i+1))
 
         def put_text(img, text):
             img = img.copy().astype(np.uint8) * 255
@@ -139,7 +141,7 @@ class SupervisedOptimizer(pl.LightningModule):
 
         tb_logger.add_image(f"{prefix}Prediction", torch.tensor(
             put_text(viz_batch[1][idx].cpu().detach().numpy(), viz_batch[2][idx].float().mean().item())).unsqueeze(0),
-                            viz_batch[4])
+                            viz_batch[4]*(i+1))
 
     def save(self) -> None:
         torch.save(self.net.state_dict(), 'supervised.ckpt')

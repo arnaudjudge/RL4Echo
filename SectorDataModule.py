@@ -11,7 +11,8 @@ from torch.utils.data import random_split, DataLoader
 
 
 class SectorDataset(Dataset):
-    def __init__(self, data_path, csv_file, subset_frac=1.0, test_frac=0.1, seed=0, test=False, *args, **kwargs):
+    def __init__(self, data_path, csv_file, subset_frac=1.0, test_frac=0.1, available_gt=1.0, seed=0, test=False, *args,
+                 **kwargs):
         super().__init__()
         self.data_path = data_path
 
@@ -29,6 +30,11 @@ class SectorDataset(Dataset):
 
         print(f"Test step: {test} , len of dataset {len(self.df)}")
 
+        # create list of available ground truths
+        self.use_gt = np.zeros(len(self.df))
+        self.use_gt[:int(available_gt * len(self.df))] = 1
+        np.random.shuffle(self.use_gt)
+
     def __len__(self):
         return len(self.df.index)
 
@@ -38,7 +44,9 @@ class SectorDataset(Dataset):
         img = np.expand_dims(nib.load(self.data_path + '/raw/' + path_dict['raw']).get_fdata().mean(axis=2), 0)
         mask = nib.load(self.data_path + '/mask/' + path_dict['mask']).get_fdata()[:, :, 0]
 
-        return torch.tensor(img, dtype=torch.float32), torch.tensor(mask, dtype=torch.float32)
+        return torch.tensor(img, dtype=torch.float32), \
+               torch.tensor(mask, dtype=torch.float32), \
+               torch.tensor(self.use_gt[idx], dtype=torch.bool)
 
 
 class SectorDataModule(pl.LightningDataModule):
@@ -93,8 +101,8 @@ class SectorDataModule(pl.LightningDataModule):
 
 
 if __name__ == "__main__":
-    dl = SectorDataModule('/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/',
-                          '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset/subset.csv',
+    dl = SectorDataModule('/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset_1k/',
+                          '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset_1k/subset.csv',
                           0.1,
                           0.1)
 
@@ -103,3 +111,4 @@ if __name__ == "__main__":
         batch = next(iter(dl.train_dataloader()))
         print(batch[0].shape)
         print(batch[1].shape)
+        print(batch[2].shape)
