@@ -15,9 +15,14 @@ Reward functions must each have pred, img, gt as input parameters
 @torch.no_grad()
 def accuracy(pred, imgs, gt):
     actions = torch.round(pred)
-    assert actions.shape == gt.shape
+    assert actions.shape == gt.shape,\
+        print(f"Actions shape {actions.shape} vs GT shape {gt.shape}")
     simple = (actions == gt).float()
-    return simple.mean(dim=(1, 2, 3), keepdim=True)
+    simple = simple.mean(dim=(1, 2, 3))
+    mean_matrix = torch.zeros_like(pred)
+    for i in range(len(pred)):
+        mean_matrix[i, ...] = simple[i]
+    return mean_matrix
 
 
 @torch.no_grad()
