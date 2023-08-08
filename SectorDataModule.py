@@ -18,15 +18,16 @@ class SectorDataset(Dataset):
         self.df = pd.read_csv(csv_file, index_col=0)
         self.df = self.df[(self.df['passed'] == True) & (self.df['relative_path'].notna())]
 
-        # only use subset
-        self.df = self.df.sample(n=int(subset_frac*len(self.df)), random_state=seed)
-
         # split according to test_frac
         test_len = int(test_frac * len(self.df))
         if test:
             self.df = self.df.iloc[-test_len:]
         else:
             self.df = self.df.iloc[:-test_len]
+            # only use subset
+            self.df = self.df.sample(n=int(subset_frac * len(self.df)), random_state=seed)
+
+        print(f"Test step: {test} , len of dataset {len(self.df)}")
 
     def __len__(self):
         return len(self.df.index)
