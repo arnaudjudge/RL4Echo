@@ -81,6 +81,14 @@ class SupervisedOptimizer(pl.LightningModule):
 
         y_pred = torch.round(y_pred)
 
+        # for i in range(len(y_pred)):
+        #     y_pred[i, 0, ...] = b_gt[1, ...]
+        #
+        # import matplotlib.pyplot as plt
+        # plt.figure()
+        # plt.imshow(b_gt[1, ...].cpu().numpy())
+        # plt.show()
+
         acc = accuracy(y_pred, b_img, b_gt.unsqueeze(1))
 
         if self.save_test_results:
@@ -95,6 +103,9 @@ class SupervisedOptimizer(pl.LightningModule):
 
         logs = {'test_loss': loss,
                 'test_acc': acc.mean(),
+                'test_acc_median': acc.median(),
+                'test_acc_min': acc.min(),
+                'test_acc_max': acc.max(),
                 }
 
         print(acc.mean())
@@ -110,7 +121,7 @@ class SupervisedOptimizer(pl.LightningModule):
         return logs
 
     # TODO: REMOVE THIS CODE DUPLICATE
-    def log_tb_images(self, viz_batch, prefix="", i=1) -> None:
+    def log_tb_images(self, viz_batch, prefix="", i=0) -> None:
         """
             Log images to tensor board (Could this be simply for any logger without change?)
         Args:
