@@ -53,7 +53,7 @@ def morphological(pred, imgs, gt=None):
             lbl[lbl != maxi] = 0
 
             dil = skimage.morphology.binary_closing(lbl)
-            map = (dil == mask)
+            blob = (dil == mask)
 
             # image region of interest (non-black pixels) in the main blob
             im = imgs[i, 0, ...].cpu().numpy()
@@ -84,9 +84,11 @@ def morphological(pred, imgs, gt=None):
             # plt.figure()
             # plt.imshow(imgs[i, 0, ...].cpu().numpy())
             # plt.imshow(mask, alpha=0.5)
+            # plt.title("Image and predicted mask")
             #
             # plt.figure()
-            # plt.imshow(map)
+            # plt.imshow(blob)
+            # plt.title("Blob")
             #
             # plt.figure()
             # plt.imshow(mask_in_roi)
@@ -99,13 +101,13 @@ def morphological(pred, imgs, gt=None):
             # print(ransac.mean())
             #
             # plt.figure()
-            # plt.imshow((map & ransac) | mask_in_roi)
-            # plt.title(((map & ransac) | mask_in_roi).mean())
+            # plt.imshow((blob & ransac) | mask_in_roi)
+            # plt.title(((blob & ransac) | mask_in_roi).mean())
             #
             # plt.show()
 
             #better than just all & ?
-            rew[i, ...] = torch.from_numpy((map & ransac) | mask_in_roi)
+            rew[i, ...] = torch.from_numpy((blob & ransac) | mask_in_roi)
 
     return rew
 
