@@ -39,12 +39,13 @@ class RLmodule(pl.LightningModule):
             Actions (used for rewards, log_pobs, etc), sampled_actions (mainly for display), log_probs, rewards
         """
         actions = self.actor.act(imgs, sample=sample)
+        rewards = self.reward_func(actions, imgs, gt.unsqueeze(1))
 
         if use_gt is not None:
             actions[use_gt, ...] = gt.unsqueeze(1)[use_gt, ...]
+            rewards[use_gt, ...] = torch.ones_like(rewards)[use_gt, ...]
 
         _, _, log_probs, _, _ = self.actor.evaluate(imgs, actions)
-        rewards = self.reward_func(actions, imgs, gt.unsqueeze(1))
         return actions, log_probs, rewards
 
     def log_tb_images(self, viz_batch, prefix="", i=1) -> None:
@@ -118,12 +119,12 @@ class RLmodule(pl.LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, *_ = batch
+        b_img, b_gt, b_use_gt = batch
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
 
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
-                                                                    prev_log_probs, b_gt))
+                                                                    prev_log_probs, b_gt, b_use_gt))
 
         acc = accuracy(prev_actions, b_img, b_gt.unsqueeze(1))
 
@@ -153,11 +154,11 @@ class RLmodule(pl.LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, *_ = batch
+        b_img, b_gt, b_use_gt = batch
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
-                                                                    prev_log_probs, b_gt))
+                                                                    prev_log_probs, b_gt, b_use_gt))
         acc = accuracy(prev_actions, b_img, b_gt.unsqueeze(1))
 
         logs = {'test_loss': loss,

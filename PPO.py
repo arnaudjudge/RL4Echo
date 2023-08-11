@@ -55,12 +55,13 @@ class PPO(RLmodule):
         for k in range(self.k_steps):
             # calculates training loss
             loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
-                                                                        prev_log_probs, b_gt))
+                                                                        prev_log_probs, b_gt, b_use_gt))
 
             opt_net.zero_grad()
             self.manual_backward(loss, retain_graph=True)
             opt_net.step()
 
+            # TODO: should this be outside the loop? According to real algo...
             opt_critic.zero_grad()
             self.manual_backward(critic_loss)
             opt_critic.step()
@@ -77,13 +78,13 @@ class PPO(RLmodule):
         """
             Compute unsupervised loss to maximise reward using PPO method.
         Args:
-            batch: batch of images, actions, log_probs, rewards and groudn truth
+            batch: batch of images, actions, log_probs, rewards and ground truth
             sample: whether to sample from distribution or deterministic approach (mainly for val, test steps)
 
         Returns:
             mean loss(es) for the batch, metrics dictionary
         """
-        b_img, b_actions, b_rewards, b_log_probs, b_gt = batch
+        b_img, b_actions, b_rewards, b_log_probs, b_gt, b_use_gt = batch
 
         _, logits, log_probs, entropy, v = self.actor.evaluate(b_img, b_actions)
 
@@ -97,9 +98,11 @@ class PPO(RLmodule):
 
         # clamp with epsilon value
         clipped = ratio.clamp(1 - self.clip_value, 1 + self.clip_value)
+        surr_loss = torch.min(adv * ratio, adv * clipped)
+        surr_loss[b_use_gt, ...] = (adv * ratio)[b_use_gt, ...]
 
         # min trick
-        loss = -torch.min(adv * ratio, adv * clipped).mean() + (-self.entropy_coeff * entropy.mean())
+        loss = -surr_loss.mean() + (-self.entropy_coeff * entropy.mean())
 
         # Critic loss
         critic_loss = nn.MSELoss()(v, b_rewards)
