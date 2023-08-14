@@ -34,6 +34,7 @@ class SectorDataset(Dataset):
         self.use_gt = np.zeros(len(self.df))
         self.use_gt[:int(available_gt * len(self.df))] = 1
         np.random.shuffle(self.use_gt)
+        print(f"Number of ground truths available: {self.use_gt.sum()}")
 
     def __len__(self):
         return len(self.df.index)
