@@ -39,7 +39,7 @@ class PolicyGradient(RLmodule):
 
         # calculates training loss
         loss, _, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
-                                                                    prev_log_probs, b_gt))
+                                                                    prev_log_probs, b_gt, b_use_gt))
 
         logs = {**metrics_dict,
                 **{'loss': loss,
@@ -59,18 +59,16 @@ class PolicyGradient(RLmodule):
         Returns:
             mean loss(es) for the batch, metrics dictionary
         """
-        b_img, b_actions, b_rewards, b_log_probs, b_gt = batch
+        b_img, b_actions, b_rewards, b_log_probs, b_gt, b_use_gt = batch
 
         _, logits, log_probs, _, _ = self.actor.evaluate(b_img, b_actions)
-        reward = self.reward_func(torch.round(logits), b_img, b_gt.unsqueeze(1))
 
         # Policy Gradient loss
         loss = -((b_rewards - b_rewards.mean()) / b_rewards.std() * log_probs).mean()
 
         # metrics dict
         metrics = {
-                'prev_reward': b_rewards.mean(),
-                'reward': reward.mean(),
+                'reward': b_rewards.mean(),
                 'log_probs': log_probs.mean(),
         }
 

@@ -163,6 +163,7 @@ class RLmodule(pl.LightningModule):
 
         logs = {'test_loss': loss,
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
+                'test_acc': acc.mean()
                 }
 
         for i in range(len(b_img)):

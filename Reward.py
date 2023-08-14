@@ -75,7 +75,7 @@ def morphological(pred, imgs, gt=None):
             mask_in_roi = (im_roi == mask)
 
             # ransac
-            ransac = np.ones_like(map)
+            ransac = np.ones_like(blob)
             try:
                 ransac, *_ = ransac_sector_extraction(lbl, slim_factor=0.01, circle_center_tol=0.5, plot=False)
                 ransac = (ransac == mask)

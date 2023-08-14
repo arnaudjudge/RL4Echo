@@ -29,8 +29,8 @@ def main(cfg):
 
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
 
-    trainer.fit(train_dataloaders=datamodule, model=model)#, ckpt_path='/home/local/USHERBROOKE/juda2901/dev/RL4Echo/runs/PPO_morphological_v_func_unet/version_19/checkpoints/epoch=2-step=780.ckpt')#, ckpt_path='/home/local/USHERBROOKE/juda2901/dev/RL4Echo/runs/PPO_morphological_v_func_unet/version_1/checkpoints/epoch=2-step=780.ckpt')#, ckpt_path='/home/local/USHERBROOKE/juda2901/dev/RL4Echo/logs/PPO/version_179/checkpoints/epoch=6-step=1820.ckpt')
-    trainer.test(model=model, dataloaders=datamodule, ckpt_path="best") # /home/local/USHERBROOKE/juda2901/dev/RL4Echo/runs/PPO_morphological_v_func_unet/version_96/checkpoints/epoch=3-step=1040.ckpt #/home/local/USHERBROOKE/juda2901/dev/RL4Echo/runs/PPO_morphological_v_func_unet/version_29/checkpoints/epoch=4-step=1300.ckpt
+    trainer.fit(train_dataloaders=datamodule, model=model)
+    trainer.test(model=model, dataloaders=datamodule, ckpt_path="best")
 
 
 if __name__ == "__main__":
