@@ -11,6 +11,7 @@ from torch import nn
 from vital.vital.models.segmentation.unet import UNet
 
 from utils.Metrics import accuracy
+from utils.logging_helper import log_image
 
 
 class DiceLoss(nn.Module):
@@ -64,11 +65,12 @@ class SupervisedOptimizer(pl.LightningModule):
                 'val_acc': acc.mean(),
                 }
 
-        self.log_tb_images((b_img[0, ...].unsqueeze(0),
-                            y_pred[0, ...].unsqueeze(0),
-                            acc[0, ...].unsqueeze(0),
-                            b_gt[0, ...].unsqueeze(0),
-                            batch_idx))
+        # log images
+        idx = random.randint(0, len(b_img) - 1)  # which image to log
+        log_image(self.logger, img=b_img[idx], title='Image', number=batch_idx)
+        log_image(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx)
+        log_image(self.logger, img=y_pred[idx], title='Prediction', number=batch_idx,
+                  img_text=acc[idx].mean())
 
         self.log_dict(logs)
         return logs
@@ -77,17 +79,9 @@ class SupervisedOptimizer(pl.LightningModule):
         b_img, b_gt, *_ = batch
         y_pred = torch.sigmoid(self.forward(b_img))
 
-        loss = self.loss(y_pred, b_gt.unsqueeze(1))  # -differentiable_dice_score(y_pred, y_true)
+        loss = self.loss(y_pred, b_gt.unsqueeze(1))
 
         y_pred = torch.round(y_pred)
-
-        # for i in range(len(y_pred)):
-        #     y_pred[i, 0, ...] = b_gt[1, ...]
-        #
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.imshow(b_gt[1, ...].cpu().numpy())
-        # plt.show()
 
         acc = accuracy(y_pred, b_img, b_gt.unsqueeze(1))
 
@@ -103,56 +97,19 @@ class SupervisedOptimizer(pl.LightningModule):
 
         logs = {'test_loss': loss,
                 'test_acc': acc.mean(),
-                'test_acc_median': acc.median(),
-                'test_acc_min': acc.min(),
-                'test_acc_max': acc.max(),
                 }
 
         print(acc.mean())
 
         for i in range(len(b_img)):
-            self.log_tb_images((b_img[i, ...].unsqueeze(0),
-                                y_pred[i, ...].unsqueeze(0),
-                                acc[i, ...].unsqueeze(0),
-                                b_gt[i, ...].unsqueeze(0),
-                                batch_idx), prefix='test_', i=i)
+            log_image(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1))
+            log_image(self.logger, img=b_gt[i].unsqueeze(0), title='test_GroundTruth', number=batch_idx * (i + 1))
+            log_image(self.logger, img=y_pred[i], title='test_Prediction', number=batch_idx * (i + 1),
+                      img_text=acc[i].mean())
 
         self.log_dict(logs)
         return logs
 
-    # TODO: REMOVE THIS CODE DUPLICATE
-    def log_tb_images(self, viz_batch, prefix="", i=0) -> None:
-        """
-            Log images to tensor board (Could this be simply for any logger without change?)
-        Args:
-            viz_batch: batch of images and metrics to log
-            prefix: prefix to add to image titles
-
-        Returns:
-            None
-        """
-
-        # Get tensorboard logger
-        tb_logger = None
-        for logger in self.trainer.loggers:
-            if isinstance(logger, TensorBoardLogger):
-                tb_logger = logger.experiment
-                break
-        if tb_logger is None:
-            raise ValueError('TensorBoard Logger not found')
-
-        idx = random.randint(0, len(viz_batch[0]) - 1)
-
-        tb_logger.add_image(f"{prefix}Image", viz_batch[0][idx], viz_batch[4]*(i+1))
-        tb_logger.add_image(f"{prefix}GroundTruth", viz_batch[3][idx].unsqueeze(0), viz_batch[4]*(i+1))
-
-        def put_text(img, text):
-            img = img.copy().astype(np.uint8) * 255
-            return cv2.putText(img.squeeze(0), "{:.3f}".format(text), (0, 30), cv2.FONT_HERSHEY_COMPLEX, 1, (125), 2)
-
-        tb_logger.add_image(f"{prefix}Prediction", torch.tensor(
-            put_text(viz_batch[1][idx].cpu().detach().numpy(), viz_batch[2][idx].float().mean().item())).unsqueeze(0),
-                            viz_batch[4]*(i+1))
 
     def save(self) -> None:
         torch.save(self.net.state_dict(), 'supervised.ckpt')

@@ -9,6 +9,7 @@ import torch
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from utils.Metrics import accuracy
+from utils.logging_helper import log_image
 
 
 class RLmodule(pl.LightningModule):
@@ -47,39 +48,6 @@ class RLmodule(pl.LightningModule):
 
         _, _, log_probs, _, _ = self.actor.evaluate(imgs, actions)
         return actions, log_probs, rewards
-
-    def log_tb_images(self, viz_batch, prefix="", i=1) -> None:
-        """
-            Log images to tensor board (Could this be simply for any logger without change?)
-        Args:
-            viz_batch: batch of images and metrics to log
-            prefix: prefix to add to image titles
-
-        Returns:
-            None
-        """
-
-        # Get tensorboard logger
-        tb_logger = None
-        for logger in self.trainer.loggers:
-            if isinstance(logger, TensorBoardLogger):
-                tb_logger = logger.experiment
-                break
-        if tb_logger is None:
-            raise ValueError('TensorBoard Logger not found')
-
-        idx = random.randint(0, len(viz_batch[0]) - 1)
-
-        tb_logger.add_image(f"{prefix}Image", viz_batch[0][idx], viz_batch[4]*(i+1))
-        tb_logger.add_image(f"{prefix}GroundTruth", viz_batch[3][idx].unsqueeze(0), viz_batch[4]*(i+1))
-
-        def put_text(img, text):
-            img = img.copy().astype(np.uint8) * 255
-            return cv2.putText(img.squeeze(0), "{:.3f}".format(text), (0, 30), cv2.FONT_HERSHEY_COMPLEX, 1, (125), 2)
-
-        tb_logger.add_image(f"{prefix}Prediction", torch.tensor(
-            put_text(viz_batch[1][idx].cpu().detach().numpy(), viz_batch[2][idx].float().mean().item())).unsqueeze(0),
-                            viz_batch[4]*(i+1))
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch):
         """
@@ -133,11 +101,12 @@ class RLmodule(pl.LightningModule):
                 "val_acc": acc.mean(),
                 }
 
-        self.log_tb_images((b_img[0, ...].unsqueeze(0),
-                            prev_actions[0, ...].unsqueeze(0),
-                            prev_rewards[0, ...].unsqueeze(0),
-                            b_gt[0, ...].unsqueeze(0),
-                            batch_idx))
+        # log images
+        idx = random.randint(0, len(b_img) - 1)  # which image to log
+        log_image(self.logger, img=b_img[idx], title='Image', number=batch_idx)
+        log_image(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx)
+        log_image(self.logger, img=prev_actions[idx], title='Prediction', number=batch_idx,
+                  img_text=prev_rewards[idx].mean())
 
         self.log_dict(logs)
         return logs
@@ -166,12 +135,16 @@ class RLmodule(pl.LightningModule):
                 'test_acc': acc.mean()
                 }
 
+        # for logging v
+        _, _, _, _, v = self.actor.evaluate(b_img, prev_actions)
+
         for i in range(len(b_img)):
-            self.log_tb_images((b_img[i, ...].unsqueeze(0),
-                                prev_actions[i, ...].unsqueeze(0),
-                                acc[i, ...].unsqueeze(0),
-                                b_gt[i, ...].unsqueeze(0),
-                                batch_idx), prefix='test_', i=i)
+            log_image(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1))
+            log_image(self.logger, img=b_gt[i].unsqueeze(0), title='test_GroundTruth', number=batch_idx * (i + 1))
+            log_image(self.logger, img=prev_actions[i], title='test_Prediction', number=batch_idx * (i + 1),
+                      img_text=prev_rewards[i].mean())
+            log_image(self.logger, img=v[i], title='test_v_function', number=batch_idx * (i + 1),
+                      img_text=v[i].mean())
 
 
         self.log_dict(logs)
