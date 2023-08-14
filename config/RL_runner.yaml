@@ -4,7 +4,6 @@ run_name: default
 defaults:
   - _self_
   - logger: tensorboard
-  - reward: morphological
   - model: ppo
   - datamodule: sector
   - callbacks: default

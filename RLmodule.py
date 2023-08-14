@@ -8,7 +8,7 @@ import pytorch_lightning as pl
 import torch
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from Reward import accuracy
+from utils.Metrics import accuracy
 
 
 class RLmodule(pl.LightningModule):

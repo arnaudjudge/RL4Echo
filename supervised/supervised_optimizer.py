@@ -10,7 +10,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from torch import nn
 from vital.vital.models.segmentation.unet import UNet
 
-from Reward import accuracy
+from utils.Metrics import accuracy
 
 
 class DiceLoss(nn.Module):
