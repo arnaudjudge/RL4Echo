@@ -12,7 +12,7 @@ OmegaConf.register_new_resolver(
 )
 
 
-@hydra.main(version_base=None, config_path="../config", config_name="supervised_runner")
+@hydra.main(version_base=None, config_path="config", config_name="RL_runner")
 def main(cfg):
     print(OmegaConf.to_yaml(cfg))
     torch.manual_seed(cfg.seed)
@@ -31,5 +31,5 @@ def main(cfg):
     trainer.test(model=model, dataloaders=datamodule, ckpt_path="best")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
