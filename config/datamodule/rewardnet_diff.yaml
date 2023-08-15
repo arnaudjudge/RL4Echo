@@ -1,0 +1,3 @@
+_target_: rewardnet.reward_unet_datamodule.RewardNetDataModule
+
+data_path: ./test_dataset
