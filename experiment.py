@@ -14,16 +14,8 @@ from utils.instantiators import instantiate_callbacks
 def main(cfg):
     print(OmegaConf.to_yaml(cfg))
 
-    GlobalHydra.instance().clear()
-    initialize(version_base="1.2", config_path=f"config", job_name="runner")
-
-    # use correct script
-    if cfg.runner == 'supervised_runner':
-        from supervised.supervised_runner import main
-    elif cfg.runner == "RL_runner":
-        from RLrunner import main
-    else:
-        raise Exception("Non-existent runner")
+    # import needs to be after hydra decorator
+    from runner import main
 
     # create global overrides
     glob_overrides = []
