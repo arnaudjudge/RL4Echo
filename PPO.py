@@ -17,6 +17,7 @@ class PPO(RLmodule):
                  clip_value: float = 0.2,
                  k_steps_per_batch: int = 5,
                  entropy_coeff: float = 0.0,
+                 divergence_coeff: float = 0.0,
                  *args: Any,
                  **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -24,6 +25,7 @@ class PPO(RLmodule):
         self.clip_value = clip_value
         self.k_steps = k_steps_per_batch
         self.entropy_coeff = entropy_coeff
+        self.divergence_coeff = divergence_coeff
 
         # since optimization is done manually, this flag needs to be set
         self.automatic_optimization = False
@@ -86,7 +88,7 @@ class PPO(RLmodule):
 
         log_pi_ratio = (log_probs - old_log_probs)
         with torch.no_grad():
-            total_reward = b_rewards - (0.075 * log_pi_ratio)
+            total_reward = b_rewards - (self.divergence_coeff * log_pi_ratio)
 
         assert b_rewards.shape == v.shape
         adv = total_reward - v
