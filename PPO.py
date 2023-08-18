@@ -29,9 +29,6 @@ class PPO(RLmodule):
         # since optimization is done manually, this flag needs to be set
         self.automatic_optimization = False
 
-    def get_actor(self):
-        return ActorCriticUnetCritic()
-
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], nb_batch):
         """
             Defines PPO training steo

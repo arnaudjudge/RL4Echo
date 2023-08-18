@@ -1,5 +1,6 @@
 defaults:
   - RLModule
+  - /actor: ac_unet
 
 _target_: PPO.PPO
 

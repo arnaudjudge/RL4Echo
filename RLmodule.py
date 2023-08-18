@@ -14,14 +14,11 @@ from utils.logging_helper import log_image
 
 class RLmodule(pl.LightningModule):
 
-    def __init__(self, reward, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, actor, reward, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-        self.actor = self.get_actor()
+        self.actor = actor
         self.reward_func = reward
-
-    def get_actor(self):
-        raise NotImplementedError
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()

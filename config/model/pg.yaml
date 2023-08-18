@@ -1,4 +1,5 @@
 defaults:
   - RLModule
+  - /actor: pg_actor
 
 _target_: PolicyGradient.PolicyGradient

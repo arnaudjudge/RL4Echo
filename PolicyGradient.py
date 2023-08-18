@@ -17,9 +17,6 @@ class PolicyGradient(RLmodule):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-    def get_actor(self):
-        return PGActor()
-
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], nb_batch):
         """
             Defines PPO training steo
