@@ -1,1 +1,7 @@
+_target_: actors.Actors.Actor
+
 eps_greedy_term: 0.0
+actor_lr: 0.001
+critic_lr: 0.001
+
+actor_pretrain_ckpt: null #./supervised.ckpt

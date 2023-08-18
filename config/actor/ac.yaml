@@ -1,4 +1,5 @@
 defaults:
   - default_actor
+  - _self_
 
-_target_: Actors.ActorCritic
+_target_: actors.ActorCritic.ActorCritic

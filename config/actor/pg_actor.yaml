@@ -1,4 +1,0 @@
-defaults:
-  - default_actor
-
-_target_: Actors.PGActor

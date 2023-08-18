@@ -7,7 +7,6 @@ import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from Actors import PGActor
 from RLmodule import RLmodule
 from SectorDataModule import SectorDataModule
 
@@ -58,7 +57,7 @@ class PolicyGradient(RLmodule):
         """
         b_img, b_actions, b_rewards, b_log_probs, b_gt, b_use_gt = batch
 
-        _, logits, log_probs, _, _ = self.actor.evaluate(b_img, b_actions)
+        _, logits, log_probs, _, _, _ = self.actor.evaluate(b_img, b_actions)
 
         # Policy Gradient loss
         loss = -((b_rewards - b_rewards.mean()) / b_rewards.std() * log_probs).mean()

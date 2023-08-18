@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from Actors import ActorCritic, ActorCriticUnetCritic
 from RLmodule import RLmodule
 from SectorDataModule import SectorDataModule
 
@@ -83,10 +82,14 @@ class PPO(RLmodule):
         """
         b_img, b_actions, b_rewards, b_log_probs, b_gt, b_use_gt = batch
 
-        _, logits, log_probs, entropy, v = self.actor.evaluate(b_img, b_actions)
+        _, logits, log_probs, entropy, v, old_log_probs = self.actor.evaluate(b_img, b_actions)
+
+        log_pi_ratio = (log_probs - old_log_probs)
+        with torch.no_grad():
+            total_reward = b_rewards - (0.075 * log_pi_ratio)
 
         assert b_rewards.shape == v.shape
-        adv = b_rewards - v
+        adv = total_reward - v
 
         # PPO loss
         # importance ratio
@@ -102,7 +105,7 @@ class PPO(RLmodule):
         loss = -surr_loss.mean() + (-self.entropy_coeff * entropy.mean())
 
         # Critic loss
-        critic_loss = nn.MSELoss()(v, b_rewards)
+        critic_loss = nn.MSELoss()(v, total_reward)
 
         # metrics dict
         metrics = {
@@ -111,7 +114,7 @@ class PPO(RLmodule):
                 'reward': b_rewards.mean(),
                 'log_probs': log_probs.mean(),
                 'ratio': ratio.mean(),
-                'approx_kl_div': torch.mean((torch.exp(ratio) - 1) - ratio),
+                'approx_kl_div': log_pi_ratio.mean(),
         }
 
         return loss, critic_loss, metrics

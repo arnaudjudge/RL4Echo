@@ -24,7 +24,7 @@ class RLmodule(pl.LightningModule):
         return self.actor.get_optimizers()
 
     @torch.no_grad()  # no grad since tensors are reused in PPO's for loop
-    def rollout(self, imgs: torch.tensor, gt: torch.tensor, use_gt: torch.tensor = None, sample: bool =True):
+    def rollout(self, imgs: torch.tensor, gt: torch.tensor, use_gt: torch.tensor = None, sample: bool = True):
         """
             Rollout the policy over a batch of images and ground truth pairs
         Args:
@@ -43,7 +43,7 @@ class RLmodule(pl.LightningModule):
             actions[use_gt, ...] = gt.unsqueeze(1)[use_gt, ...]
             rewards[use_gt, ...] = torch.ones_like(rewards)[use_gt, ...]
 
-        _, _, log_probs, _, _ = self.actor.evaluate(imgs, actions)
+        _, _, log_probs, _, _, _ = self.actor.evaluate(imgs, actions)
         return actions, log_probs, rewards
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch):
@@ -104,6 +104,8 @@ class RLmodule(pl.LightningModule):
         log_image(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx)
         log_image(self.logger, img=prev_actions[idx], title='Prediction', number=batch_idx,
                   img_text=prev_rewards[idx].mean())
+        if prev_rewards.shape == prev_actions.shape:
+            log_image(self.logger, img=prev_rewards[idx], title='RewardMap', number=batch_idx)
 
         self.log_dict(logs)
         return logs
@@ -133,15 +135,18 @@ class RLmodule(pl.LightningModule):
                 }
 
         # for logging v
-        _, _, _, _, v = self.actor.evaluate(b_img, prev_actions)
+        _, _, _, _, v, _ = self.actor.evaluate(b_img, prev_actions)
 
         for i in range(len(b_img)):
             log_image(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1))
             log_image(self.logger, img=b_gt[i].unsqueeze(0), title='test_GroundTruth', number=batch_idx * (i + 1))
             log_image(self.logger, img=prev_actions[i], title='test_Prediction', number=batch_idx * (i + 1),
                       img_text=prev_rewards[i].mean())
-            log_image(self.logger, img=v[i], title='test_v_function', number=batch_idx * (i + 1),
-                      img_text=v[i].mean())
+            if v.shape == prev_actions.shape:
+                log_image(self.logger, img=v[i], title='test_v_function', number=batch_idx * (i + 1),
+                          img_text=v[i].mean())
+            if prev_rewards.shape == prev_actions.shape:
+                log_image(self.logger, img=prev_rewards[i], title='test_RewardMap', number=batch_idx * (i + 1))
 
 
         self.log_dict(logs)
