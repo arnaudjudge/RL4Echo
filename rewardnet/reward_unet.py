@@ -12,12 +12,13 @@ from utils.logging_helper import log_image
 
 
 class RewardOptimizer(pl.LightningModule):
-    def __init__(self, **kwargs):
+    def __init__(self, save_model_path=None, **kwargs):
         super().__init__(**kwargs)
 
         self.net = UNet(input_shape=(2, 256, 256), output_shape=(1, 256, 256))
 
         self.loss = nn.BCELoss()
+        self.save_model_path = save_model_path
 
     def forward(self, x):
         out = self.net.forward(x)
@@ -77,8 +78,14 @@ class RewardOptimizer(pl.LightningModule):
             log_image(self.logger, img=y_pred[i], title='test_Prediction', number=batch_idx * (i + 1),
                       img_text=acc[i].mean())
 
+
+
         return {'loss': loss}
 
-    def save_model(self, path):
-        sd = self.net.state_dict()
-        torch.save(sd, path)
+    def on_test_end(self) -> None:
+        self.save_model()
+
+    def save_model(self):
+        if self.save_model_path:
+            sd = self.net.state_dict()
+            torch.save(sd, self.save_model_path)

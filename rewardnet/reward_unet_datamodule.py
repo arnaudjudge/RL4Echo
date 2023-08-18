@@ -1,35 +1,34 @@
-import json
+import random
+from pathlib import Path
+from typing import Optional
 
-import pandas as pd
+import nibabel as nib
+import numpy as np
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import Dataset
-
 from torch.utils.data import random_split, DataLoader
-import pytorch_lightning as pl
-# from vital.vital.utils.image.transform import resize_image
-from typing import Optional, Tuple
-
-import nibabel as nib
-
-import numpy as np
-import json
-from pathlib import Path
 
 
 class RewardNetAutoDataset(Dataset):
-    def __init__(self, data_path, test=False):
+    """ Works with the output of 'utils.file_utils.save_batch_to_dataset """
+    def __init__(self, data_path, test_frac=0.1, test=False):
         super().__init__()
         self.data_path = data_path
         self.img_list = []
 
-        for im_file in Path(f"{self.data_path}/images/").glob("*.nii.gz"):
-            self.img_list += [im_file.name]
+        # only use /images/ folders to get number of individual entries
+        for im_file in Path(f"{self.data_path}").rglob("**/images/*.nii.gz"):
+            self.img_list += [im_file.as_posix()]
 
+        random.shuffle(self.img_list)
+
+        # split according to test_frac
+        test_len = int(test_frac * len(self.img_list))
         if test:
-            self.img_list = self.img_list[-10:]
+            self.img_list = self.img_list[-test_len:]
         else:
-            self.img_list = self.img_list[:-10]
+            self.img_list = self.img_list[:-test_len]
 
         print(self.__len__())
 
@@ -37,9 +36,9 @@ class RewardNetAutoDataset(Dataset):
         return len(self.img_list)
 
     def __getitem__(self, idx):
-        img = nib.load(f"{self.data_path}/images/{self.img_list[idx]}").get_fdata()
-        gt = nib.load(f"{self.data_path}/gt/{self.img_list[idx]}").get_fdata()
-        pred = nib.load(f"{self.data_path}/pred/{self.img_list[idx]}").get_fdata()
+        img = nib.load(self.img_list[idx]).get_fdata()
+        gt = nib.load(self.img_list[idx].replace("images", "gt")).get_fdata()
+        pred = nib.load(self.img_list[idx].replace("images", "pred")).get_fdata()
         x = np.vstack((img, pred))
 
         y = (gt == pred)
@@ -99,7 +98,7 @@ class RewardNetDataModule(pl.LightningDataModule):
 
 if __name__ == "__main__":
 
-    dl = RewardNetDataModule('../test_dataset')
+    dl = RewardNetDataModule('../CGPT_Loop/')
     dl.setup()
     for i in range(1):
        batch = next(iter(dl.train_dataloader()))

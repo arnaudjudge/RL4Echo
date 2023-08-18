@@ -1,3 +1,4 @@
 _target_: rewardnet.reward_unet_datamodule.RewardNetDataModule
 
-data_path: ./test_dataset
+data_path: ./CGPT_Loop/
+test_fra: 0.1

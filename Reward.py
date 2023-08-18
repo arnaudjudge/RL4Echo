@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 from scipy import ndimage
 from scipy.ndimage import binary_fill_holes
 from torchmetrics.functional import dice
+from vital.vital.models.segmentation.unet import UNet
 
 """
 Reward functions must each have pred, img, gt as input parameters
@@ -18,11 +19,24 @@ class Reward:
         raise NotImplementedError
 
 
+class RewardUnet(Reward):
+    def __init__(self, state_dict_path):
+        self.net = UNet(input_shape=(2, 256, 256), output_shape=(1, 256, 256))
+        self.net.load_state_dict(torch.load(state_dict_path))
+        if torch.cuda.is_available():
+            self.net.cuda()
+
+    @torch.no_grad()
+    def __call__(self, pred, imgs, gt):
+        stack = torch.stack((imgs, pred), dim=1).squeeze(2)
+        return torch.sigmoid(self.net(stack))
+
+
 class AccuracyMap(Reward):
     @torch.no_grad()
     def __call__(self, pred, imgs, gt):
         actions = torch.round(pred)
-        assert actions.shape == gt.shape,\
+        assert actions.shape == gt.shape, \
             print(f"Actions shape {actions.shape} vs GT shape {gt.shape}")
         simple = (actions == gt).float()
         simple = simple.mean(dim=(1, 2, 3))
@@ -115,7 +129,7 @@ class Morphological(Reward):
                 #
                 # plt.show()
 
-                #better than just all & ?
+                # better than just all & ?
                 rew[i, ...] = torch.from_numpy((blob & ransac) | mask_in_roi)
 
         return rew
@@ -128,4 +142,3 @@ class DiceReward(Reward):
         for i in range(len(dice_score)):
             dice_score[i, ...] = dice(pred[i, ...], gt[i, ...].to(int))
         return dice_score
-
