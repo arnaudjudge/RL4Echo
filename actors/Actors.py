@@ -9,13 +9,13 @@ from rewardnet.reward_net import get_resnet
 
 class UnetActor(nn.Module):
 
-    def __init__(self, actor_pretrain_ckpt):
+    def __init__(self, pretrain_ckpt=None):
         super().__init__()
         self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
 
-        if actor_pretrain_ckpt:
+        if pretrain_ckpt:
             # if starting from pretrained model, keep version of
-            self.net.load_state_dict(torch.load(actor_pretrain_ckpt))
+            self.net.load_state_dict(torch.load(pretrain_ckpt))
 
             # copy to have version of initial pretrained net
             self.old_net = copy.deepcopy(self.net)
@@ -36,9 +36,12 @@ class UnetActor(nn.Module):
 
 class Critic(nn.Module):
 
-    def __init__(self):
+    def __init__(self, pretrain_path=None):
         super().__init__()
         self.net = get_resnet(input_channels=1, num_classes=1)
+
+        if pretrain_path:
+            self.net.load_state_dict(torch.load(pretrain_path))
 
     def forward(self, x):
         return torch.sigmoid(self.net(x))
@@ -46,9 +49,12 @@ class Critic(nn.Module):
 
 class UnetCritic(nn.Module):
 
-    def __init__(self):
+    def __init__(self, pretrain_path=None):
         super().__init__()
         self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
+
+        if pretrain_path:
+            self.net.load_state_dict(torch.load(pretrain_path))
 
     def forward(self, x):
         return torch.sigmoid(self.net(x))
@@ -58,11 +64,19 @@ class Actor(nn.Module):
     """
         Simple policy gradient actor
     """
-    def __init__(self, eps_greedy_term=0.0, actor_pretrain_ckpt=None, actor_lr=1e-3, critic_lr=1e-3):
+    def __init__(self,
+                 eps_greedy_term=0.0,
+                 actor_pretrain_ckpt=None,
+                 critic_pretrain_ckpt=None,
+                 actor_lr=1e-3,
+                 critic_lr=1e-3):
         super().__init__()
 
         self.actor = UnetActor(actor_pretrain_ckpt)
         self.critic = None
+
+        self.actor_pretrain_path = actor_pretrain_ckpt
+        self.critic_pretrain_path = critic_pretrain_ckpt
 
         self.actor_lr = actor_lr
         self.critic_lr = critic_lr

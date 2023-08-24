@@ -78,8 +78,6 @@ class RewardOptimizer(pl.LightningModule):
             log_image(self.logger, img=y_pred[i], title='test_Prediction', number=batch_idx * (i + 1),
                       img_text=acc[i].mean())
 
-
-
         return {'loss': loss}
 
     def on_test_end(self) -> None:

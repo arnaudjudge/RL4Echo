@@ -1,2 +1,5 @@
 defaults:
-  - /reward: morphological
+  - /reward: rewardunet
+
+actor_save_path: null #./CGPT_Loop/actor_v4.ckpt
+critic_save_path: null #./CGPT_Loop/critic_v4.ckpt

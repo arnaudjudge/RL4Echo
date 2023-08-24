@@ -13,7 +13,7 @@ class ActorCriticUnetCritic(Actor):
         super().__init__(*args, **kwargs)
 
         # override critic
-        self.critic = UnetCritic()
+        self.critic = UnetCritic(self.critic_pretrain_path)
 
     def evaluate(self, imgs, actions):
         """

@@ -14,11 +14,14 @@ from utils.logging_helper import log_image
 
 class RLmodule(pl.LightningModule):
 
-    def __init__(self, actor, reward, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, actor, reward, actor_save_path=None, critic_save_path=None, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
         self.actor = actor
         self.reward_func = reward
+
+        self.actor_save_path = actor_save_path
+        self.critic_save_path = critic_save_path
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()
@@ -30,7 +33,7 @@ class RLmodule(pl.LightningModule):
         Args:
             imgs: batch of images
             gt: batch of ground truth segmentation maps
-            inject_gt: probability of replacing policy result with ground truth
+            use_gt: replace policy result with ground truth (bool mask of len of batch)
             sample: whether to sample actions from distribution or determinist
 
         Returns:
@@ -152,3 +155,8 @@ class RLmodule(pl.LightningModule):
         self.log_dict(logs)
         return logs
 
+    def on_test_end(self) -> None:
+        if self.actor_save_path:
+            torch.save(self.actor.actor.net.state_dict(), self.actor_save_path)
+        if self.critic_save_path:
+            torch.save(self.actor.critic.net.state_dict(), self.critic_save_path)

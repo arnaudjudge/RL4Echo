@@ -4,4 +4,5 @@ eps_greedy_term: 0.0
 actor_lr: 0.001
 critic_lr: 0.001
 
-actor_pretrain_ckpt: null #./supervised.ckpt
+actor_pretrain_ckpt: null #./CGPT_Loop/supervised.ckpt
+critic_pretrain_ckpt: null #./CGPT_Loop/critic_v4.ckpt

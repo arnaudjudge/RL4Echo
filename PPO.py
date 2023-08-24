@@ -89,6 +89,8 @@ class PPO(RLmodule):
         log_pi_ratio = (log_probs - old_log_probs)
         with torch.no_grad():
             total_reward = b_rewards - (self.divergence_coeff * log_pi_ratio)
+            # ignore divergence if using ground truth
+            total_reward[b_use_gt, ...] = b_rewards[b_use_gt, ...]
 
         assert b_rewards.shape == v.shape
         adv = total_reward - v

@@ -12,7 +12,7 @@ class ActorCritic(Actor):
         super().__init__(*args, **kwargs)
 
         # override critic value
-        self.critic = Critic()
+        self.critic = Critic(self.critic_pretrain_path)
 
     def evaluate(self, imgs, actions):
         """
