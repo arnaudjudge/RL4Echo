@@ -7,8 +7,11 @@ defaults:
   - model: ppo
   - datamodule: sector
   - callbacks: default
+  - _self_
 
 seed: 1
+
+run_predict: False
 
 trainer:
   _target_: pytorch_lightning.Trainer

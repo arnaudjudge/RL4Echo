@@ -1,3 +1,5 @@
+import os
+
 import hydra
 import numpy as np
 import torch
@@ -14,7 +16,9 @@ OmegaConf.register_new_resolver(
 
 @hydra.main(version_base=None, config_path="config", config_name="RL_runner")
 def main(cfg):
+    os.environ["HYDRA_FULL_ERROR"] = "1"
     print(OmegaConf.to_yaml(cfg))
+
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
 
@@ -28,7 +32,14 @@ def main(cfg):
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
 
     trainer.fit(train_dataloaders=datamodule, model=model)
-    trainer.test(model=model, dataloaders=datamodule, ckpt_path="best")
+    if cfg.trainer.max_epochs > 0:
+        ckpt_path = 'best'
+    else:
+        ckpt_path = None
+    trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
+
+    if cfg.run_predict:
+        trainer.predict(model=model, dataloaders=datamodule.test_dataloader(), ckpt_path=ckpt_path)
 
 
 if __name__ == "__main__":
