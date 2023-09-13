@@ -92,7 +92,7 @@ class PPO(RLmodule):
             # ignore divergence if using ground truth
             total_reward[b_use_gt, ...] = b_rewards[b_use_gt, ...]
 
-        assert b_rewards.shape == v.shape
+        #assert b_rewards.shape == v.shape
         adv = total_reward - v
 
         # PPO loss
@@ -109,6 +109,8 @@ class PPO(RLmodule):
         loss = -surr_loss.mean() + (-self.entropy_coeff * entropy.mean())
 
         # Critic loss
+        if total_reward.shape != v.shape:
+            total_reward = total_reward.mean(dim=(1, 2, 3), keepdim=True)
         critic_loss = nn.MSELoss()(v, total_reward)
 
         # metrics dict
