@@ -1,5 +1,7 @@
 defaults:
   - /reward: rewardunet
 
-actor_save_path: null #./CGPT_Loop/actor_v4.ckpt
-critic_save_path: null #./CGPT_Loop/critic_v4.ckpt
+actor_save_path: ./test_logs/actor2.ckpt #./divergence_loop/actor2_3.ckpt #./CGPT_Loop/actor_v4.ckpt
+critic_save_path: ./test_logs/critic2.ckpt #./divergence_loop/critic2_3.ckpt #./CGPT_Loop/critic_v4.ckpt
+
+predict_save_dir: null # ./test_logs

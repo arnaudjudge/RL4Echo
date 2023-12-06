@@ -1,1 +1,4 @@
 _target_: supervised.supervised_optimizer.SupervisedOptimizer
+ckpt_path: null
+
+predict_save_dir: null

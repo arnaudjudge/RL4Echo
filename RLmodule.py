@@ -1,20 +1,29 @@
+import copy
 import random
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 from typing import Tuple
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.loggers import TensorBoardLogger
+import nibabel as nib
 
-from utils.Metrics import accuracy
+from rewardnet.data_augmentation import create_random_blobs
+from utils.Metrics import accuracy, dice_score
+from vital.vital.metrics.train.functional import differentiable_dice_score
+
+from utils.file_utils import save_batch_to_dataset_v2
 from utils.logging_helper import log_image
 
 
 class RLmodule(pl.LightningModule):
 
-    def __init__(self, actor, reward, actor_save_path=None, critic_save_path=None, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, actor, reward, actor_save_path=None, critic_save_path=None, predict_save_dir=None, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
         self.actor = actor
@@ -22,6 +31,8 @@ class RLmodule(pl.LightningModule):
 
         self.actor_save_path = actor_save_path
         self.critic_save_path = critic_save_path
+
+        self.predict_save_dir = predict_save_dir
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()
@@ -95,10 +106,12 @@ class RLmodule(pl.LightningModule):
                                                                     prev_log_probs, b_gt, b_use_gt))
 
         acc = accuracy(prev_actions, b_img, b_gt.unsqueeze(1))
+        dice = dice_score(prev_actions, b_gt.unsqueeze(1))
 
         logs = {'val_loss': loss,
                 "val_reward": torch.mean(prev_rewards.type(torch.float)),
                 "val_acc": acc.mean(),
+                "val_dice": dice.mean()
                 }
 
         # log images
@@ -131,10 +144,12 @@ class RLmodule(pl.LightningModule):
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt, b_use_gt))
         acc = accuracy(prev_actions, b_img, b_gt.unsqueeze(1))
+        dice = dice_score(prev_actions, b_gt.unsqueeze(1))
 
         logs = {'test_loss': loss,
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
-                'test_acc': acc.mean()
+                'test_acc': acc.mean(),
+                "test_dice": dice.mean()
                 }
 
         # for logging v
@@ -144,7 +159,7 @@ class RLmodule(pl.LightningModule):
             log_image(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1))
             log_image(self.logger, img=b_gt[i].unsqueeze(0), title='test_GroundTruth', number=batch_idx * (i + 1))
             log_image(self.logger, img=prev_actions[i], title='test_Prediction', number=batch_idx * (i + 1),
-                      img_text=prev_rewards[i].mean())
+                      img_text=acc[i].mean())
             if v.shape == prev_actions.shape:
                 log_image(self.logger, img=v[i], title='test_v_function', number=batch_idx * (i + 1),
                           img_text=v[i].mean())
@@ -160,3 +175,67 @@ class RLmodule(pl.LightningModule):
             torch.save(self.actor.actor.net.state_dict(), self.actor_save_path)
         if self.critic_save_path:
             torch.save(self.actor.critic.net.state_dict(), self.critic_save_path)
+
+    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
+        b_img, b_gt, *_ = batch
+        actions, _, _ = self.rollout(b_img, b_gt, sample=True)
+        actions_unsampled, _, _ = self.rollout(b_img, b_gt, sample=False)
+        acc = accuracy(actions_unsampled, b_img, b_gt.unsqueeze(1))
+        print((acc > 0.99).sum())
+        initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
+        for itr in range(1000):
+            for i in range(len(b_img)):
+                if acc[i] > 0.99:
+                    for j, multiplier in enumerate([0.005, 0.01, 0.025, 0.04]):
+                        # get random seed based on time to maximise randomness of noise and subsequent predictions
+                        # explore as much space around policy as possible
+                        time_seed = int(round(datetime.now().timestamp())) + i
+                        torch.manual_seed(time_seed)
+
+                        # load initial params so noise is not compounded
+                        self.actor.actor.net.load_state_dict(initial_params, strict=True)
+
+                        # add noise to params
+                        with torch.no_grad():
+                            for param in self.actor.actor.net.parameters():
+                                param.add_(torch.randn(param.size()).cuda() * multiplier)
+
+                        # make prediction
+                        action, *_ = self.actor.actor(b_img[i].unsqueeze(0))
+                        action = torch.round(action)
+
+                        # if np.random.rand() > 0.9:
+                        #     blobs = create_random_blobs()
+                        #     action = action.cpu().numpy().astype(np.uint8) & ~blobs
+                        #     action = torch.tensor(action)
+
+                        # plt.figure()
+                        # plt.title(f"Original")
+                        # plt.imshow(b_gt[i, ...].cpu().numpy())
+                        #
+                        # plt.figure()
+                        # plt.title(f"{multiplier}, seed: {time_seed}")
+                        # plt.imshow(action[0, 0, ...].cpu().numpy())
+                        # plt.show()
+
+                        Path(f"{self.predict_save_dir}/images").mkdir(parents=True, exist_ok=True)
+                        Path(f"{self.predict_save_dir}/gt").mkdir(parents=True, exist_ok=True)
+                        Path(f"{self.predict_save_dir}/pred").mkdir(parents=True, exist_ok=True)
+
+                        filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
+                        affine = np.diag(np.asarray([1, 1, 1, 0]))
+                        hdr = nib.Nifti1Header()
+
+                        nifti_img = nib.Nifti1Image(b_img[i].cpu().numpy(), affine, hdr)
+                        nifti_img.to_filename(f"./{self.predict_save_dir}/images/{filename}")
+
+                        nifti_gt = nib.Nifti1Image(np.expand_dims(b_gt[i].cpu().numpy(), 0), affine, hdr)
+                        nifti_gt.to_filename(f"./{self.predict_save_dir}/gt/{filename}")
+
+                        nifti_pred = nib.Nifti1Image(action[0].cpu().numpy(), affine, hdr)
+                        nifti_pred.to_filename(f"./{self.predict_save_dir}/pred/{filename}")
+
+        # make sure initial params are back at end of step
+        self.actor.actor.net.load_state_dict(initial_params)
+
+

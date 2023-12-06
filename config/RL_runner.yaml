@@ -2,7 +2,6 @@ work_dir: ${hydra:runtime.cwd}
 run_name: default
 
 defaults:
-  - _self_
   - logger: tensorboard
   - model: ppo
   - datamodule: sector
@@ -15,7 +14,7 @@ run_predict: False
 
 trainer:
   _target_: pytorch_lightning.Trainer
-  max_epochs: 5
+  max_epochs: 15
   log_every_n_steps: 1
   gpus: 1
 #  num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)

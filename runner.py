@@ -38,7 +38,7 @@ def main(cfg):
         ckpt_path = None
     trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
-    if cfg.run_predict:
+    if getattr(cfg.model, "predict_save_dir", None):
         trainer.predict(model=model, dataloaders=datamodule.test_dataloader(), ckpt_path=ckpt_path)
 
 

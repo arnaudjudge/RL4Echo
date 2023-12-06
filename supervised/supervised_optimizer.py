@@ -1,5 +1,8 @@
+import copy
+from datetime import datetime
 import random
-from typing import Dict
+from pathlib import Path
+from typing import Dict, Any
 
 import cv2
 import nibabel as nib
@@ -10,8 +13,10 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from torch import nn
 from vital.vital.models.segmentation.unet import UNet
 
-from utils.Metrics import accuracy
-from utils.file_utils import save_batch_to_dataset
+from utils.Metrics import accuracy, dice_score
+from vital.vital.metrics.train.functional import differentiable_dice_score
+from torchmetrics.classification import Dice
+from utils.file_utils import save_batch_to_dataset, save_batch_to_dataset_v2
 from utils.logging_helper import log_image
 
 
@@ -25,13 +30,18 @@ class DiceLoss(nn.Module):
 
 
 class SupervisedOptimizer(pl.LightningModule):
-    def __init__(self, **kwargs):
+    def __init__(self, ckpt_path=None, predict_save_dir=None, **kwargs):
         super().__init__(**kwargs)
 
         self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
+        # self.net.load_state_dict(torch.load("./CGPT_Loop/supervised.ckpt"))
 
         self.loss = nn.BCELoss()
         self.save_test_results = False
+        self.ckpt_path = ckpt_path
+        self.predict_save_dir = predict_save_dir
+
+        self.dice = Dice()
 
     def forward(self, x):
         return self.net.forward(x)
@@ -59,11 +69,23 @@ class SupervisedOptimizer(pl.LightningModule):
 
         loss = self.loss(y_pred.squeeze(1), b_gt)
 
+        # test_gt = b_gt.unsqueeze(1)
+        # a = 1 - test_gt
+        # d_tensor = torch.stack((a, test_gt), dim=1).squeeze(2)
+        #
+        # should_be_gt = torch.argmax(d_tensor, dim=1)
+        # assert (should_be_gt == b_gt).all()
+
+        # 1 - differentiable_dice_score(d_tensor, b_gt)
+
         y_pred = torch.round(y_pred)
         acc = accuracy(y_pred, b_img, b_gt.unsqueeze(1))
-
+        dice = dice_score(y_pred, b_gt.unsqueeze(1))
+        # d = self.dice(y_pred, b_gt.unsqueeze(1).type(torch.int64))
         logs = {'val_loss': loss,
                 'val_acc': acc.mean(),
+                'val_dice': dice.mean(),
+                # 'val_d': d.mean()
                 }
 
         # log images
@@ -85,6 +107,7 @@ class SupervisedOptimizer(pl.LightningModule):
         y_pred = torch.round(y_pred)
 
         acc = accuracy(y_pred, b_img, b_gt.unsqueeze(1))
+        dice = dice_score(y_pred, b_gt.unsqueeze(1))
 
         if self.save_test_results:
             affine = np.diag(np.asarray([1, 1, 1, 0]))
@@ -98,9 +121,8 @@ class SupervisedOptimizer(pl.LightningModule):
 
         logs = {'test_loss': loss,
                 'test_acc': acc.mean(),
+                'test_dice': dice.mean()
                 }
-
-        print(acc.mean())
 
         for i in range(len(b_img)):
             log_image(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1))
@@ -109,8 +131,67 @@ class SupervisedOptimizer(pl.LightningModule):
                       img_text=acc[i].mean())
 
         self.log_dict(logs)
+
+        #save_batch_to_dataset(b_img, b_gt, y_pred, batch_idx, './simple_reward_net/dataset_supervised/')
+
         return logs
 
+    def on_test_end(self) -> None:
+        self.save()
 
     def save(self) -> None:
-        torch.save(self.net.state_dict(), 'supervised.ckpt')
+        if self.ckpt_path:
+            torch.save(self.net.state_dict(), self.ckpt_path)
+
+    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
+        b_img, b_gt, *_ = batch
+        actions = torch.sigmoid(self.forward(b_img))
+        acc = accuracy(actions, b_img, b_gt.unsqueeze(1))
+
+        initial_params = copy.deepcopy(self.net.state_dict())
+        for itr in range(1000):
+            for i in range(len(b_img)):
+                if acc[i] > 0.99:
+                    for j, multiplier in enumerate([0.005, 0.01, 0.025, 0.04]):
+                        # get random seed based on time to maximise randomness of noise and subsequent predictions
+                        # explore as much space around policy as possible
+                        time_seed = int(round(datetime.now().timestamp())) + i
+                        torch.manual_seed(1695228288)
+
+                        # load initial params so noise is not compounded
+                        self.net.load_state_dict(initial_params, strict=True)
+
+                        # add noise to params
+                        with torch.no_grad():
+                            for param in self.net.parameters():
+                                param.add_(torch.randn(param.size()).cuda() * multiplier)
+
+                        # make prediction
+                        action = torch.sigmoid(self.forward(b_img[i].unsqueeze(0)))
+                        action = torch.round(action)
+
+                        # import matplotlib.pyplot as plt
+                        # plt.figure()
+                        # plt.title(f"{multiplier}, seed: {time_seed}")
+                        # plt.imshow(action[0, 0, ...].cpu().numpy())
+                        # plt.show()
+
+                        Path(f"{self.predict_save_dir}/images").mkdir(parents=True, exist_ok=True)
+                        Path(f"{self.predict_save_dir}/gt").mkdir(parents=True, exist_ok=True)
+                        Path(f"{self.predict_save_dir}/pred").mkdir(parents=True, exist_ok=True)
+
+                        filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
+                        affine = np.diag(np.asarray([1, 1, 1, 0]))
+                        hdr = nib.Nifti1Header()
+
+                        nifti_img = nib.Nifti1Image(b_img[i].cpu().numpy(), affine, hdr)
+                        nifti_img.to_filename(f"./{self.predict_save_dir}/images/{filename}")
+
+                        nifti_gt = nib.Nifti1Image(np.expand_dims(b_gt[i].cpu().numpy(), 0), affine, hdr)
+                        nifti_gt.to_filename(f"./{self.predict_save_dir}/gt/{filename}")
+
+                        nifti_pred = nib.Nifti1Image(action[0].cpu().numpy(), affine, hdr)
+                        nifti_pred.to_filename(f"./{self.predict_save_dir}/pred/{filename}")
+
+        # make sure initial params are back at end of step
+        self.net.load_state_dict(initial_params)
