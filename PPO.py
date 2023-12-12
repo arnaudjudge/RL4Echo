@@ -90,9 +90,9 @@ class PPO(RLmodule):
         with torch.no_grad():
             total_reward = b_rewards - (self.divergence_coeff * log_pi_ratio)
             # ignore divergence if using ground truth
-            total_reward[b_use_gt, ...] = b_rewards[b_use_gt, ...]
+            total_reward[b_use_gt, ...] = torch.ones_like(b_rewards)[b_use_gt, ...]
 
-        #assert b_rewards.shape == v.shape
+        # assert b_rewards.shape == v.shape
         adv = total_reward - v
 
         # PPO loss
@@ -103,15 +103,15 @@ class PPO(RLmodule):
         # clamp with epsilon value
         clipped = ratio.clamp(1 - self.clip_value, 1 + self.clip_value)
         surr_loss = torch.min(adv * ratio, adv * clipped)
-        surr_loss[b_use_gt, ...] = (adv * ratio)[b_use_gt, ...]
+        # surr_loss[b_use_gt, ...] = (adv * ratio)[b_use_gt, ...]
 
         # min trick
         loss = -surr_loss.mean() + (-self.entropy_coeff * entropy.mean())
 
         # Critic loss
-        if total_reward.shape != v.shape:
-            total_reward = total_reward.mean(dim=(1, 2, 3), keepdim=True)
-        critic_loss = nn.MSELoss()(v, total_reward)
+        if b_rewards.shape != v.shape:
+            b_rewards = b_rewards.mean(dim=(1, 2, 3), keepdim=True)
+        critic_loss = nn.MSELoss()(v, b_rewards)
 
         # metrics dict
         metrics = {
