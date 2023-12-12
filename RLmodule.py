@@ -55,10 +55,6 @@ class RLmodule(pl.LightningModule):
         actions = self.actor.act(imgs, sample=sample)
         rewards = self.reward_func(actions, imgs, gt.unsqueeze(1))
 
-        # plt.figure()
-        # plt.imshow(rewards[0, 0, ...].cpu().numpy())
-        # plt.show()
-
         if use_gt is not None:
             actions[use_gt, ...] = gt.unsqueeze(1)[use_gt, ...]
 
