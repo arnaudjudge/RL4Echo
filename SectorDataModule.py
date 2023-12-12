@@ -12,7 +12,7 @@ from torch.utils.data import random_split, DataLoader
 
 
 class SectorDataset(Dataset):
-    def __init__(self, df, data_path, subset_frac=1.0, available_gt=1.0, seed=0, test=False, *args,
+    def __init__(self, df, data_path, subset_frac=1.0, available_gt=None, seed=0, test=False, *args,
                  **kwargs):
         super().__init__()
         self.df = df
@@ -24,10 +24,9 @@ class SectorDataset(Dataset):
 
         print(f"Test step: {self.test} , len of dataset {len(self.df)}")
 
-        # create list of available ground truths
-        self.use_gt = np.zeros(len(self.df))
-        self.use_gt[:int(available_gt * len(self.df))] = 1
-        np.random.shuffle(self.use_gt)
+        # pass down list of available ground truths
+        self.use_gt = available_gt.fillna(False).to_numpy() if available_gt is not None else \
+            np.asarray([False for _ in range(len(self.df))])
         print(f"Number of ground truths available: {self.use_gt.sum()}")
 
     def __len__(self):
@@ -49,7 +48,16 @@ class SectorDataModule(pl.LightningDataModule):
     DataModule used for semantic segmentation in geometric generalization project
     """
 
-    def __init__(self, data_dir, csv_file, splits_column='split_0', subset_frac=1.0, test_frac=0.1, available_gt=1.0, seed=0, *args, **kwargs):
+    def __init__(self,
+                 data_dir,
+                 csv_file,
+                 gt_column=None,
+                 splits_column='split_0',
+                 subset_frac=1.0,
+                 test_frac=0.1,
+                 gt_frac=None,
+                 seed=0,
+                 *args, **kwargs):
         super().__init__()
         self.args = args
         self.kwargs = kwargs
@@ -106,24 +114,35 @@ class SectorDataModule(pl.LightningDataModule):
                 self.df.loc[self.test_idx, self.hparams.splits_column] = 'test'
                 self.df.to_csv(self.hparams.data_dir + '/' + self.hparams.csv_file)
 
+        if self.hparams.gt_frac:
+            self.hparams.gt_column = 'default_gt'
+            self.df[self.hparams.gt_column] = self.df.get(self.hparams.gt_column, False)
+            use_gt = np.zeros(len(self.df))
+            use_gt[:int(self.hparams.gt_frac * len(self.df))] = 1
+            np.random.shuffle(use_gt)
+            self.df[self.hparams.gt_column] = use_gt.astype(bool)
+
         if stage == "fit" or stage is None:
             self.train = SectorDataset(self.df.loc[self.train_idx],
-                                           data_path=self.hparams.data_dir,
-                                           subset_frac=self.hparams.subset_frac,
-                                           seed=self.hparams.seed)
+                                       data_path=self.hparams.data_dir,
+                                       subset_frac=self.hparams.subset_frac,
+                                       seed=self.hparams.seed,
+                                       available_gt=self.df.loc[self.train_idx].get(self.hparams.gt_column, None))
 
             self.validate = SectorDataset(self.df.loc[self.val_idx],
                                           data_path=self.hparams.data_dir,
                                           subset_frac=self.hparams.subset_frac,
-                                          seed=self.hparams.seed)
+                                          seed=self.hparams.seed,
+                                          available_gt=None)
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
             self.test = SectorDataset(self.df.loc[self.val_idx],
-                                          data_path=self.hparams.data_dir,
-                                          subset_frac=self.hparams.subset_frac,
-                                          seed=self.hparams.seed,
-                                          test=True)
+                                      data_path=self.hparams.data_dir,
+                                      subset_frac=self.hparams.subset_frac,
+                                      seed=self.hparams.seed,
+                                      available_gt=None,
+                                      test=True)
 
     # define your dataloaders
     # again, here defined for train, validate and test, not for predict as the project is not there yet.
