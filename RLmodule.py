@@ -10,8 +10,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytorch_lightning as pl
 import torch
+from bdicardio.utils.ransac_utils import ransac_sector_extraction
 from pytorch_lightning.loggers import TensorBoardLogger
 import nibabel as nib
+from scipy import ndimage
 
 from rewardnet.data_augmentation import create_random_blobs
 from utils.Metrics import accuracy, dice_score
@@ -53,9 +55,12 @@ class RLmodule(pl.LightningModule):
         actions = self.actor.act(imgs, sample=sample)
         rewards = self.reward_func(actions, imgs, gt.unsqueeze(1))
 
+        # plt.figure()
+        # plt.imshow(rewards[0, 0, ...].cpu().numpy())
+        # plt.show()
+
         if use_gt is not None:
             actions[use_gt, ...] = gt.unsqueeze(1)[use_gt, ...]
-            rewards[use_gt, ...] = torch.ones_like(rewards)[use_gt, ...]
 
         _, _, log_probs, _, _, _ = self.actor.evaluate(imgs, actions)
         return actions, log_probs, rewards
@@ -166,6 +171,7 @@ class RLmodule(pl.LightningModule):
             if prev_rewards.shape == prev_actions.shape:
                 log_image(self.logger, img=prev_rewards[i], title='test_RewardMap', number=batch_idx * (i + 1))
 
+        # save_batch_to_dataset_v2(b_img, b_gt, prev_actions, batch_idx, './simple_reward_net/dataset_supervised/')
 
         self.log_dict(logs)
         return logs
@@ -183,57 +189,97 @@ class RLmodule(pl.LightningModule):
         acc = accuracy(actions_unsampled, b_img, b_gt.unsqueeze(1))
         print((acc > 0.99).sum())
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
-        for itr in range(1000):
-            for i in range(len(b_img)):
-                if acc[i] > 0.99:
-                    for j, multiplier in enumerate([0.005, 0.01, 0.025, 0.04]):
-                        # get random seed based on time to maximise randomness of noise and subsequent predictions
-                        # explore as much space around policy as possible
-                        time_seed = int(round(datetime.now().timestamp())) + i
-                        torch.manual_seed(time_seed)
+        #for itr in range(100):
+        itr = 0
+        for i in range(len(b_img)):
+            if acc[i] > 0.99:
+                for j, multiplier in enumerate([0.005, 0.01]): #, 0.025, 0.04]):
+                    # get random seed based on time to maximise randomness of noise and subsequent predictions
+                    # explore as much space around policy as possible
+                    time_seed = int(round(datetime.now().timestamp())) + i
+                    torch.manual_seed(time_seed)
 
-                        # load initial params so noise is not compounded
-                        self.actor.actor.net.load_state_dict(initial_params, strict=True)
+                    # load initial params so noise is not compounded
+                    self.actor.actor.net.load_state_dict(initial_params, strict=True)
 
-                        # add noise to params
-                        with torch.no_grad():
-                            for param in self.actor.actor.net.parameters():
-                                param.add_(torch.randn(param.size()).cuda() * multiplier)
+                    # add noise to params
+                    with torch.no_grad():
+                        for param in self.actor.actor.net.parameters():
+                            param.add_(torch.randn(param.size()).cuda() * multiplier)
 
-                        # make prediction
-                        action, *_ = self.actor.actor(b_img[i].unsqueeze(0))
-                        action = torch.round(action)
+                    # make prediction
+                    action, *_ = self.actor.actor(b_img[i].unsqueeze(0))
+                    action = torch.round(action)
 
-                        # if np.random.rand() > 0.9:
-                        #     blobs = create_random_blobs()
-                        #     action = action.cpu().numpy().astype(np.uint8) & ~blobs
-                        #     action = torch.tensor(action)
+                    # if np.random.rand() > 0.9:
+                    #     blobs = create_random_blobs()
+                    #     action = action.cpu().numpy().astype(np.uint8) & ~blobs
+                    #     action = torch.tensor(action)
 
-                        # plt.figure()
-                        # plt.title(f"Original")
-                        # plt.imshow(b_gt[i, ...].cpu().numpy())
-                        #
-                        # plt.figure()
-                        # plt.title(f"{multiplier}, seed: {time_seed}")
-                        # plt.imshow(action[0, 0, ...].cpu().numpy())
-                        # plt.show()
+                    # f, (ax1, ax2) = plt.subplots(1, 2)
+                    # ax1.set_title(f"Original")
+                    # ax1.imshow(actions_unsampled[i, 0, ...].cpu().numpy())
+                    #
+                    # ax2.set_title(f"{multiplier}, seed: {time_seed}")
+                    # ax2.imshow(action[0, 0, ...].cpu().numpy())
+                    # plt.show()
 
-                        Path(f"{self.predict_save_dir}/images").mkdir(parents=True, exist_ok=True)
-                        Path(f"{self.predict_save_dir}/gt").mkdir(parents=True, exist_ok=True)
-                        Path(f"{self.predict_save_dir}/pred").mkdir(parents=True, exist_ok=True)
+                    Path(f"{self.predict_save_dir}/images").mkdir(parents=True, exist_ok=True)
+                    Path(f"{self.predict_save_dir}/gt").mkdir(parents=True, exist_ok=True)
+                    Path(f"{self.predict_save_dir}/pred").mkdir(parents=True, exist_ok=True)
 
-                        filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
-                        affine = np.diag(np.asarray([1, 1, 1, 0]))
-                        hdr = nib.Nifti1Header()
+                    filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
+                    affine = np.diag(np.asarray([1, 1, 1, 0]))
+                    hdr = nib.Nifti1Header()
 
-                        nifti_img = nib.Nifti1Image(b_img[i].cpu().numpy(), affine, hdr)
-                        nifti_img.to_filename(f"./{self.predict_save_dir}/images/{filename}")
+                    nifti_img = nib.Nifti1Image(b_img[i].cpu().numpy(), affine, hdr)
+                    nifti_img.to_filename(f"./{self.predict_save_dir}/images/{filename}")
 
-                        nifti_gt = nib.Nifti1Image(np.expand_dims(b_gt[i].cpu().numpy(), 0), affine, hdr)
-                        nifti_gt.to_filename(f"./{self.predict_save_dir}/gt/{filename}")
+                    nifti_gt = nib.Nifti1Image(np.expand_dims(actions_unsampled[i, 0].cpu().numpy(), 0), affine, hdr)
+                    nifti_gt.to_filename(f"./{self.predict_save_dir}/gt/{filename}")
 
-                        nifti_pred = nib.Nifti1Image(action[0].cpu().numpy(), affine, hdr)
-                        nifti_pred.to_filename(f"./{self.predict_save_dir}/pred/{filename}")
+                    nifti_pred = nib.Nifti1Image(action[0].cpu().numpy(), affine, hdr)
+                    nifti_pred.to_filename(f"./{self.predict_save_dir}/pred/{filename}")
+            else:
+                try:
+                    # Find each blob in the image
+                    lbl, num = ndimage.label(actions[i, 0, ...].cpu().numpy())
+                    # Count the number of elements per label
+                    count = np.bincount(lbl.flat)
+                    # Select the largest blob
+                    maxi = np.argmax(count[1:]) + 1
+                    # Keep only the other blobs
+                    lbl[lbl != maxi] = 0
+                    ransac, *_ = ransac_sector_extraction(lbl, slim_factor=0.01, circle_center_tol=0.45, plot=False)
+
+                    if ransac.sum() < actions[i, 0, ...].cpu().numpy().sum() * 0.1:
+                        continue
+                    # f, (ax1, ax2) = plt.subplots(1, 2)
+                    # ax1.set_title(f"Original")
+                    # ax1.imshow(actions[i, 0, ...].cpu().numpy())
+                    #
+                    # ax2.set_title(f"ransac")
+                    # ax2.imshow(ransac)
+                    # plt.show()
+
+                    Path(f"{self.predict_save_dir}/images").mkdir(parents=True, exist_ok=True)
+                    Path(f"{self.predict_save_dir}/gt").mkdir(parents=True, exist_ok=True)
+                    Path(f"{self.predict_save_dir}/pred").mkdir(parents=True, exist_ok=True)
+
+                    filename = f"{batch_idx}_{itr}_{i}_{random.randint(1, 1000)}.nii.gz"
+                    affine = np.diag(np.asarray([1, 1, 1, 0]))
+                    hdr = nib.Nifti1Header()
+
+                    nifti_img = nib.Nifti1Image(b_img[i].cpu().numpy(), affine, hdr)
+                    nifti_img.to_filename(f"./{self.predict_save_dir}/images/{filename}")
+
+                    nifti_gt = nib.Nifti1Image(np.expand_dims(ransac, 0), affine, hdr)
+                    nifti_gt.to_filename(f"./{self.predict_save_dir}/gt/{filename}")
+
+                    nifti_pred = nib.Nifti1Image(actions[i].cpu().numpy(), affine, hdr)
+                    nifti_pred.to_filename(f"./{self.predict_save_dir}/pred/{filename}")
+                except:
+                    pass
 
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)
