@@ -14,6 +14,7 @@ from bdicardio.utils.ransac_utils import ransac_sector_extraction
 from pytorch_lightning.loggers import TensorBoardLogger
 import nibabel as nib
 from scipy import ndimage
+from torch import Tensor
 
 from rewardnet.data_augmentation import create_random_blobs
 from utils.Metrics import accuracy, dice_score
@@ -61,7 +62,7 @@ class RLmodule(pl.LightningModule):
         _, _, log_probs, _, _, _ = self.actor.evaluate(imgs, actions)
         return actions, log_probs, rewards
 
-    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch):
+    def training_step(self, batch: dict[str, Tensor], nb_batch):
         """
             Defines training steo, calculates loss based on the minibatch recieved.
             Optionally backprop through networks with self.automatic_optimization = False flag,
@@ -87,7 +88,7 @@ class RLmodule(pl.LightningModule):
         """
         raise NotImplementedError
 
-    def validation_step(self, batch, batch_idx: int):
+    def validation_step(self, batch: dict[str, Tensor], batch_idx: int):
         """
             Defines validation step (using sampling to show model confidence)
             Computes actions from current policy and calculates loss, rewards (and other metrics)
@@ -99,7 +100,7 @@ class RLmodule(pl.LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, b_use_gt = batch
+        b_img, b_gt, b_use_gt = batch['img'], batch['mask'], batch['use_gt']
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
 
@@ -127,7 +128,7 @@ class RLmodule(pl.LightningModule):
         self.log_dict(logs)
         return logs
 
-    def test_step(self, batch, batch_idx: int):
+    def test_step(self, batch: dict[str, Tensor], batch_idx: int):
         """
             Defines test step (uses deterministic method to show real results)
             Computes actions from current policy and calculates loss, rewards (and other metrics)
@@ -139,7 +140,7 @@ class RLmodule(pl.LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, b_use_gt = batch
+        b_img, b_gt, b_use_gt = batch['img'], batch['mask'], batch['use_gt']
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
@@ -178,14 +179,13 @@ class RLmodule(pl.LightningModule):
         if self.critic_save_path:
             torch.save(self.actor.critic.net.state_dict(), self.critic_save_path)
 
-    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
-        b_img, b_gt, *_ = batch
+    def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
+        b_img, b_gt = batch['img'], batch['mask']
         actions, _, _ = self.rollout(b_img, b_gt, sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, b_gt, sample=False)
         acc = accuracy(actions_unsampled, b_img, b_gt.unsqueeze(1))
         print((acc > 0.99).sum())
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
-        #for itr in range(100):
         itr = 0
         for i in range(len(b_img)):
             if acc[i] > 0.99:

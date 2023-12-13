@@ -6,6 +6,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 from pytorch_lightning.loggers import TensorBoardLogger
+from torch import Tensor
 
 from RLmodule import RLmodule
 from SectorDataModule import SectorDataModule
@@ -30,7 +31,7 @@ class PPO(RLmodule):
         # since optimization is done manually, this flag needs to be set
         self.automatic_optimization = False
 
-    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], nb_batch):
+    def training_step(self, batch: dict[str, Tensor], nb_batch):
         """
             Defines PPO training steo
             Get actions, log_probs and rewards from current policy
@@ -44,7 +45,7 @@ class PPO(RLmodule):
         """
         opt_net, opt_critic = self.optimizers()
 
-        b_img, b_gt, b_use_gt = batch
+        b_img, b_gt, b_use_gt = batch['img'], batch['mask'], batch['use_gt']
 
         # get actions, log_probs, rewards, etc from pi (stays constant for all steps k)
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_use_gt)

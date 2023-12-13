@@ -38,9 +38,11 @@ class SectorDataset(Dataset):
         img = np.expand_dims(nib.load(self.data_path + '/raw/' + path_dict['raw']).get_fdata().mean(axis=2), 0)
         mask = nib.load(self.data_path + '/mask/' + path_dict['mask']).get_fdata()[:, :, 0]
 
-        return torch.tensor(img, dtype=torch.float32), \
-               torch.tensor(mask, dtype=torch.float32), \
-               torch.tensor(self.use_gt[idx], dtype=torch.bool)
+        return {'img': torch.tensor(img, dtype=torch.float32),
+                'mask': torch.tensor(mask, dtype=torch.float32),
+                'use_gt': torch.tensor(self.use_gt[idx], dtype=torch.bool),
+                'dicom': self.df.iloc[idx]['dicom_uuid']
+                }
 
 
 class SectorDataModule(pl.LightningDataModule):
