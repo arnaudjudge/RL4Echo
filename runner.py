@@ -1,8 +1,7 @@
 import os
 
 import hydra
-import numpy as np
-import torch
+import pytorch_lightning
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 from pytorch_lightning import Trainer
@@ -19,8 +18,7 @@ def main(cfg):
     os.environ["HYDRA_FULL_ERROR"] = "1"
     print(OmegaConf.to_yaml(cfg))
 
-    torch.manual_seed(cfg.seed)
-    np.random.seed(cfg.seed)
+    pytorch_lightning.seed_everything(cfg.seed)
 
     logger = instantiate(cfg.logger)
 
