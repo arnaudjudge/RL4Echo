@@ -10,7 +10,7 @@ defaults:
 
 seed: 1
 
-run_predict: False
+predict_subset_frac: 0.1
 
 trainer:
   _target_: pytorch_lightning.Trainer

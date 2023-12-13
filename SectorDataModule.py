@@ -67,11 +67,14 @@ class SectorDataModule(pl.LightningDataModule):
         self.save_hyperparameters(logger=False)
 
         # open dataframe for dataset
-        self.df = pd.read_csv(self.hparams.data_dir + '/' + self.hparams.csv_file, index_col=0)
+        self.df_path = self.hparams.data_dir + '/' + self.hparams.csv_file
+        self.df = pd.read_csv(self.df_path, index_col=0)
 
         self.train: Optional[torch.utils.Dataset] = None
         self.validate: Optional[torch.utils.Dataset] = None
         self.test: Optional[torch.utils.Dataset] = None
+        self.pred: Optional[torch.utils.Dataset] = None
+
     def prepare_data(self):
         """
         Empty prepare_data method left in intentionally.
@@ -100,6 +103,7 @@ class SectorDataModule(pl.LightningDataModule):
             self.train_idx = self.df.index[self.df[self.hparams.splits_column] == 'train'].tolist()
             self.val_idx = self.df.index[self.df[self.hparams.splits_column] == 'val'].tolist()
             self.test_idx = self.df.index[self.df[self.hparams.splits_column] == 'test'].tolist()
+            self.pred_idx = self.df.index[self.df[self.hparams.splits_column] == 'pred'].tolist()
         else:
             # create new splits, save if column name is given
             print(f"Creating new splits!")
@@ -139,7 +143,14 @@ class SectorDataModule(pl.LightningDataModule):
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
-            self.test = SectorDataset(self.df.loc[self.val_idx],
+            self.test = SectorDataset(self.df.loc[self.test_idx],
+                                      data_path=self.hparams.data_dir,
+                                      subset_frac=self.hparams.subset_frac,
+                                      seed=self.hparams.seed,
+                                      available_gt=None,
+                                      test=True)
+        if stage == "predict":
+            self.pred = SectorDataset(self.df.loc[self.pred_idx],
                                       data_path=self.hparams.data_dir,
                                       subset_frac=self.hparams.subset_frac,
                                       seed=self.hparams.seed,
@@ -156,6 +167,9 @@ class SectorDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.test, batch_size=32, num_workers=16)
+
+    def predict_dataloader(self, ):
+        return DataLoader(self.pred, batch_size=32, num_workers=16)
 
 
 if __name__ == "__main__":
