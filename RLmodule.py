@@ -1,4 +1,5 @@
 import copy
+import json
 import random
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +9,7 @@ from typing import Tuple
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import pytorch_lightning as pl
 import torch
 from bdicardio.utils.ransac_utils import ransac_sector_extraction
@@ -180,15 +182,19 @@ class RLmodule(pl.LightningModule):
             torch.save(self.actor.critic.net.state_dict(), self.critic_save_path)
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
-        b_img, b_gt = batch['img'], batch['mask']
+        b_img, b_gt, dicoms = batch['img'], batch['mask'], batch['dicom']
         actions, _, _ = self.rollout(b_img, b_gt, sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, b_gt, sample=False)
         acc = accuracy(actions_unsampled, b_img, b_gt.unsqueeze(1))
         print((acc > 0.99).sum())
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
         itr = 0
+        df = self.trainer.datamodule.df
         for i in range(len(b_img)):
             if acc[i] > 0.99:
+                df.loc[df['dicom_uuid'] == dicoms[i], self.trainer.datamodule.hparams.gt_column] = True
+                df.loc[df['dicom_uuid'] == dicoms[i], self.trainer.datamodule.hparams.splits_column] = 'train'
+
                 for j, multiplier in enumerate([0.005, 0.01]): #, 0.025, 0.04]):
                     # get random seed based on time to maximise randomness of noise and subsequent predictions
                     # explore as much space around policy as possible
@@ -277,6 +283,7 @@ class RLmodule(pl.LightningModule):
                 except:
                     pass
 
+        df.to_csv(self.trainer.datamodule.df_path)
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)
 
