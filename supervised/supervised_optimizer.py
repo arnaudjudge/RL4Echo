@@ -1,4 +1,5 @@
 import copy
+import json
 from datetime import datetime
 import random
 from pathlib import Path
@@ -10,6 +11,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 from bdicardio.utils.ransac_utils import ransac_sector_extraction
+from matplotlib import pyplot as plt
 from pytorch_lightning.loggers import TensorBoardLogger
 from scipy import ndimage
 from torch import nn, Tensor
@@ -36,7 +38,7 @@ class SupervisedOptimizer(pl.LightningModule):
         super().__init__(**kwargs)
 
         self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
-        # self.net.load_state_dict(torch.load("./CGPT_Loop/supervised.ckpt"))
+        # self.net.load_state_dict(torch.load("./auto_iteration3/0/actor.ckpt"))
 
         self.loss = nn.BCELoss()
         self.save_test_results = False
@@ -147,9 +149,9 @@ class SupervisedOptimizer(pl.LightningModule):
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         b_img, b_gt, dicoms = batch['img'], batch['mask'], batch['dicom']
-        actions = torch.sigmoid(self.forward(b_img))
+        actions = torch.round(torch.sigmoid(self.forward(b_img)))
         acc = accuracy(actions, b_img, b_gt.unsqueeze(1))
-
+        print((acc > 0.99).sum())
         initial_params = copy.deepcopy(self.net.state_dict())
         itr = 0
         df = self.trainer.datamodule.df
@@ -157,6 +159,15 @@ class SupervisedOptimizer(pl.LightningModule):
             if acc[i] > 0.99:
                 df.loc[df['dicom_uuid'] == dicoms[i], self.trainer.datamodule.hparams.gt_column] = True
                 df.loc[df['dicom_uuid'] == dicoms[i], self.trainer.datamodule.hparams.splits_column] = 'train'
+                # save approx gt since
+                path_dict = json.loads(
+                    df.loc[df['dicom_uuid'] == dicoms[i], 'relative_path'].item().replace("\'", "\""))
+                approx_gt_path = self.trainer.datamodule.hparams.data_dir + '/approx_gt/' + path_dict['mask']
+                print(f"{dicoms[i]}: {approx_gt_path}")
+                Path(approx_gt_path).parent.mkdir(parents=True, exist_ok=True)
+                hdr = nib.Nifti1Header()
+                nifti = nib.Nifti1Image(actions[i].cpu().numpy(), np.diag(np.asarray([1, 1, 1, 0])), hdr)
+                nifti.to_filename(approx_gt_path)
 
                 for j, multiplier in enumerate([0.005, 0.01]): #, 0.025, 0.04]):
                     # get random seed based on time to maximise randomness of noise and subsequent predictions
@@ -236,7 +247,8 @@ class SupervisedOptimizer(pl.LightningModule):
 
                     nifti_pred = nib.Nifti1Image(actions[i].cpu().numpy(), affine, hdr)
                     nifti_pred.to_filename(f"./{self.predict_save_dir}/pred/{filename}")
-                except:
+                except Exception as e:
+                    print(e)
                     pass
 
         df.to_csv(self.trainer.datamodule.df_path)

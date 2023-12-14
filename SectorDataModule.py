@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Optional
 
 import nibabel as nib
@@ -19,9 +20,6 @@ class SectorDataset(Dataset):
         self.data_path = data_path
         self.test = test
 
-        # only use subset
-        self.df = self.df.sample(n=int(subset_frac * len(self.df)), random_state=seed)
-
         print(f"Test step: {self.test} , len of dataset {len(self.df)}")
 
         # pass down list of available ground truths
@@ -38,8 +36,15 @@ class SectorDataset(Dataset):
         img = np.expand_dims(nib.load(self.data_path + '/raw/' + path_dict['raw']).get_fdata().mean(axis=2), 0)
         mask = nib.load(self.data_path + '/mask/' + path_dict['mask']).get_fdata()[:, :, 0]
 
+        approx_gt_path = self.data_path + '/approx_gt/' + path_dict['mask']
+        if self.use_gt[idx]:
+            approx_gt = nib.load(approx_gt_path).get_fdata()[0, :, :]
+        else:
+            approx_gt = np.zeros_like(mask)
+
         return {'img': torch.tensor(img, dtype=torch.float32),
                 'mask': torch.tensor(mask, dtype=torch.float32),
+                'approx_gt': torch.tensor(approx_gt, dtype=torch.float32),
                 'use_gt': torch.tensor(self.use_gt[idx], dtype=torch.bool),
                 'dicom': self.df.iloc[idx]['dicom_uuid']
                 }
@@ -127,6 +132,16 @@ class SectorDataModule(pl.LightningDataModule):
             use_gt[:int(self.hparams.gt_frac * len(self.df))] = 1
             np.random.shuffle(use_gt)
             self.df[self.hparams.gt_column] = use_gt.astype(bool)
+
+        if self.hparams.subset_frac:
+            train_num = int(self.hparams.subset_frac * len(self.train_idx))
+            self.train_idx = self.train_idx[:train_num]
+            val_num = int(self.hparams.subset_frac * len(self.val_idx))
+            self.val_idx = self.val_idx[:val_num]
+            test_num = int(self.hparams.subset_frac * len(self.test_idx))
+            self.test_idx = self.test_idx[:test_num]
+            pred_num = int(self.hparams.subset_frac * len(self.pred_idx))
+            self.pred_idx = self.pred_idx[-pred_num:]
 
         if stage == "fit" or stage is None:
             self.train = SectorDataset(self.df.loc[self.train_idx],

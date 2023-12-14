@@ -10,6 +10,10 @@ defaults:
 
 seed: 1
 
+datamodule:
+  gt_column: Gt_0
+#  gt_frac: 1.0
+
 predict_subset_frac: 0.1
 
 trainer:

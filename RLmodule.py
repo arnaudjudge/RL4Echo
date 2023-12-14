@@ -195,6 +195,14 @@ class RLmodule(pl.LightningModule):
                 df.loc[df['dicom_uuid'] == dicoms[i], self.trainer.datamodule.hparams.gt_column] = True
                 df.loc[df['dicom_uuid'] == dicoms[i], self.trainer.datamodule.hparams.splits_column] = 'train'
 
+                path_dict = json.loads(
+                    df.loc[df['dicom_uuid'] == dicoms[i], 'relative_path'].item().replace("\'", "\""))
+                approx_gt_path = self.trainer.datamodule.hparams.data_dir + '/approx_gt/' + path_dict['mask']
+                Path(approx_gt_path).parent.mkdir(parents=True, exist_ok=True)
+                hdr = nib.Nifti1Header()
+                nifti = nib.Nifti1Image(torch.round(actions_unsampled[i]).cpu().numpy(), np.diag(np.asarray([1, 1, 1, 0])), hdr)
+                nifti.to_filename(approx_gt_path)
+
                 for j, multiplier in enumerate([0.005, 0.01]): #, 0.025, 0.04]):
                     # get random seed based on time to maximise randomness of noise and subsequent predictions
                     # explore as much space around policy as possible

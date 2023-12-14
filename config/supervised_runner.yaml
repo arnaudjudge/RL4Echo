@@ -20,6 +20,9 @@ callbacks:
 
 predict_subset_frac: 0.1
 
+datamodule:
+  gt_column: Gt_0
+
 trainer:
   _target_: pytorch_lightning.Trainer
   max_epochs: 100

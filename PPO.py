@@ -45,7 +45,7 @@ class PPO(RLmodule):
         """
         opt_net, opt_critic = self.optimizers()
 
-        b_img, b_gt, b_use_gt = batch['img'], batch['mask'], batch['use_gt']
+        b_img, b_gt, b_use_gt = batch['img'], batch['approx_gt'], batch['use_gt']
 
         # get actions, log_probs, rewards, etc from pi (stays constant for all steps k)
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_use_gt)
