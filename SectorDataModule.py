@@ -175,7 +175,7 @@ class SectorDataModule(pl.LightningDataModule):
     # define your dataloaders
     # again, here defined for train, validate and test, not for predict as the project is not there yet.
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=32, num_workers=16)
+        return DataLoader(self.train, batch_size=32, num_workers=16, shuffle=True)
 
     def val_dataloader(self):
         return DataLoader(self.validate, batch_size=32, num_workers=16)
