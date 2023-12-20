@@ -2,16 +2,19 @@ import copy
 
 import torch
 import torch.nn as nn
-from torch.distributions import Bernoulli
+from torch.distributions import Bernoulli, Categorical
 from vital.vital.models.segmentation.unet import UNet
 from rewardnet.reward_net import get_resnet
 
 
-class UnetActor(nn.Module):
+class UnetActorBinary(nn.Module):
 
-    def __init__(self, pretrain_ckpt=None):
+    def __init__(self, input_shape=(1, 256, 256), output_shape=(1, 256, 256), pretrain_ckpt=None):
         super().__init__()
-        self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
+        if output_shape[0] > 1:
+            raise Exception("Wrong input shape, you are using binary actor with multi-class output shape")
+
+        self.net = UNet(input_shape=input_shape, output_shape=output_shape)
 
         if pretrain_ckpt:
             # if starting from pretrained model, keep version of
@@ -23,12 +26,38 @@ class UnetActor(nn.Module):
             self.old_net.requires_grad_(False)
 
     def forward(self, x):
-        logits = torch.sigmoid(self.net(x))
+        logits = torch.sigmoid(self.net(x)).squeeze(1)
         dist = Bernoulli(probs=logits)
 
         if hasattr(self, "old_net"):
-            old_logits = torch.sigmoid(self.old_net(x))
+            old_logits = torch.sigmoid(self.old_net(x)).squeeze(1)
             old_dist = Bernoulli(probs=old_logits)
+        else:
+            old_dist = None
+        return logits, dist, old_dist
+
+
+class UnetActorCategorical(nn.Module):
+    def __init__(self, input_shape=(1, 256, 256), output_shape=(3, 256, 256), pretrain_ckpt=None):
+        super().__init__()
+        self.net = UNet(input_shape=input_shape, output_shape=output_shape)
+
+        if pretrain_ckpt:
+            # if starting from pretrained model, keep version of
+            self.net.load_state_dict(torch.load(pretrain_ckpt))
+
+            # copy to have version of initial pretrained net
+            self.old_net = copy.deepcopy(self.net)
+            # will never be updated
+            self.old_net.requires_grad_(False)
+
+    def forward(self, x):
+        logits = torch.softmax(self.net(x), dim=1)
+        dist = Categorical(probs=logits.permute(0, 2, 3, 1))
+
+        if hasattr(self, "old_net"):
+            old_logits = torch.softmax(self.old_net(x), dim=1)
+            old_dist = Categorical(probs=old_logits.permute(0, 2, 3, 1))
         else:
             old_dist = None
         return logits, dist, old_dist
@@ -36,12 +65,12 @@ class UnetActor(nn.Module):
 
 class Critic(nn.Module):
 
-    def __init__(self, pretrain_path=None):
+    def __init__(self, input_channels=1, num_classes=1, pretrain_ckpt=None):
         super().__init__()
-        self.net = get_resnet(input_channels=1, num_classes=1)
+        self.net = get_resnet(input_channels=input_channels, num_classes=num_classes)
 
-        if pretrain_path:
-            self.net.load_state_dict(torch.load(pretrain_path))
+        if pretrain_ckpt:
+            self.net.load_state_dict(torch.load(pretrain_ckpt))
 
     def forward(self, x):
         return torch.sigmoid(self.net(x))
@@ -49,12 +78,12 @@ class Critic(nn.Module):
 
 class UnetCritic(nn.Module):
 
-    def __init__(self, pretrain_path=None):
+    def __init__(self, input_shape=(1, 256, 256), output_shape=(1, 256, 256), pretrain_ckpt=None):
         super().__init__()
-        self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
+        self.net = UNet(input_shape=input_shape, output_shape=output_shape)
 
-        if pretrain_path:
-            self.net.load_state_dict(torch.load(pretrain_path))
+        if pretrain_ckpt:
+            self.net.load_state_dict(torch.load(pretrain_ckpt))
 
     def forward(self, x):
         return torch.sigmoid(self.net(x))
@@ -65,18 +94,15 @@ class Actor(nn.Module):
         Simple policy gradient actor
     """
     def __init__(self,
+                 actor,
+                 critic,
                  eps_greedy_term=0.0,
-                 actor_pretrain_ckpt=None,
-                 critic_pretrain_ckpt=None,
                  actor_lr=1e-3,
                  critic_lr=1e-3):
         super().__init__()
 
-        self.actor = UnetActor(actor_pretrain_ckpt)
-        self.critic = None
-
-        self.actor_pretrain_path = actor_pretrain_ckpt
-        self.critic_pretrain_path = critic_pretrain_ckpt
+        self.actor = actor
+        self.critic = critic if issubclass(critic.__class__, nn.Module) else None
 
         self.actor_lr = actor_lr
         self.critic_lr = critic_lr
@@ -105,10 +131,17 @@ class Actor(nn.Module):
         if sample:
             actions = distribution.sample()
 
+            if logits.shape != actions.shape:
+                logits = torch.argmax(logits, dim=1)
             random = torch.rand(logits.shape).to(actions.device)
             actions = torch.where(random >= self.eps_greedy_term, actions, torch.round(logits))
         else:
-            actions = torch.round(logits)
+            if len(logits.shape) > 3:
+                # categorical, softmax output
+                actions = torch.argmax(logits, dim=1)
+            else:
+                # bernoulli, sigmoid output
+                actions = torch.round(logits)
 
         return actions
 

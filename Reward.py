@@ -2,7 +2,6 @@ import numpy as np
 import skimage.morphology
 import torch
 from bdicardio.utils.ransac_utils import ransac_sector_extraction
-from matplotlib import pyplot as plt
 from scipy import ndimage
 from scipy.ndimage import binary_fill_holes
 from torchmetrics.functional import dice
@@ -39,8 +38,8 @@ class AccuracyMap(Reward):
         assert actions.shape == gt.shape, \
             print(f"Actions shape {actions.shape} vs GT shape {gt.shape}")
         simple = (actions == gt).float()
-        simple = simple.mean(dim=(1, 2, 3))
-        mean_matrix = torch.zeros_like(pred)
+        simple = simple.mean(dim=(1, 2))
+        mean_matrix = torch.zeros_like(pred, dtype=torch.float)
         for i in range(len(pred)):
             mean_matrix[i, ...] = simple[i]
         return mean_matrix
@@ -54,6 +53,15 @@ class Accuracy(Reward):
             print(f"Actions shape {actions.shape} vs GT shape {gt.shape}")
         simple = (actions == gt).float()
         return simple.mean(dim=(1, 2, 3), keepdim=True)
+
+
+class PixelWiseAccuracy(Reward):
+    @torch.no_grad()
+    def __call__(self, pred, imgs, gt):
+        actions = torch.round(pred)
+        assert actions.shape == gt.shape, \
+            print(f"Actions shape {actions.shape} vs GT shape {gt.shape}")
+        return (actions == gt).float()
 
 
 class Morphological(Reward):

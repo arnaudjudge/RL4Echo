@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Optional
 
 import nibabel as nib
@@ -8,10 +9,19 @@ import pytorch_lightning as pl
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
+from torch.utils.data import random_split, DataLoader
 
 
-class SectorDataset(Dataset):
+def get_img_subpath(row):
+    """
+    Format string for path of image in file structure
+    :param row: dataframe row with all columns filled in
+    :return: string containing path to image file
+    """
+    return f"{row['study']}/{row['view'].lower()}/{row['dicom_uuid']}_img_{row['instant']}.nii.gz"
+
+
+class ESEDDataset(Dataset):
     def __init__(self, df, data_path, subset_frac=1.0, available_gt=None, seed=0, test=False, *args,
                  **kwargs):
         super().__init__()
@@ -30,26 +40,29 @@ class SectorDataset(Dataset):
         return len(self.df.index)
 
     def __getitem__(self, idx):
-        path_dict = json.loads(self.df.iloc[idx]['relative_path'].replace("\'", "\""))
+        sub_path = get_img_subpath(self.df.iloc[idx])
 
-        img = np.expand_dims(nib.load(self.data_path + '/raw/' + path_dict['raw']).get_fdata().mean(axis=2), 0)
-        mask = nib.load(self.data_path + '/mask/' + path_dict['mask']).get_fdata()[:, :, 0]
+        img = np.expand_dims(nib.load(self.data_path + '/' + sub_path).get_fdata(), 0) / 255
+        mask = nib.load(self.data_path + '/' + sub_path.replace("img", 'mask')).get_fdata()
 
-        approx_gt_path = self.data_path + '/approx_gt/' + path_dict['mask']
+        approx_gt_path = self.data_path + '/' + sub_path.replace("img", 'approx_gt')
         if self.use_gt[idx]:
-            approx_gt = nib.load(approx_gt_path).get_fdata()[0, :, :]
+            approx_gt = nib.load(approx_gt_path).get_fdata()
         else:
             approx_gt = np.zeros_like(mask)
 
+        # mask = torch.tensor(mask)
+        # mask = torch.stack([mask == i for i in range(np.max(mask.astype(np.int8)) + 1)], dim=0).sum(dim=1)
+
         return {'img': torch.tensor(img, dtype=torch.float32),
-                'mask': torch.tensor(mask, dtype=torch.float32),
+                'mask': torch.tensor(mask).type(torch.LongTensor),
                 'approx_gt': torch.tensor(approx_gt, dtype=torch.float32),
-                'use_gt': torch.tensor(self.use_gt[idx], dtype=torch.bool),
+                'use_gt': torch.tensor(self.use_gt[idx]),
                 'dicom': self.df.iloc[idx]['dicom_uuid']
                 }
 
 
-class SectorDataModule(pl.LightningDataModule):
+class ESEDDataModule(pl.LightningDataModule):
     """
     DataModule used for semantic segmentation in geometric generalization project
     """
@@ -118,6 +131,7 @@ class SectorDataModule(pl.LightningDataModule):
                                                            test_size=0.5,
                                                            random_state=self.hparams.seed)
             self.pred_idx = []
+
             if self.hparams.splits_column:
                 print(f"Saving new split to column: {self.hparams.splits_column}")
                 self.df.loc[self.train_idx, self.hparams.splits_column] = 'train'
@@ -144,13 +158,13 @@ class SectorDataModule(pl.LightningDataModule):
             self.pred_idx = self.pred_idx[-pred_num:]
 
         if stage == "fit" or stage is None:
-            self.train = SectorDataset(self.df.loc[self.train_idx],
+            self.train = ESEDDataset(self.df.loc[self.train_idx],
                                        data_path=self.hparams.data_dir,
                                        subset_frac=self.hparams.subset_frac,
                                        seed=self.hparams.seed,
                                        available_gt=self.df.loc[self.train_idx].get(self.hparams.gt_column, None))
 
-            self.validate = SectorDataset(self.df.loc[self.val_idx],
+            self.validate = ESEDDataset(self.df.loc[self.val_idx],
                                           data_path=self.hparams.data_dir,
                                           subset_frac=self.hparams.subset_frac,
                                           seed=self.hparams.seed,
@@ -158,14 +172,14 @@ class SectorDataModule(pl.LightningDataModule):
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
-            self.test = SectorDataset(self.df.loc[self.test_idx],
+            self.test = ESEDDataset(self.df.loc[self.test_idx],
                                       data_path=self.hparams.data_dir,
                                       subset_frac=self.hparams.subset_frac,
                                       seed=self.hparams.seed,
                                       available_gt=None,
                                       test=True)
         if stage == "predict":
-            self.pred = SectorDataset(self.df.loc[self.pred_idx],
+            self.pred = ESEDDataset(self.df.loc[self.pred_idx],
                                       data_path=self.hparams.data_dir,
                                       subset_frac=self.hparams.subset_frac,
                                       seed=self.hparams.seed,
@@ -188,9 +202,9 @@ class SectorDataModule(pl.LightningDataModule):
 
 
 if __name__ == "__main__":
-    dl = SectorDataModule(data_dir='/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset_10k/',
+    dl = ESEDDataModule(data_dir='/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset/',
                           csv_file='subset.csv',
-                          subset_frac=0.1,
+                          #subset_frac=0.1,
                           test_frac=0.1)
 
     dl.setup()

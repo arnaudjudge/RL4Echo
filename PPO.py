@@ -1,15 +1,10 @@
 from typing import Any
-from typing import Tuple
 
-import numpy as np
-import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from pytorch_lightning.loggers import TensorBoardLogger
 from torch import Tensor
 
 from RLmodule import RLmodule
-from SectorDataModule import SectorDataModule
 
 
 class PPO(RLmodule):
@@ -110,8 +105,8 @@ class PPO(RLmodule):
         loss = -surr_loss.mean() + (-self.entropy_coeff * entropy.mean())
 
         # Critic loss
-        if b_rewards.shape != v.shape:
-            b_rewards = b_rewards.mean(dim=(1, 2, 3), keepdim=True)
+        if b_rewards.shape != v.shape:  # if critic is resnet, use reward mean instead of pixel-wise
+            b_rewards = b_rewards.mean(dim=(1, 2), keepdim=True)
         critic_loss = nn.MSELoss()(v, b_rewards)
 
         # metrics dict

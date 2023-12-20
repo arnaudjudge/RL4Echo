@@ -9,6 +9,12 @@ defaults:
 
   - _self_
 
+datamodule:
+  data_path: ./loop2.0/ds/
+
+model:
+  save_model_path: ./loop2.0/reward_net2.ckpt
+
 seed: 1
 
 logger:

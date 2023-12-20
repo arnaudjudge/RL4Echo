@@ -1,7 +1,4 @@
-import torch
-from torch import nn
-
-from actors.Actors import UnetActor, Critic, Actor
+from actors.Actors import Actor
 
 
 class ActorCritic(Actor):
@@ -10,9 +7,6 @@ class ActorCritic(Actor):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        # override critic value
-        self.critic = Critic(self.critic_pretrain_path)
 
     def evaluate(self, imgs, actions):
         """
@@ -36,6 +30,6 @@ class ActorCritic(Actor):
         entropy = distribution.entropy()
 
         # unsqueeze to match shape to multiply with logprobs
-        v = self.critic(imgs).unsqueeze(-1).unsqueeze(-1)
+        v = self.critic(imgs).unsqueeze(-1)
 
         return actions, logits, log_probs, entropy, v, old_log_probs

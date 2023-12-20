@@ -4,25 +4,16 @@ import random
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from typing import Tuple
 
-import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import pytorch_lightning as pl
 import torch
 from bdicardio.utils.ransac_utils import ransac_sector_extraction
-from pytorch_lightning.loggers import TensorBoardLogger
-import nibabel as nib
 from scipy import ndimage
 from torch import Tensor
 
-from rewardnet.data_augmentation import create_random_blobs
 from utils.Metrics import accuracy, dice_score
-from vital.vital.metrics.train.functional import differentiable_dice_score
-
-from utils.file_utils import save_batch_to_dataset_v2
 from utils.logging_helper import log_image
 
 
@@ -56,10 +47,10 @@ class RLmodule(pl.LightningModule):
             Actions (used for rewards, log_pobs, etc), sampled_actions (mainly for display), log_probs, rewards
         """
         actions = self.actor.act(imgs, sample=sample)
-        rewards = self.reward_func(actions, imgs, gt.unsqueeze(1))
+        rewards = self.reward_func(actions, imgs, gt)
 
         if use_gt is not None:
-            actions[use_gt, ...] = gt.unsqueeze(1)[use_gt, ...]
+            actions[use_gt, ...] = gt[use_gt, ...]
 
         _, _, log_probs, _, _, _ = self.actor.evaluate(imgs, actions)
         return actions, log_probs, rewards
@@ -109,8 +100,8 @@ class RLmodule(pl.LightningModule):
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt, b_use_gt))
 
-        acc = accuracy(prev_actions, b_img, b_gt.unsqueeze(1))
-        dice = dice_score(prev_actions, b_gt.unsqueeze(1))
+        acc = accuracy(prev_actions, b_img, b_gt)
+        dice = dice_score(prev_actions, b_gt)
 
         logs = {'val_loss': loss,
                 "val_reward": torch.mean(prev_rewards.type(torch.float)),
@@ -120,12 +111,12 @@ class RLmodule(pl.LightningModule):
 
         # log images
         idx = random.randint(0, len(b_img) - 1)  # which image to log
-        log_image(self.logger, img=b_img[idx], title='Image', number=batch_idx)
-        log_image(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx)
-        log_image(self.logger, img=prev_actions[idx], title='Prediction', number=batch_idx,
+        log_image(self.logger, img=b_img[idx].permute((0, 2, 1)), title='Image', number=batch_idx)
+        log_image(self.logger, img=b_gt[idx].unsqueeze(0).permute((0, 2, 1)), title='GroundTruth', number=batch_idx)
+        log_image(self.logger, img=prev_actions[idx].unsqueeze(0).permute((0, 2, 1)), title='Prediction', number=batch_idx,
                   img_text=prev_rewards[idx].mean())
         if prev_rewards.shape == prev_actions.shape:
-            log_image(self.logger, img=prev_rewards[idx], title='RewardMap', number=batch_idx)
+            log_image(self.logger, img=prev_rewards[idx].unsqueeze(0).permute((0, 2, 1)), title='RewardMap', number=batch_idx)
 
         self.log_dict(logs)
         return logs
@@ -147,8 +138,8 @@ class RLmodule(pl.LightningModule):
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt, b_use_gt))
-        acc = accuracy(prev_actions, b_img, b_gt.unsqueeze(1))
-        dice = dice_score(prev_actions, b_gt.unsqueeze(1))
+        acc = accuracy(prev_actions, b_img, b_gt)
+        dice = dice_score(prev_actions, b_gt)
 
         logs = {'test_loss': loss,
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
@@ -160,17 +151,15 @@ class RLmodule(pl.LightningModule):
         _, _, _, _, v, _ = self.actor.evaluate(b_img, prev_actions)
 
         for i in range(len(b_img)):
-            log_image(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1))
-            log_image(self.logger, img=b_gt[i].unsqueeze(0), title='test_GroundTruth', number=batch_idx * (i + 1))
-            log_image(self.logger, img=prev_actions[i], title='test_Prediction', number=batch_idx * (i + 1),
+            log_image(self.logger, img=b_img[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
+            log_image(self.logger, img=b_gt[i].unsqueeze(0).permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
+            log_image(self.logger, img=prev_actions[i].unsqueeze(0).permute((0, 2, 1)), title='test_Prediction', number=batch_idx * (i + 1),
                       img_text=acc[i].mean())
             if v.shape == prev_actions.shape:
-                log_image(self.logger, img=v[i], title='test_v_function', number=batch_idx * (i + 1),
+                log_image(self.logger, img=v[i].unsqueeze(0).permute((0, 2, 1)), title='test_v_function', number=batch_idx * (i + 1),
                           img_text=v[i].mean())
             if prev_rewards.shape == prev_actions.shape:
-                log_image(self.logger, img=prev_rewards[i], title='test_RewardMap', number=batch_idx * (i + 1))
-
-        # save_batch_to_dataset_v2(b_img, b_gt, prev_actions, batch_idx, './simple_reward_net/dataset_supervised/')
+                log_image(self.logger, img=prev_rewards[i].unsqueeze(0).permute((0, 2, 1)), title='test_RewardMap', number=batch_idx * (i + 1))
 
         self.log_dict(logs)
         return logs
