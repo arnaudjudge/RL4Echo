@@ -27,8 +27,8 @@ class RewardUnet(Reward):
 
     @torch.no_grad()
     def __call__(self, pred, imgs, gt):
-        stack = torch.stack((imgs, pred), dim=1).squeeze(2)
-        return torch.sigmoid(self.net(stack))
+        stack = torch.stack((imgs.squeeze(1), pred), dim=1)
+        return torch.sigmoid(self.net(stack)).squeeze(1)
 
 
 class AccuracyMap(Reward):
