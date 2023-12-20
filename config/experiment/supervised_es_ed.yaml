@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - override /datamodule: es_ed
+
+model:
+  input_shape: [1, 256, 256]
+  output_shape: [3, 256, 256]
+  loss:
+    _target_: torch.nn.CrossEntropyLoss
+
+run_name: es_ed

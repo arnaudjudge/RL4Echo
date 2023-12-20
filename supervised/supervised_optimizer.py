@@ -34,13 +34,15 @@ class DiceLoss(nn.Module):
 
 
 class SupervisedOptimizer(pl.LightningModule):
-    def __init__(self, ckpt_path=None, predict_save_dir=None, **kwargs):
+    def __init__(self, input_shape=(1, 256, 256), output_shape=(1, 256, 256), loss=nn.BCELoss(), ckpt_path=None, predict_save_dir=None, **kwargs):
         super().__init__(**kwargs)
 
-        self.net = UNet(input_shape=(1, 256, 256), output_shape=(1, 256, 256))
+        self.net = UNet(input_shape=input_shape, output_shape=output_shape)
         # self.net.load_state_dict(torch.load("./auto_iteration3/0/actor.ckpt"))
+        self.input_shape = input_shape
+        self.output_shape = output_shape
 
-        self.loss = nn.BCELoss()
+        self.loss = loss
         self.save_test_results = False
         self.ckpt_path = ckpt_path
         self.predict_save_dir = predict_save_dir
@@ -48,7 +50,12 @@ class SupervisedOptimizer(pl.LightningModule):
         self.dice = Dice()
 
     def forward(self, x):
-        return self.net.forward(x)
+        out = self.net.forward(x)
+        if self.output_shape[0] > 1:
+            out = torch.softmax(out, dim=1)
+        else:
+            out = torch.sigmoid(out).squeeze(1)
+        return out
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=0.001)
@@ -56,9 +63,9 @@ class SupervisedOptimizer(pl.LightningModule):
     def training_step(self, batch: dict[str, Tensor], *args, **kwargs) -> Dict:
         x, y = batch['img'], batch['mask']
 
-        y_hat = torch.sigmoid(self.forward(x))
+        y_hat = self.forward(x)
 
-        loss = self.loss(y_hat.squeeze(1), y)
+        loss = self.loss(y_hat, y)
 
         logs = {
             'loss': loss,
@@ -69,34 +76,27 @@ class SupervisedOptimizer(pl.LightningModule):
 
     def validation_step(self, batch: dict[str, Tensor], batch_idx: int):
         b_img, b_gt = batch['img'], batch['mask']
-        y_pred = torch.sigmoid(self.forward(b_img))
+        y_pred = self.forward(b_img)
 
-        loss = self.loss(y_pred.squeeze(1), b_gt)
+        loss = self.loss(y_pred, b_gt)
 
-        # test_gt = b_gt.unsqueeze(1)
-        # a = 1 - test_gt
-        # d_tensor = torch.stack((a, test_gt), dim=1).squeeze(2)
-        #
-        # should_be_gt = torch.argmax(d_tensor, dim=1)
-        # assert (should_be_gt == b_gt).all()
+        if self.output_shape[0] > 1:
+            y_pred = y_pred.argmax(dim=1)
+        else:
+            y_pred = torch.round(y_pred)
 
-        # 1 - differentiable_dice_score(d_tensor, b_gt)
-
-        y_pred = torch.round(y_pred)
-        acc = accuracy(y_pred, b_img, b_gt.unsqueeze(1))
-        dice = dice_score(y_pred, b_gt.unsqueeze(1))
-        # d = self.dice(y_pred, b_gt.unsqueeze(1).type(torch.int64))
+        acc = accuracy(y_pred, b_img, b_gt)
+        dice = dice_score(y_pred, b_gt)
         logs = {'val_loss': loss,
                 'val_acc': acc.mean(),
                 'val_dice': dice.mean(),
-                # 'val_d': d.mean()
                 }
 
         # log images
         idx = random.randint(0, len(b_img) - 1)  # which image to log
-        log_image(self.logger, img=b_img[idx], title='Image', number=batch_idx)
-        log_image(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx)
-        log_image(self.logger, img=y_pred[idx], title='Prediction', number=batch_idx,
+        log_image(self.logger, img=b_img[idx].permute((0, 2, 1)), title='Image', number=batch_idx)
+        log_image(self.logger, img=b_gt[idx].unsqueeze(0).permute((0, 2, 1)), title='GroundTruth', number=batch_idx)
+        log_image(self.logger, img=y_pred[idx].unsqueeze(0).permute((0, 2, 1)), title='Prediction', number=batch_idx,
                   img_text=acc[idx].mean())
 
         self.log_dict(logs)
@@ -104,14 +104,17 @@ class SupervisedOptimizer(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         b_img, b_gt = batch['img'], batch['mask']
-        y_pred = torch.sigmoid(self.forward(b_img))
+        y_pred = self.forward(b_img)
 
-        loss = self.loss(y_pred, b_gt.unsqueeze(1))
+        loss = self.loss(y_pred, b_gt)
 
-        y_pred = torch.round(y_pred)
+        if self.output_shape[0] > 1:
+            y_pred = y_pred.argmax(dim=1)
+        else:
+            y_pred = torch.round(y_pred)
 
-        acc = accuracy(y_pred, b_img, b_gt.unsqueeze(1))
-        dice = dice_score(y_pred, b_gt.unsqueeze(1))
+        acc = accuracy(y_pred, b_img, b_gt)
+        dice = dice_score(y_pred, b_gt)
 
         if self.save_test_results:
             affine = np.diag(np.asarray([1, 1, 1, 0]))
@@ -129,9 +132,9 @@ class SupervisedOptimizer(pl.LightningModule):
                 }
 
         for i in range(len(b_img)):
-            log_image(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1))
-            log_image(self.logger, img=b_gt[i].unsqueeze(0), title='test_GroundTruth', number=batch_idx * (i + 1))
-            log_image(self.logger, img=y_pred[i], title='test_Prediction', number=batch_idx * (i + 1),
+            log_image(self.logger, img=b_img[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
+            log_image(self.logger, img=b_gt[i].unsqueeze(0).permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
+            log_image(self.logger, img=y_pred[i].unsqueeze(0).permute((0, 2, 1)), title='test_Prediction', number=batch_idx * (i + 1),
                       img_text=acc[i].mean())
 
         self.log_dict(logs)

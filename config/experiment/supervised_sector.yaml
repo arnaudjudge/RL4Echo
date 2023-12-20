@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - override /datamodule: sector
+
+model:
+  input_shape: [1, 256, 256]
+  output_shape: [1, 256, 256]
+  loss:
+    _target_: torch.nn.BCELoss
+
+run_name: sector

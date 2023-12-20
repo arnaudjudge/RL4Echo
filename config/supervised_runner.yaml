@@ -1,13 +1,13 @@
 work_dir: ${hydra:runtime.cwd}
-run_name: exp_test
+run_name: supervised_default
 
 defaults:
   - logger: tensorboard
   - model: supervised
   - datamodule: sector
   - callbacks: default
-
   - _self_
+  - experiment: supervised_es_ed
 
 seed: 1
 
@@ -18,14 +18,14 @@ callbacks:
   model_checkpoint:
     monitor: val_acc
 
-predict_subset_frac: 0.1
+#predict_subset_frac: 0.1
 
 datamodule:
   gt_column: Gt_0
 
 trainer:
   _target_: pytorch_lightning.Trainer
-  max_epochs: 100
+  max_epochs: 50
   log_every_n_steps: 1
   gpus: 1
   #num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)
