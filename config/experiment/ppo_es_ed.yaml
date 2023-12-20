@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - override /datamodule: es_ed
+  - override /actor/actor@model.actor.actor: categorical_unet_actor
+  - override /reward@model.reward: pixelwise_accuracy
+
+run_name: sector
