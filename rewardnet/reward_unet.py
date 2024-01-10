@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 import torch
 from torch import nn
 from torchvision import models
-from vital.vital.models.segmentation.unet import UNet
+from vital.models.segmentation.unet import UNet
 
 from utils.Metrics import accuracy
 from utils.logging_helper import log_image

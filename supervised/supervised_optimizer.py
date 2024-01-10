@@ -15,10 +15,11 @@ from matplotlib import pyplot as plt
 from pytorch_lightning.loggers import TensorBoardLogger
 from scipy import ndimage
 from torch import nn, Tensor
-from vital.vital.models.segmentation.unet import UNet
+from vital.metrics.camus.anatomical.utils import check_segmentation_validity
+from vital.models.segmentation.unet import UNet
 
 from utils.Metrics import accuracy, dice_score
-from vital.vital.metrics.train.functional import differentiable_dice_score
+from vital.metrics.train.functional import differentiable_dice_score
 from torchmetrics.classification import Dice
 from utils.file_utils import save_batch_to_dataset, save_batch_to_dataset_v2
 from utils.logging_helper import log_image
@@ -138,8 +139,6 @@ class SupervisedOptimizer(pl.LightningModule):
                       img_text=acc[i].mean())
 
         self.log_dict(logs)
-
-        #save_batch_to_dataset(b_img, b_gt, y_pred, batch_idx, './simple_reward_net/dataset_supervised/')
 
         return logs
 

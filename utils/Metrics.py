@@ -1,5 +1,5 @@
 import torch
-from vital.vital.metrics.train.functional import differentiable_dice_score
+from vital.metrics.train.functional import differentiable_dice_score
 
 
 def accuracy(pred, imgs, gt):

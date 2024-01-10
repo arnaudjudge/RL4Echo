@@ -5,7 +5,7 @@ from bdicardio.utils.ransac_utils import ransac_sector_extraction
 from scipy import ndimage
 from scipy.ndimage import binary_fill_holes
 from torchmetrics.functional import dice
-from vital.vital.models.segmentation.unet import UNet
+from vital.models.segmentation.unet import UNet
 
 """
 Reward functions must each have pred, img, gt as input parameters

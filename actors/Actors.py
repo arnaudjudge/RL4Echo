@@ -3,7 +3,7 @@ import copy
 import torch
 import torch.nn as nn
 from torch.distributions import Bernoulli, Categorical
-from vital.vital.models.segmentation.unet import UNet
+from vital.models.segmentation.unet import UNet
 from rewardnet.reward_net import get_resnet
 
 
