@@ -10,7 +10,9 @@ import nibabel as nib
 import numpy as np
 import pytorch_lightning as pl
 import torch
+from bdicardio.utils.morphological_and_ae import MorphologicalAndTemporalCorrectionAEApplicator
 from bdicardio.utils.ransac_utils import ransac_sector_extraction
+from bdicardio.utils.segmentation_validity import check_segmentation_for_all_frames
 from matplotlib import pyplot as plt
 from pytorch_lightning.loggers import TensorBoardLogger
 from scipy import ndimage
@@ -21,7 +23,7 @@ from vital.models.segmentation.unet import UNet
 from utils.Metrics import accuracy, dice_score
 from vital.metrics.train.functional import differentiable_dice_score
 from torchmetrics.classification import Dice
-from utils.file_utils import save_batch_to_dataset, save_batch_to_dataset_v2
+from utils.file_utils import get_img_subpath
 from utils.logging_helper import log_image
 
 
@@ -150,22 +152,26 @@ class SupervisedOptimizer(pl.LightningModule):
             torch.save(self.net.state_dict(), self.ckpt_path)
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
-        b_img, b_gt, dicoms = batch['img'], batch['mask'], batch['dicom']
-        actions = torch.round(torch.sigmoid(self.forward(b_img)))
-        acc = accuracy(actions, b_img, b_gt.unsqueeze(1))
+        b_img, b_gt, dicoms, inst = batch['img'], batch['mask'], batch['dicom'], batch['instant']
+        ae = MorphologicalAndTemporalCorrectionAEApplicator("nathanpainchaud/echo-arvae")
+        actions = self.forward(b_img)
+        if self.output_shape[0] > 1:
+            actions = actions.argmax(dim=1)
+        else:
+            actions = torch.round(actions)
+
+        acc = accuracy(actions, b_img, b_gt)
         print((acc > 0.99).sum())
         initial_params = copy.deepcopy(self.net.state_dict())
         itr = 0
         df = self.trainer.datamodule.df
         for i in range(len(b_img)):
-            if acc[i] > 0.99:
-                df.loc[df['dicom_uuid'] == dicoms[i], self.trainer.datamodule.hparams.gt_column] = True
-                df.loc[df['dicom_uuid'] == dicoms[i], self.trainer.datamodule.hparams.splits_column] = 'train'
+            if acc[i] > 0.98 and check_segmentation_validity(actions[i].cpu().numpy().T, (1.0, 1.0), list(set(np.unique(actions[i].cpu().numpy())))):
+                df.loc[(df['dicom_uuid'] == dicoms[i]) & (df['instant'] == inst[i]), self.trainer.datamodule.hparams.gt_column] = True
+                df.loc[(df['dicom_uuid'] == dicoms[i]) & (df['instant'] == inst[i]), self.trainer.datamodule.hparams.splits_column] = 'train'
                 # save approx gt since
-                path_dict = json.loads(
-                    df.loc[df['dicom_uuid'] == dicoms[i], 'relative_path'].item().replace("\'", "\""))
-                approx_gt_path = self.trainer.datamodule.hparams.data_dir + '/approx_gt/' + path_dict['mask']
-                print(f"{dicoms[i]}: {approx_gt_path}")
+                path = get_img_subpath(df.loc[df['dicom_uuid'] == dicoms[i]].iloc[0], suffix=f"_img_{inst[i]}")
+                approx_gt_path = self.trainer.datamodule.hparams.data_dir + '/approx_gt/' + path.replace("img", "approx_gt")
                 Path(approx_gt_path).parent.mkdir(parents=True, exist_ok=True)
                 hdr = nib.Nifti1Header()
                 nifti = nib.Nifti1Image(actions[i].cpu().numpy(), np.diag(np.asarray([1, 1, 1, 0])), hdr)
@@ -175,7 +181,7 @@ class SupervisedOptimizer(pl.LightningModule):
                     # get random seed based on time to maximise randomness of noise and subsequent predictions
                     # explore as much space around policy as possible
                     time_seed = int(round(datetime.now().timestamp())) + i
-                    torch.manual_seed(1695228288)
+                    torch.manual_seed(time_seed)
 
                     # load initial params so noise is not compounded
                     self.net.load_state_dict(initial_params, strict=True)
@@ -186,13 +192,17 @@ class SupervisedOptimizer(pl.LightningModule):
                             param.add_(torch.randn(param.size()).cuda() * multiplier)
 
                     # make prediction
-                    action = torch.sigmoid(self.forward(b_img[i].unsqueeze(0)))
-                    action = torch.round(action)
+                    action = self.forward(b_img[i].unsqueeze(0))
+                    if self.output_shape[0] > 1:
+                        action = action.argmax(dim=1)
+                    else:
+                        action = torch.round(action)
 
-                    # import matplotlib.pyplot as plt
-                    # plt.figure()
-                    # plt.title(f"{multiplier}, seed: {time_seed}")
-                    # plt.imshow(action[0, 0, ...].cpu().numpy())
+                    # f, (ax1, ax2) = plt.subplots(1, 2)
+                    # ax1.set_title(f"Original")
+                    # ax1.imshow(actions[i, ...].cpu().numpy())
+                    # ax2.set_title(f"{multiplier}, seed: {time_seed}")
+                    # ax2.imshow(action[0, ...].cpu().numpy())
                     # plt.show()
 
                     Path(f"{self.predict_save_dir}/images").mkdir(parents=True, exist_ok=True)
@@ -209,29 +219,36 @@ class SupervisedOptimizer(pl.LightningModule):
                     nifti_gt = nib.Nifti1Image(np.expand_dims(b_gt[i].cpu().numpy(), 0), affine, hdr)
                     nifti_gt.to_filename(f"./{self.predict_save_dir}/gt/{filename}")
 
-                    nifti_pred = nib.Nifti1Image(action[0].cpu().numpy(), affine, hdr)
+                    nifti_pred = nib.Nifti1Image(np.expand_dims(action[0].cpu().numpy(), 0), affine, hdr)
                     nifti_pred.to_filename(f"./{self.predict_save_dir}/pred/{filename}")
             else:
                 try:
                     # Find each blob in the image
-                    lbl, num = ndimage.label(actions[i, 0, ...].cpu().numpy())
-                    # Count the number of elements per label
-                    count = np.bincount(lbl.flat)
-                    # Select the largest blob
-                    maxi = np.argmax(count[1:]) + 1
-                    # Keep only the other blobs
-                    lbl[lbl != maxi] = 0
-                    ransac, *_ = ransac_sector_extraction(lbl, slim_factor=0.01, circle_center_tol=0.45, plot=False)
+                    # lbl, num = ndimage.label(actions[i, ...].cpu().numpy())
+                    # # Count the number of elements per label
+                    # count = np.bincount(lbl.flat)
+                    # # Select the largest blob
+                    # maxi = np.argmax(count[1:]) + 1
+                    # # Keep only the other blobs
+                    # lbl[lbl != maxi] = 0
+                    # corrected, *_ = ransac_sector_extraction(lbl, slim_factor=0.01, circle_center_tol=0.45, plot=False)
+                    # corrected = np.expand_dims(corrected, 0)
+                    # if corrected.sum() < actions[i, ...].cpu().numpy().sum() * 0.1:
+                    #     continue
 
-                    if ransac.sum() < actions[i, 0, ...].cpu().numpy().sum() * 0.1:
-                        continue
+                    corrected, _, _ = ae.fix_morphological_and_ae(actions[i].unsqueeze(-1).cpu().numpy())
+                    corrected = corrected.transpose((2, 0, 1))
+                    anat_validity = check_segmentation_validity(corrected[0, ...].T, (1.0, 1.0),
+                                                                list(set(np.unique(corrected))))
                     # f, (ax1, ax2) = plt.subplots(1, 2)
                     # ax1.set_title(f"Original")
-                    # ax1.imshow(actions[i, 0, ...].cpu().numpy())
-                    #
-                    # ax2.set_title(f"ransac")
-                    # ax2.imshow(ransac)
+                    # ax1.imshow(actions[i, ...].cpu().numpy())
+                    # ax2.set_title(f"corrected w/ anatomical val {anat_validity}")
+                    # ax2.imshow(corrected[0, ...])
                     # plt.show()
+
+                    if not anat_validity:
+                        continue
 
                     Path(f"{self.predict_save_dir}/images").mkdir(parents=True, exist_ok=True)
                     Path(f"{self.predict_save_dir}/gt").mkdir(parents=True, exist_ok=True)
@@ -244,10 +261,10 @@ class SupervisedOptimizer(pl.LightningModule):
                     nifti_img = nib.Nifti1Image(b_img[i].cpu().numpy(), affine, hdr)
                     nifti_img.to_filename(f"./{self.predict_save_dir}/images/{filename}")
 
-                    nifti_gt = nib.Nifti1Image(np.expand_dims(ransac, 0), affine, hdr)
+                    nifti_gt = nib.Nifti1Image(corrected, affine, hdr)
                     nifti_gt.to_filename(f"./{self.predict_save_dir}/gt/{filename}")
 
-                    nifti_pred = nib.Nifti1Image(actions[i].cpu().numpy(), affine, hdr)
+                    nifti_pred = nib.Nifti1Image(np.expand_dims(actions[i].cpu().numpy(), 0), affine, hdr)
                     nifti_pred.to_filename(f"./{self.predict_save_dir}/pred/{filename}")
                 except Exception as e:
                     print(e)

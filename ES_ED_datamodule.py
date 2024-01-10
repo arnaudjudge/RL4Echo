@@ -9,16 +9,8 @@ import pytorch_lightning as pl
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
-from torch.utils.data import random_split, DataLoader
-
-
-def get_img_subpath(row):
-    """
-    Format string for path of image in file structure
-    :param row: dataframe row with all columns filled in
-    :return: string containing path to image file
-    """
-    return f"{row['study']}/{row['view'].lower()}/{row['dicom_uuid']}_img_{row['instant']}.nii.gz"
+from torch.utils.data import DataLoader
+from utils.file_utils import get_img_subpath
 
 
 class ESEDDataset(Dataset):
@@ -40,12 +32,12 @@ class ESEDDataset(Dataset):
         return len(self.df.index)
 
     def __getitem__(self, idx):
-        sub_path = get_img_subpath(self.df.iloc[idx])
+        sub_path = get_img_subpath(self.df.iloc[idx], suffix=f"_img_{self.df.iloc[idx]['instant']}")
 
         img = np.expand_dims(nib.load(self.data_path + '/' + sub_path).get_fdata(), 0) / 255
         mask = nib.load(self.data_path + '/' + sub_path.replace("img", 'mask')).get_fdata()
 
-        approx_gt_path = self.data_path + '/' + sub_path.replace("img", 'approx_gt')
+        approx_gt_path = self.data_path + '/approx_gt/' + sub_path.replace("img", 'approx_gt')
         if self.use_gt[idx]:
             approx_gt = nib.load(approx_gt_path).get_fdata()
         else:
@@ -56,9 +48,10 @@ class ESEDDataset(Dataset):
 
         return {'img': torch.tensor(img, dtype=torch.float32),
                 'mask': torch.tensor(mask).type(torch.LongTensor),
-                'approx_gt': torch.tensor(approx_gt, dtype=torch.float32),
+                'approx_gt': torch.tensor(approx_gt).type(torch.LongTensor),
                 'use_gt': torch.tensor(self.use_gt[idx]),
-                'dicom': self.df.iloc[idx]['dicom_uuid']
+                'dicom': self.df.iloc[idx]['dicom_uuid'],
+                'instant': self.df.iloc[idx]['instant']
                 }
 
 
