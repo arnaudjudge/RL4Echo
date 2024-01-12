@@ -12,7 +12,7 @@ import pytorch_lightning as pl
 import torch
 from bdicardio.utils.morphological_and_ae import MorphologicalAndTemporalCorrectionAEApplicator
 from bdicardio.utils.ransac_utils import ransac_sector_extraction
-from bdicardio.utils.segmentation_validity import check_segmentation_for_all_frames
+from bdicardio.utils.segmentation_validity import check_segmentation_for_all_frames, compare_segmentation_with_ae
 from scipy import ndimage
 from torch import Tensor
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
@@ -181,15 +181,26 @@ class RLmodule(pl.LightningModule):
 
         actions, _, _ = self.rollout(b_img, b_gt, sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, b_gt, sample=False)
-        acc = accuracy(actions_unsampled, b_img, b_gt)
-        print((acc > 0.99).sum())
+
+        corrected = np.empty_like(b_img.cpu().numpy())
+        corrected_validity = np.empty(len(b_img))
+        ae_comp = np.empty(len(b_img))
+        for i, act in enumerate(actions):
+            c, _, _ = ae.fix_morphological_and_ae(act.unsqueeze(-1).cpu().numpy())
+            corrected[i] = c.transpose((2, 0, 1))
+            corrected_validity[i] = check_segmentation_validity(corrected[i, 0, ...].T, (1.0, 1.0),
+                                                                list(set(np.unique(corrected[i]))))
+            ae_comp[i] = compare_segmentation_with_ae(act.unsqueeze(-1).cpu().numpy(), corrected[i])
+
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
         itr = 0
         df = self.trainer.datamodule.df
         for i in range(len(b_img)):
-            if acc[i] > 0.95 and check_segmentation_validity(actions_unsampled[i].cpu().numpy().T, (1.0, 1.0), list(set(np.unique(actions_unsampled[i].cpu().numpy())))):
+            df.loc[(df['dicom_uuid'] == dicoms[i]) & (
+                        df['instant'] == inst[i]), self.trainer.datamodule.hparams.splits_column] = 'train'
+        for i in range(len(b_img)):
+            if ae_comp[i] > 0.95 and check_segmentation_validity(actions_unsampled[i].cpu().numpy().T, (1.0, 1.0), list(set(np.unique(actions_unsampled[i].cpu().numpy())))):
                 df.loc[(df['dicom_uuid'] == dicoms[i]) & (df['instant'] == inst[i]), self.trainer.datamodule.hparams.gt_column] = True
-                df.loc[(df['dicom_uuid'] == dicoms[i]) & (df['instant'] == inst[i]), self.trainer.datamodule.hparams.splits_column] = 'train'
 
                 path = get_img_subpath(df.loc[df['dicom_uuid'] == dicoms[i]].iloc[0],
                                        suffix=f"_img_{inst[i]}")
@@ -263,10 +274,6 @@ class RLmodule(pl.LightningModule):
                     # if corrected.sum() < actions[i, ...].cpu().numpy().sum() * 0.1:
                     #     continue
 
-                    corrected, _, _ = ae.fix_morphological_and_ae(actions[i].unsqueeze(-1).cpu().numpy())
-                    corrected = corrected.transpose((2, 0, 1))
-                    anat_validity = check_segmentation_validity(corrected[0, ...].T, (1.0, 1.0), list(set(np.unique(corrected))))
-
                     # f, (ax1, ax2) = plt.subplots(1, 2)
                     # ax1.set_title(f"Original")
                     # ax1.imshow(actions[i, ...].cpu().numpy().T)
@@ -274,7 +281,7 @@ class RLmodule(pl.LightningModule):
                     # ax2.set_title(f"corrected w/ anatomical val {anat_validity}")
                     # ax2.imshow(corrected[0, ...].T)
                     # plt.show()
-                    if not anat_validity:
+                    if not corrected_validity[i]:
                         continue
 
                     Path(f"{self.predict_save_dir}/images").mkdir(parents=True, exist_ok=True)
@@ -288,7 +295,7 @@ class RLmodule(pl.LightningModule):
                     nifti_img = nib.Nifti1Image(b_img[i].cpu().numpy(), affine, hdr)
                     nifti_img.to_filename(f"./{self.predict_save_dir}/images/{filename}")
 
-                    nifti_gt = nib.Nifti1Image(corrected, affine, hdr)
+                    nifti_gt = nib.Nifti1Image(corrected[i], affine, hdr)
                     nifti_gt.to_filename(f"./{self.predict_save_dir}/gt/{filename}")
 
                     nifti_pred = nib.Nifti1Image(np.expand_dims(actions[i].cpu().numpy(), 0), affine, hdr)

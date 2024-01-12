@@ -27,7 +27,7 @@ def main(cfg):
     # train supervised network for initial actor
     overrides = main_overrides + ['trainer.max_epochs=100',
                                   'datamodule.subset_frac=0.01',
-                                  'predict_subset_frac=0.1',
+                                  'predict_subset_frac=1000',
                                   f'model.predict_save_dir={output_path}',
                                   f'model.ckpt_path={output_path}/{0}/actor.ckpt',
                                   f'experiment=supervised_{experiment}']

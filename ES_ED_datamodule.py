@@ -140,7 +140,7 @@ class ESEDDataModule(pl.LightningDataModule):
             np.random.shuffle(use_gt)
             self.df[self.hparams.gt_column] = use_gt.astype(bool)
 
-        if self.hparams.subset_frac:
+        if self.hparams.subset_frac and type(self.hparams.subset_frac) == float:
             train_num = int(self.hparams.subset_frac * len(self.train_idx))
             self.train_idx = self.train_idx[:train_num]
             val_num = int(self.hparams.subset_frac * len(self.val_idx))
@@ -149,6 +149,11 @@ class ESEDDataModule(pl.LightningDataModule):
             self.test_idx = self.test_idx[:test_num]
             pred_num = int(self.hparams.subset_frac * len(self.pred_idx))
             self.pred_idx = self.pred_idx[-pred_num:]
+        elif self.hparams.subset_frac and type(self.hparams.subset_frac) == int:
+            self.train_idx = self.train_idx[:min(self.hparams.subset_frac, len(self.train_idx))]
+            self.val_idx = self.val_idx[:min(self.hparams.subset_frac, len(self.val_idx))]
+            self.test_idx = self.test_idx[:min(self.hparams.subset_frac, len(self.test_idx))]
+            self.pred_idx = self.pred_idx[:min(self.hparams.subset_frac, len(self.pred_idx))]
 
         if stage == "fit" or stage is None:
             self.train = ESEDDataset(self.df.loc[self.train_idx],
