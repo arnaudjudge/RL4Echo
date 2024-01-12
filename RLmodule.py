@@ -18,8 +18,10 @@ from torch import Tensor
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 
 from utils.Metrics import accuracy, dice_score
-from utils.file_utils import get_img_subpath
+from utils.correctors import AEMorphoCorrector, RansacCorrector
+from utils.file_utils import get_img_subpath, save_to_reward_dataset
 from utils.logging_helper import log_image
+from utils.tensor_utils import convert_to_numpy
 
 
 class RLmodule(pl.LightningModule):
@@ -176,34 +178,27 @@ class RLmodule(pl.LightningModule):
             torch.save(self.actor.critic.net.state_dict(), self.critic_save_path)
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
-        b_img, b_gt, dicoms, inst = batch['img'], batch['mask'], batch['dicom'], batch['instant']
-        ae = MorphologicalAndTemporalCorrectionAEApplicator("nathanpainchaud/echo-arvae")
+        b_img, b_gt, dicoms, inst = batch['img'], batch['mask'], batch['dicom'], batch.get('instant', None)
+        corrector = RansacCorrector()
 
         actions, _, _ = self.rollout(b_img, b_gt, sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, b_gt, sample=False)
 
-        corrected = np.empty_like(b_img.cpu().numpy())
-        corrected_validity = np.empty(len(b_img))
-        ae_comp = np.empty(len(b_img))
-        for i, act in enumerate(actions):
-            c, _, _ = ae.fix_morphological_and_ae(act.unsqueeze(-1).cpu().numpy())
-            corrected[i] = c.transpose((2, 0, 1))
-            corrected_validity[i] = check_segmentation_validity(corrected[i, 0, ...].T, (1.0, 1.0),
-                                                                list(set(np.unique(corrected[i]))))
-            ae_comp[i] = compare_segmentation_with_ae(act.unsqueeze(-1).cpu().numpy(), corrected[i])
+        corrected, corrected_validity, ae_comp = corrector.correct_batch(b_img, actions_unsampled)
 
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
         itr = 0
         df = self.trainer.datamodule.df
         for i in range(len(b_img)):
             df.loc[(df['dicom_uuid'] == dicoms[i]) & (
-                        df['instant'] == inst[i]), self.trainer.datamodule.hparams.splits_column] = 'train'
+                        df.get('instant', None) == inst[i] if inst else True), self.trainer.datamodule.hparams.splits_column] = 'train'
         for i in range(len(b_img)):
             if ae_comp[i] > 0.95 and check_segmentation_validity(actions_unsampled[i].cpu().numpy().T, (1.0, 1.0), list(set(np.unique(actions_unsampled[i].cpu().numpy())))):
-                df.loc[(df['dicom_uuid'] == dicoms[i]) & (df['instant'] == inst[i]), self.trainer.datamodule.hparams.gt_column] = True
+                df.loc[(df['dicom_uuid'] == dicoms[i]) & (
+                        df.get('instant', None) == inst[i] if inst else True), self.trainer.datamodule.hparams.gt_column] = True
 
                 path = get_img_subpath(df.loc[df['dicom_uuid'] == dicoms[i]].iloc[0],
-                                       suffix=f"_img_{inst[i]}")
+                                       suffix=f"_img_{inst[i] if inst else ''}")
                 approx_gt_path = self.trainer.datamodule.hparams.data_dir + '/approx_gt/' + path.replace("img", "approx_gt")
                 Path(approx_gt_path).parent.mkdir(parents=True, exist_ok=True)
                 hdr = nib.Nifti1Header()
@@ -225,83 +220,28 @@ class RLmodule(pl.LightningModule):
                             param.add_(torch.randn(param.size()).cuda() * multiplier)
 
                     # make prediction
-                    action, *_ = self.actor.actor(b_img[i].unsqueeze(0))
-                    if action.shape[1] > 1:
-                        action = action.argmax(dim=1)
+                    deformed_action, *_ = self.actor.actor(b_img[i].unsqueeze(0))
+                    if len(deformed_action.shape) > 3:
+                        deformed_action = deformed_action.argmax(dim=1)
                     else:
-                        action = torch.round(action)
-
-                    # if np.random.rand() > 0.9:
-                    #     blobs = create_random_blobs()
-                    #     action = action.cpu().numpy().astype(np.uint8) & ~blobs
-                    #     action = torch.tensor(action)
-
-                    # f, (ax1, ax2) = plt.subplots(1, 2)
-                    # ax1.set_title(f"Original")
-                    # ax1.imshow(actions_unsampled[i, ...].cpu().numpy())
-                    # ax2.set_title(f"{multiplier}, seed: {time_seed}")
-                    # ax2.imshow(action[0, ...].cpu().numpy())
-                    # plt.show()
-
-                    Path(f"{self.predict_save_dir}/images").mkdir(parents=True, exist_ok=True)
-                    Path(f"{self.predict_save_dir}/gt").mkdir(parents=True, exist_ok=True)
-                    Path(f"{self.predict_save_dir}/pred").mkdir(parents=True, exist_ok=True)
+                        deformed_action = torch.round(deformed_action)
 
                     filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
-                    affine = np.diag(np.asarray([1, 1, 1, 0]))
-                    hdr = nib.Nifti1Header()
-
-                    nifti_img = nib.Nifti1Image(b_img[i].cpu().numpy(), affine, hdr)
-                    nifti_img.to_filename(f"./{self.predict_save_dir}/images/{filename}")
-
-                    nifti_gt = nib.Nifti1Image(np.expand_dims(actions_unsampled[i].cpu().numpy(), 0), affine, hdr)
-                    nifti_gt.to_filename(f"./{self.predict_save_dir}/gt/{filename}")
-
-                    nifti_pred = nib.Nifti1Image(np.expand_dims(action[0].cpu().numpy(), 0), affine, hdr)
-                    nifti_pred.to_filename(f"./{self.predict_save_dir}/pred/{filename}")
+                    save_to_reward_dataset(self.predict_save_dir,
+                                           filename,
+                                           convert_to_numpy(b_img[i]),
+                                           np.expand_dims(convert_to_numpy(b_gt[i]), 0),
+                                           convert_to_numpy(deformed_action))
             else:
-                try:
-                    # Find each blob in the image
-                    # lbl, num = ndimage.label(actions[i, ...].cpu().numpy())
-                    # # Count the number of elements per label
-                    # count = np.bincount(lbl.flat)
-                    # # Select the largest blob
-                    # maxi = np.argmax(count[1:]) + 1
-                    # # Keep only the other blobs
-                    # lbl[lbl != maxi] = 0
-                    # corrected, *_ = ransac_sector_extraction(lbl, slim_factor=0.01, circle_center_tol=0.45, plot=False)
-                    # corrected = np.expand_dims(corrected, 0)
-                    # if corrected.sum() < actions[i, ...].cpu().numpy().sum() * 0.1:
-                    #     continue
+                if not corrected_validity[i]:
+                    continue
 
-                    # f, (ax1, ax2) = plt.subplots(1, 2)
-                    # ax1.set_title(f"Original")
-                    # ax1.imshow(actions[i, ...].cpu().numpy().T)
-                    #
-                    # ax2.set_title(f"corrected w/ anatomical val {anat_validity}")
-                    # ax2.imshow(corrected[0, ...].T)
-                    # plt.show()
-                    if not corrected_validity[i]:
-                        continue
-
-                    Path(f"{self.predict_save_dir}/images").mkdir(parents=True, exist_ok=True)
-                    Path(f"{self.predict_save_dir}/gt").mkdir(parents=True, exist_ok=True)
-                    Path(f"{self.predict_save_dir}/pred").mkdir(parents=True, exist_ok=True)
-
-                    filename = f"{batch_idx}_{itr}_{i}_{random.randint(1, 1000)}.nii.gz"
-                    affine = np.diag(np.asarray([1, 1, 1, 0]))
-                    hdr = nib.Nifti1Header()
-
-                    nifti_img = nib.Nifti1Image(b_img[i].cpu().numpy(), affine, hdr)
-                    nifti_img.to_filename(f"./{self.predict_save_dir}/images/{filename}")
-
-                    nifti_gt = nib.Nifti1Image(corrected[i], affine, hdr)
-                    nifti_gt.to_filename(f"./{self.predict_save_dir}/gt/{filename}")
-
-                    nifti_pred = nib.Nifti1Image(np.expand_dims(actions[i].cpu().numpy(), 0), affine, hdr)
-                    nifti_pred.to_filename(f"./{self.predict_save_dir}/pred/{filename}")
-                except:
-                    pass
+                filename = f"{batch_idx}_{itr}_{i}_{int(round(datetime.now().timestamp()))}.nii.gz"
+                save_to_reward_dataset(self.predict_save_dir,
+                                       filename,
+                                       convert_to_numpy(b_img[i]),
+                                       convert_to_numpy(corrected[i]),
+                                       np.expand_dims(convert_to_numpy(actions[i]), 0))
 
         df.to_csv(self.trainer.datamodule.df_path)
         # make sure initial params are back at end of step
