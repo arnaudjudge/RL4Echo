@@ -26,7 +26,7 @@ from utils.tensor_utils import convert_to_numpy
 
 class RLmodule(pl.LightningModule):
 
-    def __init__(self, actor, reward, actor_save_path=None, critic_save_path=None, predict_save_dir=None, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, actor, reward, corrector=None, actor_save_path=None, critic_save_path=None, predict_save_dir=None, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
         self.actor = actor
@@ -36,6 +36,7 @@ class RLmodule(pl.LightningModule):
         self.critic_save_path = critic_save_path
 
         self.predict_save_dir = predict_save_dir
+        self.pred_corrector = corrector
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()
@@ -179,12 +180,11 @@ class RLmodule(pl.LightningModule):
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
         b_img, b_gt, dicoms, inst = batch['img'], batch['mask'], batch['dicom'], batch.get('instant', None)
-        corrector = RansacCorrector()
 
         actions, _, _ = self.rollout(b_img, b_gt, sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, b_gt, sample=False)
 
-        corrected, corrected_validity, ae_comp = corrector.correct_batch(b_img, actions_unsampled)
+        corrected, corrected_validity, ae_comp = self.pred_corrector.correct_batch(b_img, actions_unsampled)
 
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
         itr = 0

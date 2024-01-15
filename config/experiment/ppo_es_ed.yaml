@@ -3,6 +3,7 @@
 defaults:
   - override /datamodule: es_ed
   - override /actor/actor@model.actor.actor: categorical_unet_actor
-  - override /reward@model.reward: pixelwise_accuracy
+#  - override /reward@model.reward: pixelwise_accuracy
+  - override /corrector@model.corrector: ae
 
 run_name: sector

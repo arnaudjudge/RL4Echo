@@ -1,3 +1,6 @@
+defaults:
+  - /corrector: ae
+
 _target_: supervised.supervised_optimizer.SupervisedOptimizer
 
 input_shape: [1, 256, 256]

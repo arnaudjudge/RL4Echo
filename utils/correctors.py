@@ -21,8 +21,8 @@ class Corrector:
 
 
 class AEMorphoCorrector(Corrector):
-    def __init__(self):
-        self.ae_corrector = MorphologicalAndTemporalCorrectionAEApplicator("nathanpainchaud/echo-arvae")
+    def __init__(self, ae_ckpt_path):
+        self.ae_corrector = MorphologicalAndTemporalCorrectionAEApplicator(ae_ckpt_path)
 
     def correct_batch(self, b_img, b_act):
         corrected = np.empty_like(b_img.cpu().numpy())

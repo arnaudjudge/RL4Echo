@@ -1,0 +1,3 @@
+_target_: utils.correctors.AEMorphoCorrector
+
+ae_ckpt_path: "nathanpainchaud/echo-arvae"

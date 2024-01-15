@@ -20,9 +20,7 @@ def save_to_reward_dataset(save_dir, filename, image, gt, action):
     Path(f"{save_dir}/images").mkdir(parents=True, exist_ok=True)
     Path(f"{save_dir}/gt").mkdir(parents=True, exist_ok=True)
     Path(f"{save_dir}/pred").mkdir(parents=True, exist_ok=True)
-    print(image.shape)
-    print(gt.shape)
-    print(action.shape)
+
     # prepare
     affine = np.diag(np.asarray([1, 1, 1, 0]))
     hdr = nib.Nifti1Header()

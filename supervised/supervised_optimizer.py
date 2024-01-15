@@ -40,7 +40,7 @@ class DiceLoss(nn.Module):
 
 
 class SupervisedOptimizer(pl.LightningModule):
-    def __init__(self, input_shape=(1, 256, 256), output_shape=(1, 256, 256), loss=nn.BCELoss(), ckpt_path=None, predict_save_dir=None, **kwargs):
+    def __init__(self, input_shape=(1, 256, 256), output_shape=(1, 256, 256), loss=nn.BCELoss(), ckpt_path=None, corrector=None, predict_save_dir=None, **kwargs):
         super().__init__(**kwargs)
 
         self.net = UNet(input_shape=input_shape, output_shape=output_shape)
@@ -52,6 +52,7 @@ class SupervisedOptimizer(pl.LightningModule):
         self.save_test_results = False
         self.ckpt_path = ckpt_path
         self.predict_save_dir = predict_save_dir
+        self.pred_corrector = corrector
 
         self.dice = Dice()
 
@@ -156,14 +157,14 @@ class SupervisedOptimizer(pl.LightningModule):
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         b_img, b_gt, dicoms, inst = batch['img'], batch['mask'], batch['dicom'], batch.get('instant', None)
-        corrector = RansacCorrector()
+
         actions = self.forward(b_img)
         if self.output_shape[0] > 1:
             actions = actions.argmax(dim=1)
         else:
             actions = torch.round(actions)
 
-        corrected, corrected_validity, ae_comp = corrector.correct_batch(b_img, actions)
+        corrected, corrected_validity, ae_comp = self.pred_corrector.correct_batch(b_img, actions)
 
         initial_params = copy.deepcopy(self.net.state_dict())
         itr = 0

@@ -2,6 +2,7 @@
 
 defaults:
   - override /datamodule: sector
+  - override /corrector@model.corrector: ransac
 
 model:
   input_shape: [1, 256, 256]

@@ -3,5 +3,6 @@
 defaults:
   - override /datamodule: sector
   - override /actor/actor@model.actor.actor: binary_unet_actor
+  - override /corrector@model.corrector: ransac
 
 run_name: sector
