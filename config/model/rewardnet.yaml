@@ -1,3 +1,4 @@
 _target_: rewardnet.reward_unet.RewardOptimizer
 
-save_model_path: './CGPT_Loop/reward_net_v2.ckpt'
+save_model_path: ./reward_net.ckpt
+

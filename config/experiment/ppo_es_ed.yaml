@@ -6,4 +6,4 @@ defaults:
 #  - override /reward@model.reward: pixelwise_accuracy
   - override /corrector@model.corrector: ae
 
-run_name: sector
+run_name: es_ed
