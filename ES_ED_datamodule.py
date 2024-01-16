@@ -1,5 +1,3 @@
-import json
-import os
 from typing import Optional
 
 import nibabel as nib
@@ -8,8 +6,9 @@ import pandas as pd
 import pytorch_lightning as pl
 import torch
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
+
 from utils.file_utils import get_img_subpath
 
 

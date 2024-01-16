@@ -1,24 +1,17 @@
 import copy
-import json
 import random
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import matplotlib.pyplot as plt
-import numpy as np
 import nibabel as nib
+import numpy as np
 import pytorch_lightning as pl
 import torch
-from bdicardio.utils.morphological_and_ae import MorphologicalAndTemporalCorrectionAEApplicator
-from bdicardio.utils.ransac_utils import ransac_sector_extraction
-from bdicardio.utils.segmentation_validity import check_segmentation_for_all_frames, compare_segmentation_with_ae
-from scipy import ndimage
 from torch import Tensor
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 
 from utils.Metrics import accuracy, dice_score
-from utils.correctors import AEMorphoCorrector, RansacCorrector
 from utils.file_utils import get_img_subpath, save_to_reward_dataset
 from utils.logging_helper import log_image
 from utils.tensor_utils import convert_to_numpy

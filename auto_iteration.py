@@ -1,17 +1,12 @@
+from datetime import datetime
 from pathlib import Path
 
 import hydra
-import numpy as np
 import pandas as pd
-from datetime import datetime
-import torch
 from hydra import initialize, compose
 from hydra.core.global_hydra import GlobalHydra
-from hydra.utils import instantiate
 from omegaconf import OmegaConf
-from pytorch_lightning import Trainer
 
-from utils.instantiators import instantiate_callbacks
 from runner import main as runner_main
 
 

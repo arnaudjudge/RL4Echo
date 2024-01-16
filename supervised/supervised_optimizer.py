@@ -1,31 +1,19 @@
 import copy
-import json
-from datetime import datetime
 import random
-from pathlib import Path
+from datetime import datetime
 from typing import Dict, Any
 
-import cv2
 import nibabel as nib
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from bdicardio.utils.morphological_and_ae import MorphologicalAndTemporalCorrectionAEApplicator
-from bdicardio.utils.ransac_utils import ransac_sector_extraction
-from bdicardio.utils.segmentation_validity import check_segmentation_for_all_frames, compare_segmentation_with_ae
-from matplotlib import pyplot as plt
-from pytorch_lightning.loggers import TensorBoardLogger
-from scipy import ndimage
 from torch import nn, Tensor
+from torchmetrics.classification import Dice
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 from vital.models.segmentation.unet import UNet
 
 from utils.Metrics import accuracy, dice_score
-from vital.metrics.train.functional import differentiable_dice_score
-from torchmetrics.classification import Dice
-
-from utils.correctors import AEMorphoCorrector, RansacCorrector
-from utils.file_utils import get_img_subpath, save_to_reward_dataset
+from utils.file_utils import save_to_reward_dataset
 from utils.logging_helper import log_image
 from utils.tensor_utils import convert_to_numpy
 
