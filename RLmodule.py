@@ -205,7 +205,7 @@ class RLmodule(pl.LightningModule):
                 nifti = nib.Nifti1Image(torch.round(actions_unsampled[i]).cpu().numpy(), np.diag(np.asarray([1, 1, 1, 0])), hdr)
                 nifti.to_filename(approx_gt_path)
 
-                for j, multiplier in enumerate([0.005, 0.01]):
+                for j, multiplier in enumerate([0.005, 0.01, 0.015, 0.02]):
                     # get random seed based on time to maximise randomness of noise and subsequent predictions
                     # explore as much space around policy as possible
                     time_seed = int(round(datetime.now().timestamp())) + i
@@ -226,6 +226,14 @@ class RLmodule(pl.LightningModule):
                     else:
                         deformed_action = torch.round(deformed_action)
 
+                    # f, (ax1, ax2) = plt.subplots(1, 2)
+                    # ax1.set_title(f"Good initial action")
+                    # ax1.imshow(actions_unsampled[i, ...].cpu().numpy().T)
+                    #
+                    # ax2.set_title(f"Deformed network's action")
+                    # ax2.imshow(deformed_action[0, ...].cpu().numpy().T)
+                    # plt.show()
+
                     filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
@@ -235,6 +243,14 @@ class RLmodule(pl.LightningModule):
             else:
                 if not corrected_validity[i]:
                     continue
+
+                # f, (ax1, ax2) = plt.subplots(1, 2)
+                # ax1.set_title(f"Bad initial action")
+                # ax1.imshow(actions[i, ...].cpu().numpy().T)
+                #
+                # ax2.set_title(f"Corrected action")
+                # ax2.imshow(corrected[i, ...].T)
+                # plt.show()
 
                 filename = f"{batch_idx}_{itr}_{i}_{int(round(datetime.now().timestamp()))}.nii.gz"
                 save_to_reward_dataset(self.predict_save_dir,
