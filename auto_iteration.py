@@ -2,6 +2,8 @@ from pathlib import Path
 
 import hydra
 import numpy as np
+import pandas as pd
+from datetime import datetime
 import torch
 from hydra import initialize, compose
 from hydra.core.global_hydra import GlobalHydra
@@ -19,20 +21,28 @@ def main(cfg):
     initialize(version_base=None, config_path='./config')
 
     iterations = 5
-    output_path = f'./logs/auto_iteration_cardiac3'
+    output_path = f'./logs/auto_iteration_cardiac_NEW_METRICS'
     Path(output_path+"/0/").mkdir(parents=True, exist_ok=True)
     main_overrides = [f"logger.save_dir={output_path}"]
     experiment = 'es_ed'  # 'sector'
+    experiment_split_column = f"split_{datetime.now().timestamp()}"
 
     # train supervised network for initial actor
     overrides = main_overrides + ['trainer.max_epochs=100',
-                                  'datamodule.subset_frac=0.01',
+                                  'datamodule.subset_frac=0.012',
                                   'predict_subset_frac=1000',
                                   f'model.predict_save_dir={output_path}',
                                   f'model.ckpt_path={output_path}/{0}/actor.ckpt',
                                   f'experiment=supervised_{experiment}']
     sub_cfg = compose(config_name=f"supervised_runner.yaml", overrides=overrides)
     print(OmegaConf.to_yaml(sub_cfg))
+
+    # prepare dataset with custom split column
+    df = pd.read_csv(sub_cfg.datamodule.data_dir + sub_cfg.datamodule.csv_file, index_col=0)
+    df[experiment_split_column] = df.loc[:, sub_cfg.datamodule.splits_column]
+    df.to_csv(sub_cfg.datamodule.data_dir + sub_cfg.datamodule.csv_file)
+    sub_cfg.datamodule.splits_column = experiment_split_column
+
     runner_main(sub_cfg)
 
     for i in range(1, iterations+1):
@@ -49,6 +59,7 @@ def main(cfg):
 
         # train PPO model with fresh reward net
         overrides = main_overrides + [f"trainer.max_epochs=5",
+                                      f"datamodule.splits_column={experiment_split_column}",
                                       f"model.actor.actor.pretrain_ckpt={output_path}/{i-1}/actor.ckpt",
                                       f"model.reward.state_dict_path={output_path}/{i-1}/rewardnet.ckpt",
                                       f"model.actor_save_path={output_path}/{i}/actor.ckpt",
