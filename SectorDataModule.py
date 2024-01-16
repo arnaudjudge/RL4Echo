@@ -12,11 +12,12 @@ from torch.utils.data import DataLoader
 
 
 class SectorDataset(Dataset):
-    def __init__(self, df, data_path, subset_frac=1.0, available_gt=None, seed=0, test=False, *args,
+    def __init__(self, df, data_path, approx_gt_path=None, subset_frac=1.0, available_gt=None, seed=0, test=False, *args,
                  **kwargs):
         super().__init__()
         self.df = df
         self.data_path = data_path
+        self.approx_gt_path = approx_gt_path
         self.test = test
 
         print(f"Test step: {self.test} , len of dataset {len(self.df)}")
@@ -35,8 +36,8 @@ class SectorDataset(Dataset):
         img = np.expand_dims(nib.load(self.data_path + '/raw/' + path_dict['raw']).get_fdata().mean(axis=2), 0)
         mask = nib.load(self.data_path + '/mask/' + path_dict['mask']).get_fdata()[:, :, 0]
 
-        approx_gt_path = self.data_path + '/approx_gt/' + path_dict['mask']
         if self.use_gt[idx]:
+            approx_gt_path = self.approx_gt_path + '/approx_gt/' + path_dict['mask']
             approx_gt = nib.load(approx_gt_path).get_fdata()[0, :, :]
         else:
             approx_gt = np.zeros_like(mask)
@@ -57,6 +58,7 @@ class SectorDataModule(pl.LightningDataModule):
     def __init__(self,
                  data_dir,
                  csv_file,
+                 approx_gt_dir=None,
                  gt_column=None,
                  splits_column='split_0',
                  subset_frac=1.0,
@@ -153,7 +155,9 @@ class SectorDataModule(pl.LightningDataModule):
                                        data_path=self.hparams.data_dir,
                                        subset_frac=self.hparams.subset_frac,
                                        seed=self.hparams.seed,
-                                       available_gt=self.df.loc[self.train_idx].get(self.hparams.gt_column, None))
+                                       available_gt=self.df.loc[self.train_idx].get(self.hparams.gt_column, None),
+                                       approx_gt_path=self.hparams.approx_gt_dir,
+                                       )
 
             self.validate = SectorDataset(self.df.loc[self.val_idx],
                                           data_path=self.hparams.data_dir,

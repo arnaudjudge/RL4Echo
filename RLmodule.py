@@ -199,7 +199,7 @@ class RLmodule(pl.LightningModule):
 
                 path = get_img_subpath(df.loc[df['dicom_uuid'] == dicoms[i]].iloc[0],
                                        suffix=f"_img_{inst[i] if inst else ''}")
-                approx_gt_path = self.trainer.datamodule.hparams.data_dir + '/approx_gt/' + path.replace("img", "approx_gt")
+                approx_gt_path = self.trainer.datamodule.hparams.approx_gt_dir + '/approx_gt/' + path.replace("img", "approx_gt")
                 Path(approx_gt_path).parent.mkdir(parents=True, exist_ok=True)
                 hdr = nib.Nifti1Header()
                 nifti = nib.Nifti1Image(torch.round(actions_unsampled[i]).cpu().numpy(), np.diag(np.asarray([1, 1, 1, 0])), hdr)
@@ -230,7 +230,7 @@ class RLmodule(pl.LightningModule):
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img[i]),
-                                           np.expand_dims(convert_to_numpy(b_gt[i]), 0),
+                                           np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
                                            convert_to_numpy(deformed_action))
             else:
                 if not corrected_validity[i]:

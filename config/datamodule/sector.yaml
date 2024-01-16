@@ -5,4 +5,5 @@ csv_file: 'subset_w_split_0_pred.csv'
 
 subset_frac: 1.0
 test_frac: 0.1
+approx_gt_dir: ${logger.save_dir}
 available_gt: 0.0
