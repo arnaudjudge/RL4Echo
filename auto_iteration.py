@@ -21,7 +21,7 @@ def main(cfg):
     main_overrides = [f"logger.save_dir={output_path}"]
     experiment = 'es_ed'
 
-    timestamp = '1705503605.136425' #datetime.now().timestamp()
+    timestamp = datetime.now().timestamp()
     experiment_split_column = f"split_{timestamp}"
     experiment_gt_column = f"Gt_{timestamp}"
 
