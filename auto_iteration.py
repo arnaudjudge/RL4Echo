@@ -19,8 +19,11 @@ def main(cfg):
     output_path = f'./logs/auto_iteration_cardiac_NEW_METRICS'
     Path(output_path+"/0/").mkdir(parents=True, exist_ok=True)
     main_overrides = [f"logger.save_dir={output_path}"]
-    experiment = 'es_ed'  # 'sector'
-    experiment_split_column = f"split_{datetime.now().timestamp()}"
+    experiment = 'es_ed'
+
+    timestamp = '1705503605.136425' #datetime.now().timestamp()
+    experiment_split_column = f"split_{timestamp}"
+    experiment_gt_column = f"Gt_{timestamp}"
 
     # train supervised network for initial actor
     overrides = main_overrides + ['trainer.max_epochs=100',
@@ -35,8 +38,10 @@ def main(cfg):
     # prepare dataset with custom split column
     df = pd.read_csv(sub_cfg.datamodule.data_dir + sub_cfg.datamodule.csv_file, index_col=0)
     df[experiment_split_column] = df.loc[:, sub_cfg.datamodule.splits_column]
+    df[experiment_gt_column] = df.loc[:, sub_cfg.datamodule.gt_column]
     df.to_csv(sub_cfg.datamodule.data_dir + sub_cfg.datamodule.csv_file)
     sub_cfg.datamodule.splits_column = experiment_split_column
+    sub_cfg.datamodule.gt_column = experiment_gt_column
 
     runner_main(sub_cfg)
 
@@ -55,6 +60,7 @@ def main(cfg):
         # train PPO model with fresh reward net
         overrides = main_overrides + [f"trainer.max_epochs=5",
                                       f"datamodule.splits_column={experiment_split_column}",
+                                      f"datamodule.gt_column={experiment_gt_column}",
                                       f"model.actor.actor.pretrain_ckpt={output_path}/{i-1}/actor.ckpt",
                                       f"model.reward.state_dict_path={output_path}/{i-1}/rewardnet.ckpt",
                                       f"model.actor_save_path={output_path}/{i}/actor.ckpt",
