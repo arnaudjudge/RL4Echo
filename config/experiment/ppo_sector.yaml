@@ -5,4 +5,7 @@ defaults:
   - override /actor/actor@model.actor.actor: binary_unet_actor
   - override /corrector@model.corrector: ransac
 
+datamodule:
+  supervised: False
+
 run_name: sector

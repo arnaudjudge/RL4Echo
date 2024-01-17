@@ -172,10 +172,10 @@ class RLmodule(pl.LightningModule):
             torch.save(self.actor.critic.net.state_dict(), self.critic_save_path)
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
-        b_img, b_gt, dicoms, inst = batch['img'], batch['mask'], batch['dicom'], batch.get('instant', None)
+        b_img, dicoms, inst = batch['img'], batch['dicom'], batch.get('instant', None)
 
-        actions, _, _ = self.rollout(b_img, b_gt, sample=True)
-        actions_unsampled, _, _ = self.rollout(b_img, b_gt, sample=False)
+        actions, _, _ = self.rollout(b_img, None, sample=True)
+        actions_unsampled, _, _ = self.rollout(b_img, None, sample=False)
 
         corrected, corrected_validity, ae_comp = self.pred_corrector.correct_batch(b_img, actions_unsampled)
 

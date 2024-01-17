@@ -10,4 +10,7 @@ model:
   loss:
     _target_: torch.nn.CrossEntropyLoss
 
+datamodule:
+  supervised: True
+
 run_name: es_ed

@@ -13,12 +13,13 @@ from utils.file_utils import get_img_subpath
 
 
 class ESEDDataset(Dataset):
-    def __init__(self, df, data_path, approx_gt_path=None, subset_frac=1.0, available_gt=None, seed=0, test=False, *args,
+    def __init__(self, df, data_path, approx_gt_path=None, allow_real_gt=True, subset_frac=1.0, available_gt=None, seed=0, test=False, *args,
                  **kwargs):
         super().__init__()
         self.df = df
         self.data_path = data_path
         self.approx_gt_path = approx_gt_path
+        self.allow_real_gt = allow_real_gt
         self.test = test
 
         print(f"Test step: {self.test} , len of dataset {len(self.df)}")
@@ -43,11 +44,8 @@ class ESEDDataset(Dataset):
         else:
             approx_gt = np.zeros_like(mask)
 
-        # mask = torch.tensor(mask)
-        # mask = torch.stack([mask == i for i in range(np.max(mask.astype(np.int8)) + 1)], dim=0).sum(dim=1)
-
         return {'img': torch.tensor(img, dtype=torch.float32),
-                'mask': torch.tensor(mask).type(torch.LongTensor),
+                'mask': torch.tensor(mask).type(torch.LongTensor) if self.allow_real_gt else torch.zeros_like(torch.tensor(mask)),
                 'approx_gt': torch.tensor(approx_gt).type(torch.LongTensor),
                 'use_gt': torch.tensor(self.use_gt[idx]),
                 'dicom': self.df.iloc[idx]['dicom_uuid'],
@@ -64,6 +62,7 @@ class ESEDDataModule(pl.LightningDataModule):
                  data_dir,
                  csv_file,
                  approx_gt_dir=None,
+                 supervised=False,
                  gt_column=None,
                  splits_column='split_0',
                  subset_frac=1.0,
@@ -163,6 +162,7 @@ class ESEDDataModule(pl.LightningDataModule):
                                        seed=self.hparams.seed,
                                        available_gt=self.df.loc[self.train_idx].get(self.hparams.gt_column, None),
                                        approx_gt_path=self.hparams.approx_gt_dir,
+                                       allow_real_gt=self.hparams.supervised,
                                     )
 
             self.validate = ESEDDataset(self.df.loc[self.val_idx],
