@@ -1,6 +1,6 @@
-_target_: ES_ED_datamodule.ESEDDataModule
+_target_: datamodules.ES_ED_datamodule.ESEDDataModule
 
-data_dir: '/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset/'
+data_dir: '/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_posttreat/'
 csv_file: 'subset.csv'
 
 subset_frac: 1.0

@@ -35,20 +35,20 @@ class ESEDDataset(Dataset):
     def __getitem__(self, idx):
         sub_path = get_img_subpath(self.df.iloc[idx], suffix=f"_img_{self.df.iloc[idx]['instant']}")
 
-        img = np.expand_dims(nib.load(self.data_path + '/' + sub_path).get_fdata(), 0) / 255
+        img = np.expand_dims(nib.load(self.data_path + '/' + sub_path).get_fdata(), 0)
         mask = nib.load(self.data_path + '/' + sub_path.replace("img", 'mask')).get_fdata()
 
         if self.use_gt[idx]:
-            approx_gt_path = self.approx_gt_path + '/approx_gt/' + sub_path.replace("img", 'approx_gt')
+            approx_gt_path = self.approx_gt_path + '/approx_gt/' + sub_path.replace("_img", '')
             approx_gt = nib.load(approx_gt_path).get_fdata()
         else:
             approx_gt = np.zeros_like(mask)
 
         return {'img': torch.tensor(img, dtype=torch.float32),
-                'mask': torch.tensor(mask).type(torch.LongTensor) if self.allow_real_gt else torch.zeros_like(torch.tensor(mask)),
+                'gt': torch.tensor(mask).type(torch.LongTensor) if self.allow_real_gt else torch.zeros_like(torch.tensor(mask)),
                 'approx_gt': torch.tensor(approx_gt).type(torch.LongTensor),
                 'use_gt': torch.tensor(self.use_gt[idx]),
-                'dicom': self.df.iloc[idx]['dicom_uuid'],
+                'id': self.df.iloc[idx]['dicom_uuid'],
                 'instant': self.df.iloc[idx]['instant']
                 }
 
@@ -201,6 +201,21 @@ class ESEDDataModule(pl.LightningDataModule):
     def predict_dataloader(self, ):
         return DataLoader(self.pred, batch_size=32, num_workers=16)
 
+    def add_to_train(self, id, instant):
+        self.df.loc[(self.df['dicom_uuid'] == id) &
+                    (self.df['instant'] == instant), self.trainer.datamodule.hparams.splits_column] = 'train'
+
+    def add_to_gt(self, id, instant):
+        self.df.loc[(self.df['dicom_uuid'] == id) &
+                    (self.df['instant'] == instant), self.trainer.datamodule.hparams.gt_column] = True
+
+    def update_dataframe(self):
+        self.df.to_csv(self.df_path)
+
+    def get_approx_gt_subpath(self, id, instant):
+        return get_img_subpath(self.df.loc[self.df['dicom_uuid'] == id].iloc[0],
+                               suffix=f"_{instant if instant else ''}")
+
 
 if __name__ == "__main__":
     dl = ESEDDataModule(data_dir='/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset/',
@@ -212,5 +227,5 @@ if __name__ == "__main__":
     for i in range(1):
         batch = next(iter(dl.train_dataloader()))
         print(batch['img'].shape)
-        print(batch['mask'].shape)
+        print(batch['gt'].shape)
         print(batch['approx_gt'].shape)

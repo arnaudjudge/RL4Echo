@@ -10,6 +10,8 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
+from utils.file_utils import get_img_subpath
+
 
 class SectorDataset(Dataset):
     def __init__(self, df, data_path, approx_gt_path=None, subset_frac=1.0, available_gt=None, seed=0, test=False, *args,
@@ -37,16 +39,16 @@ class SectorDataset(Dataset):
         mask = nib.load(self.data_path + '/mask/' + path_dict['mask']).get_fdata()[:, :, 0]
 
         if self.use_gt[idx]:
-            approx_gt_path = self.approx_gt_path + '/approx_gt/' + path_dict['mask']
+            approx_gt_path = self.approx_gt_path + '/approx_gt/' + path_dict['mask'].replace("_mask", "")
             approx_gt = nib.load(approx_gt_path).get_fdata()[0, :, :]
         else:
             approx_gt = np.zeros_like(mask)
 
         return {'img': torch.tensor(img, dtype=torch.float32),
-                'mask': torch.tensor(mask, dtype=torch.float32),
+                'gt': torch.tensor(mask, dtype=torch.float32),
                 'approx_gt': torch.tensor(approx_gt, dtype=torch.float32),
                 'use_gt': torch.tensor(self.use_gt[idx], dtype=torch.bool),
-                'dicom': self.df.iloc[idx]['dicom_uuid']
+                'id': self.df.iloc[idx]['dicom_uuid']
                 }
 
 
@@ -195,6 +197,18 @@ class SectorDataModule(pl.LightningDataModule):
     def predict_dataloader(self, ):
         return DataLoader(self.pred, batch_size=32, num_workers=16)
 
+    def add_to_train(self, id, instant):
+        self.df.loc[(self.df['id'] == id), self.trainer.datamodule.hparams.splits_column] = 'train'
+
+    def add_to_gt(self, id, instant):
+        self.df.loc[(self.df['id'] == id), self.trainer.datamodule.hparams.gt_column] = True
+
+    def update_dataframe(self):
+        self.df.to_csv(self.df_path)
+
+    def get_approx_gt_subpath(self, id, instant):
+        return get_img_subpath(self.df.loc[self.df['dicom_uuid'] == id.iloc[0]])
+
 
 if __name__ == "__main__":
     dl = SectorDataModule(data_dir='/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset_10k/',
@@ -206,5 +220,5 @@ if __name__ == "__main__":
     for i in range(1):
         batch = next(iter(dl.train_dataloader()))
         print(batch['img'].shape)
-        print(batch['mask'].shape)
+        print(batch['gt'].shape)
         print(batch['approx_gt'].shape)

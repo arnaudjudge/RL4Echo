@@ -94,7 +94,7 @@ class RLmodule(pl.LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, b_use_gt = batch['img'], batch['mask'], batch['use_gt']
+        b_img, b_gt, b_use_gt = batch['img'], batch['gt'], batch['use_gt']
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
 
@@ -134,7 +134,7 @@ class RLmodule(pl.LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, b_use_gt = batch['img'], batch['mask'], batch['use_gt']
+        b_img, b_gt, b_use_gt = batch['img'], batch['gt'], batch['use_gt']
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
@@ -172,31 +172,36 @@ class RLmodule(pl.LightningModule):
             torch.save(self.actor.critic.net.state_dict(), self.critic_save_path)
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
-        b_img, dicoms, inst = batch['img'], batch['dicom'], batch.get('instant', None)
+        b_img, ids, inst = batch['img'], batch['id'], batch.get('instant', None)
 
-        actions, _, _ = self.rollout(b_img, None, sample=True)
-        actions_unsampled, _, _ = self.rollout(b_img, None, sample=False)
+        actions, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=True)
+        actions_unsampled, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=False)
 
         corrected, corrected_validity, ae_comp = self.pred_corrector.correct_batch(b_img, actions_unsampled)
 
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
         itr = 0
-        df = self.trainer.datamodule.df
-        for i in range(len(b_img)):
-            df.loc[(df['dicom_uuid'] == dicoms[i]) & (
-                        df.get('instant', None) == inst[i] if inst else True), self.trainer.datamodule.hparams.splits_column] = 'train'
-        for i in range(len(b_img)):
-            if ae_comp[i] > 0.95 and check_segmentation_validity(actions_unsampled[i].cpu().numpy().T, (1.0, 1.0), list(set(np.unique(actions_unsampled[i].cpu().numpy())))):
-                df.loc[(df['dicom_uuid'] == dicoms[i]) & (
-                        df.get('instant', None) == inst[i] if inst else True), self.trainer.datamodule.hparams.gt_column] = True
 
-                path = get_img_subpath(df.loc[df['dicom_uuid'] == dicoms[i]].iloc[0],
-                                       suffix=f"_img_{inst[i] if inst else ''}")
-                approx_gt_path = self.trainer.datamodule.hparams.approx_gt_dir + '/approx_gt/' + path.replace("img", "approx_gt")
+        for i in range(len(b_img)):
+            self.trainer.datamodule.add_to_train(ids[i], inst[i] if inst else None)
+            if ae_comp[i] > 0.95 and check_segmentation_validity(actions_unsampled[i].cpu().numpy().T, (1.0, 1.0),
+                                                                 [0, 1, 2]):
+                self.trainer.datamodule.add_to_gt(ids[i], inst[i] if inst else None)
+
+                path = self.trainer.datamodule.get_approx_gt_subpath(ids[i], inst[i] if inst else None)
+                approx_gt_path = self.trainer.datamodule.hparams.approx_gt_dir + '/approx_gt/' + path
                 Path(approx_gt_path).parent.mkdir(parents=True, exist_ok=True)
                 hdr = nib.Nifti1Header()
-                nifti = nib.Nifti1Image(torch.round(actions_unsampled[i]).cpu().numpy(), np.diag(np.asarray([1, 1, 1, 0])), hdr)
+                nifti = nib.Nifti1Image(torch.round(actions_unsampled[i]).cpu().numpy(), np.diag(np.asarray([-1, -1, 1, 0])), hdr)
                 nifti.to_filename(approx_gt_path)
+
+                # force actions to resemble image?
+                filename = f"{batch_idx}_{itr}_{i}_wrong_s_{int(round(datetime.now().timestamp()))}.nii.gz"
+                save_to_reward_dataset(self.predict_save_dir,
+                                       filename,
+                                       convert_to_numpy(b_img[i]),
+                                       np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
+                                       np.expand_dims(convert_to_numpy(actions[random.randint(0, len(b_img)-1)]), 0))
 
                 for j, multiplier in enumerate([0.005, 0.01, 0.015, 0.02]):
                     # get random seed based on time to maximise randomness of noise and subsequent predictions
@@ -252,7 +257,7 @@ class RLmodule(pl.LightningModule):
                                        convert_to_numpy(corrected[i]),
                                        np.expand_dims(convert_to_numpy(actions[i]), 0))
 
-        df.to_csv(self.trainer.datamodule.df_path)
+        self.trainer.datamodule.update_dataframe()
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)
 

@@ -1,4 +1,4 @@
-_target_: SectorDataModule.SectorDataModule
+_target_: datamodules.SectorDataModule.SectorDataModule
 
 data_dir: '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset_10k/'
 csv_file: 'subset_w_split_0_pred.csv'

@@ -9,7 +9,6 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from torch import Tensor
 
 from RLmodule import RLmodule
-from SectorDataModule import SectorDataModule
 
 
 class PolicyGradient(RLmodule):
@@ -29,7 +28,7 @@ class PolicyGradient(RLmodule):
         Returns:
             Training loss and log metrics or None
         """
-        b_img, b_gt, b_use_gt = batch['img'], batch['mask'], batch['use_gt']
+        b_img, b_gt, b_use_gt = batch['img'], batch['gt'], batch['use_gt']
 
         # get actions, log_probs, rewards, etc from pi (stays constant for all steps k)
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_use_gt)

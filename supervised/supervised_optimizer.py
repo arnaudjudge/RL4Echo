@@ -56,7 +56,7 @@ class SupervisedOptimizer(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=0.001)
 
     def training_step(self, batch: dict[str, Tensor], *args, **kwargs) -> Dict:
-        x, y = batch['img'], batch['mask']
+        x, y = batch['img'], batch['gt']
 
         y_hat = self.forward(x)
 
@@ -70,7 +70,7 @@ class SupervisedOptimizer(pl.LightningModule):
         return logs
 
     def validation_step(self, batch: dict[str, Tensor], batch_idx: int):
-        b_img, b_gt = batch['img'], batch['mask']
+        b_img, b_gt = batch['img'], batch['gt']
         y_pred = self.forward(b_img)
 
         loss = self.loss(y_pred, b_gt)
@@ -98,7 +98,7 @@ class SupervisedOptimizer(pl.LightningModule):
         return logs
 
     def test_step(self, batch, batch_idx):
-        b_img, b_gt = batch['img'], batch['mask']
+        b_img, b_gt = batch['img'], batch['gt']
         y_pred = self.forward(b_img)
 
         loss = self.loss(y_pred, b_gt)
@@ -144,7 +144,7 @@ class SupervisedOptimizer(pl.LightningModule):
             torch.save(self.net.state_dict(), self.ckpt_path)
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
-        b_img, b_gt, dicoms, inst = batch['img'], batch['mask'], batch['dicom'], batch.get('instant', None)
+        b_img, b_gt, ids, inst = batch['img'], batch['gt'], batch['id'], batch.get('instant', None)
 
         actions = self.forward(b_img)
         if self.output_shape[0] > 1:
@@ -158,7 +158,22 @@ class SupervisedOptimizer(pl.LightningModule):
         itr = 0
         df = self.trainer.datamodule.df
         for i in range(len(b_img)):
-            if ae_comp[i] > 0.95 and check_segmentation_validity(actions[i].cpu().numpy().T, (1.0, 1.0), list(set(np.unique(actions[i].cpu().numpy())))):
+            # f, (ax1, ax2) = plt.subplots(1, 2)
+            # ax1.set_title(f"action")
+            # ax1.imshow(actions[i, ...].cpu().numpy().T)
+            # ax2.set_title(f"Corrected action {ae_comp[i]}")
+            # ax2.imshow(corrected[i, ...].T)
+            # plt.show()
+            self.trainer.datamodule.add_to_train(ids[i], inst[i] if inst else None)
+            if ae_comp[i] > 0.95 and check_segmentation_validity(actions[i].cpu().numpy().T, (1.0, 1.0), [0, 1, 2]):
+
+                # force actions to resemble image?
+                filename = f"{batch_idx}_{itr}_{i}_wrong_{int(round(datetime.now().timestamp()))}.nii.gz"
+                save_to_reward_dataset(self.predict_save_dir,
+                                       filename,
+                                       convert_to_numpy(b_img[i]),
+                                       np.expand_dims(convert_to_numpy(actions[i]), 0),
+                                       np.expand_dims(convert_to_numpy(actions[random.randint(0, len(b_img)-1)]), 0))
 
                 for j, multiplier in enumerate([0.005, 0.01]):
                     # get random seed based on time to maximise randomness of noise and subsequent predictions
