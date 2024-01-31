@@ -9,21 +9,23 @@ from rewardnet.reward_net import get_resnet
 
 class UnetActorBinary(nn.Module):
 
-    def __init__(self, input_shape=(1, 256, 256), output_shape=(1, 256, 256), pretrain_ckpt=None):
+    def __init__(self, input_shape=(1, 256, 256), output_shape=(1, 256, 256), pretrain_ckpt=None, ref_ckpt=None):
         super().__init__()
         if output_shape[0] > 1:
             raise Exception("Wrong input shape, you are using binary actor with multi-class output shape")
 
         self.net = UNet(input_shape=input_shape, output_shape=output_shape)
+        self.old_net = UNet(input_shape=input_shape, output_shape=output_shape)
 
         if pretrain_ckpt:
             # if starting from pretrained model, keep version of
             self.net.load_state_dict(torch.load(pretrain_ckpt))
 
-            # copy to have version of initial pretrained net
-            self.old_net = copy.deepcopy(self.net)
-            # will never be updated
-            self.old_net.requires_grad_(False)
+            if ref_ckpt:
+                # copy to have version of initial pretrained net
+                self.old_net.load_state_dict(torch.load(ref_ckpt))
+                # will never be updated
+                self.old_net.requires_grad_(False)
 
     def forward(self, x):
         logits = torch.sigmoid(self.net(x)).squeeze(1)
@@ -38,18 +40,20 @@ class UnetActorBinary(nn.Module):
 
 
 class UnetActorCategorical(nn.Module):
-    def __init__(self, input_shape=(1, 256, 256), output_shape=(3, 256, 256), pretrain_ckpt=None):
+    def __init__(self, input_shape=(1, 256, 256), output_shape=(3, 256, 256), pretrain_ckpt=None, ref_ckpt=None):
         super().__init__()
         self.net = UNet(input_shape=input_shape, output_shape=output_shape)
+        self.old_net = UNet(input_shape=input_shape, output_shape=output_shape)
 
         if pretrain_ckpt:
             # if starting from pretrained model, keep version of
             self.net.load_state_dict(torch.load(pretrain_ckpt))
 
-            # copy to have version of initial pretrained net
-            self.old_net = copy.deepcopy(self.net)
-            # will never be updated
-            self.old_net.requires_grad_(False)
+            if ref_ckpt:
+                # copy to have version of initial pretrained net
+                self.old_net.load_state_dict(torch.load(ref_ckpt))
+                # will never be updated
+                self.old_net.requires_grad_(False)
 
     def forward(self, x):
         logits = torch.softmax(self.net(x), dim=1)
