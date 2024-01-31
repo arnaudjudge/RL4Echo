@@ -30,7 +30,7 @@ class RewardNetAutoDataset(Dataset):
         else:
             self.img_list = self.img_list[:-test_len]
 
-        print(self.__len__())
+        print(f"LEN of reward net dataset: {self.__len__()}")
 
     def __len__(self):
         return len(self.img_list)

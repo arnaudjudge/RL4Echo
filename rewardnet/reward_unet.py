@@ -55,9 +55,9 @@ class RewardOptimizer(pl.LightningModule):
 
         # log images
         idx = random.randint(0, len(imgs) - 1)  # which image to log
-        log_image(self.logger, img=imgs[idx], title='Image', number=batch_idx)
-        log_image(self.logger, img=y_true[idx], title='GroundTruth', number=batch_idx)
-        log_image(self.logger, img=y_pred[idx], title='Prediction', number=batch_idx,
+        log_image(self.logger, img=imgs[idx].permute((0, 2, 1)), title='Image', number=batch_idx)
+        log_image(self.logger, img=y_true[idx].permute((0, 2, 1)), title='GroundTruth', number=batch_idx)
+        log_image(self.logger, img=y_pred[idx].permute((0, 2, 1)), title='Prediction', number=batch_idx,
                   img_text=acc[idx].mean())
 
         return {'loss': loss}
@@ -73,9 +73,9 @@ class RewardOptimizer(pl.LightningModule):
                        "test_acc": acc.mean()})
 
         for i in range(len(imgs)):
-            log_image(self.logger, img=imgs[i], title='test_Image', number=batch_idx * (i + 1))
-            log_image(self.logger, img=y_true[i], title='test_GroundTruth', number=batch_idx * (i + 1))
-            log_image(self.logger, img=y_pred[i], title='test_Prediction', number=batch_idx * (i + 1),
+            log_image(self.logger, img=imgs[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
+            log_image(self.logger, img=y_true[i].permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
+            log_image(self.logger, img=y_pred[i].permute((0, 2, 1)), title='test_Prediction', number=batch_idx * (i + 1),
                       img_text=acc[i].mean())
 
         return {'loss': loss}
