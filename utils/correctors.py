@@ -31,9 +31,12 @@ class AEMorphoCorrector(Corrector):
         for i, act in enumerate(b_act):
             c, _, _ = self.ae_corrector.fix_morphological_and_ae(act.unsqueeze(-1).cpu().numpy())
             corrected[i] = c.transpose((2, 0, 1))
-            corrected_validity[i] = check_segmentation_validity(corrected[i, 0, ...].T, (1.0, 1.0),
-                                                                list(set(np.unique(corrected[i]))))
-            ae_comp[i] = compare_segmentation_with_ae(act.unsqueeze(-1).cpu().numpy(), corrected[i])
+
+            try:
+                corrected_validity[i] = check_segmentation_validity(corrected[i, 0, ...].T, (1.0, 1.0), [0, 1, 2])
+            except:
+                corrected_validity[i] = False
+            ae_comp[i] = compare_segmentation_with_ae(act.unsqueeze(0).cpu().numpy(), corrected[i])
         return corrected, corrected_validity, ae_comp
 
 

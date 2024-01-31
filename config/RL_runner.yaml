@@ -4,7 +4,7 @@ run_name: default
 defaults:
   - logger: tensorboard
   - model: ppo
-  - datamodule: sector
+  - datamodule: ???
   - callbacks: default
   - _self_
   - experiment: ppo_es_ed

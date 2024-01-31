@@ -1,4 +1,5 @@
 import torch
+from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 from vital.metrics.train.functional import differentiable_dice_score
 
 
@@ -11,17 +12,25 @@ def accuracy(pred, imgs, gt):
 
 
 def dice_score(output, target):
+    classes = target.unique()
     out = torch.zeros(len(output))
-    # output = target
     for i in range(len(output)):
-        # sparse = torch.stack((output[i], 1-output[i]*1000), dim=0).squeeze(2)
-        # out[i] = 1 - differentiable_dice_score(sparse, target[i], bg=True)
+        d = 0
+        for c in classes:
+            target_c = (target[i] == c)
+            output_c = (output[i] == c)
+            intersection = torch.sum(target_c * output_c)
+            d += (2. * intersection) / (torch.sum(target_c) + torch.sum(output_c))
+        out[i] = d / len(classes)
+    return out
 
-        intersection = torch.sum(target[i, ...] * output[i, ...])
-        out[i] = (2. * intersection) / (torch.sum(target[i, ...]) + torch.sum(output[i, ...]))
-        intersect = torch.sum(target[i, ...] * output[i, ...])
-        union = torch.sum(output[i, ...]) + torch.sum(target[i, ...]) - intersect
-        iou = torch.mean(intersect / union)
-        out[i] = iou
+
+def is_anatomically_valid(output):
+    out = torch.zeros(len(output))
+    for i in range(len(output)):
+        try:
+            out[i] = int(check_segmentation_validity(output[i].cpu().numpy().T, (1.0, 1.0), [0, 1, 2]))
+        except:
+            out[i] = 0
     return out
 

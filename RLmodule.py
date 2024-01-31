@@ -11,7 +11,7 @@ import torch
 from torch import Tensor
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 
-from utils.Metrics import accuracy, dice_score
+from utils.Metrics import accuracy, dice_score, is_anatomically_valid
 from utils.file_utils import get_img_subpath, save_to_reward_dataset
 from utils.logging_helper import log_image
 from utils.tensor_utils import convert_to_numpy
@@ -141,11 +141,13 @@ class RLmodule(pl.LightningModule):
                                                                     prev_log_probs, b_gt, b_use_gt))
         acc = accuracy(prev_actions, b_img, b_gt)
         dice = dice_score(prev_actions, b_gt)
+        anat_errors = is_anatomically_valid(prev_actions)
 
         logs = {'test_loss': loss,
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
                 'test_acc': acc.mean(),
-                "test_dice": dice.mean()
+                "test_dice": dice.mean(),
+                "test_anat_valid": anat_errors.mean()
                 }
 
         # for logging v
@@ -155,7 +157,7 @@ class RLmodule(pl.LightningModule):
             log_image(self.logger, img=b_img[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
             log_image(self.logger, img=b_gt[i].unsqueeze(0).permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
             log_image(self.logger, img=prev_actions[i].unsqueeze(0).permute((0, 2, 1)), title='test_Prediction', number=batch_idx * (i + 1),
-                      img_text=acc[i].mean())
+                      img_text=dice[i].mean())
             if v.shape == prev_actions.shape:
                 log_image(self.logger, img=v[i].unsqueeze(0).permute((0, 2, 1)), title='test_v_function', number=batch_idx * (i + 1),
                           img_text=v[i].mean())

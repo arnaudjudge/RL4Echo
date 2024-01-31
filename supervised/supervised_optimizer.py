@@ -12,7 +12,7 @@ from torchmetrics.classification import Dice
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 from vital.models.segmentation.unet import UNet
 
-from utils.Metrics import accuracy, dice_score
+from utils.Metrics import accuracy, dice_score, is_anatomically_valid
 from utils.file_utils import save_to_reward_dataset
 from utils.logging_helper import log_image
 from utils.tensor_utils import convert_to_numpy
@@ -32,7 +32,6 @@ class SupervisedOptimizer(pl.LightningModule):
         super().__init__(**kwargs)
 
         self.net = UNet(input_shape=input_shape, output_shape=output_shape)
-        # self.net.load_state_dict(torch.load("./auto_iteration3/0/actor.ckpt"))
         self.input_shape = input_shape
         self.output_shape = output_shape
 
@@ -53,7 +52,8 @@ class SupervisedOptimizer(pl.LightningModule):
         return out
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=0.001)
+        # add weight decay so predictions are less certain, more randomness?
+        return torch.optim.Adam(self.parameters(), lr=0.001, weight_decay=0)
 
     def training_step(self, batch: dict[str, Tensor], *args, **kwargs) -> Dict:
         x, y = batch['img'], batch['gt']
@@ -82,9 +82,12 @@ class SupervisedOptimizer(pl.LightningModule):
 
         acc = accuracy(y_pred, b_img, b_gt)
         dice = dice_score(y_pred, b_gt)
+        #anat_err = has_anatomical_error(y_pred)
+
         logs = {'val_loss': loss,
                 'val_acc': acc.mean(),
                 'val_dice': dice.mean(),
+                #'val_anat_errors': anat_err.mean(),
                 }
 
         # log images
@@ -110,6 +113,7 @@ class SupervisedOptimizer(pl.LightningModule):
 
         acc = accuracy(y_pred, b_img, b_gt)
         dice = dice_score(y_pred, b_gt)
+        anat_errors = is_anatomically_valid(y_pred)
 
         if self.save_test_results:
             affine = np.diag(np.asarray([1, 1, 1, 0]))
@@ -123,14 +127,15 @@ class SupervisedOptimizer(pl.LightningModule):
 
         logs = {'test_loss': loss,
                 'test_acc': acc.mean(),
-                'test_dice': dice.mean()
+                'test_dice': dice.mean(),
+                'test_anat_valid': anat_errors.mean()
                 }
 
         for i in range(len(b_img)):
             log_image(self.logger, img=b_img[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
             log_image(self.logger, img=b_gt[i].unsqueeze(0).permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
             log_image(self.logger, img=y_pred[i].unsqueeze(0).permute((0, 2, 1)), title='test_Prediction', number=batch_idx * (i + 1),
-                      img_text=acc[i].mean())
+                      img_text=dice[i].mean())
 
         self.log_dict(logs)
 
