@@ -51,8 +51,8 @@ def main(cfg):
                                   f"model.actor.actor.pretrain_ckpt={output_path}/{0}/actor.ckpt",
                                   f"model.actor.actor.ref_ckpt={output_path}/{0}/actor.ckpt",  # always supervised?
                                   "reward@model.reward=pixelwise_accuracy",  # dummy, will not
-                                  f"model.actor_save_path={None}",  # no need
-                                  f"model.critic_save_path={None}",  # no need
+                                  f"model.actor_save_path=null",  # no need
+                                  f"model.critic_save_path=null",  # no need
                                   f'model.predict_save_dir={output_path}',
                                   f"experiment=ppo_{target_experiment}"
                                   ]
