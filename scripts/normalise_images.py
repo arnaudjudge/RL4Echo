@@ -6,11 +6,11 @@ from matplotlib import pyplot as plt
 
 
 if __name__ == "__main__":
-    data_path = "/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset/"
-    img_folder = ""
-    output_path = "/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_posttreat/"
+    data_path = "/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_2/"
+    img_folder = "img/"
+    output_path = "/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_2/"
 
-    for p in Path(data_path + img_folder).rglob('*_img_*.nii.gz'):
+    for p in Path(data_path + img_folder).rglob('*.nii.gz'):
         print(p)
         img = nib.load(p)
         data = img.get_fdata()
@@ -21,13 +21,13 @@ if __name__ == "__main__":
         data = data / 255
         print(data.mean())
         print(data.std())
-        plt.figure()
-        plt.imshow(data)
+        # plt.figure()
+        # plt.imshow(data)
 
         data = exp.equalize_adapthist(data, clip_limit=0.01)
-        plt.figure()
-        plt.imshow(data)
-        plt.show()
+        # plt.figure()
+        # plt.imshow(data)
+        # plt.show()
 
         out_img = nib.Nifti1Image(data, img.affine, img.header)
         out_path = output_path + p.relative_to(data_path).as_posix()
