@@ -1,0 +1,32 @@
+work_dir: ${hydra:runtime.cwd}
+run_name: ts-it_baseline
+
+defaults:
+  - logger: tensorboard
+  - model: ts-it
+  - datamodule: ???
+  - callbacks: default
+  - _self_
+  - experiment: ts_it
+
+seed: 1
+
+logger:
+  save_dir: "./logs/ts_it/"
+  name: '${get_class_name: ${model._target_}}_${run_name}'
+
+callbacks:
+  model_checkpoint:
+    monitor: val_acc
+
+predict_subset_frac: 1000
+
+datamodule:
+  gt_column: Gt_0
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  max_epochs: 50
+  log_every_n_steps: 1
+  gpus: 1
+  #num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)
