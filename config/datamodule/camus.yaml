@@ -1,6 +1,6 @@
 _target_: datamodules.camus_RL_datamodule.CamusDataModule
 
-data_dir: '/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_posttreat/'
+data_dir: '/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_2/'
 csv_file: 'camus_regular_split.csv'
 
 subset_frac: 1.0

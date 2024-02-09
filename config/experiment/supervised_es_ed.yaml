@@ -1,6 +1,7 @@
 # @package _global_
 
 defaults:
+  - override /model: supervised
   - override /datamodule: es_ed
   - override /corrector@model.corrector: ae
 

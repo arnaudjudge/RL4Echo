@@ -1,6 +1,7 @@
 # @package _global_
 
 defaults:
+  - override /model: ppo
   - override /datamodule: camus
   - override /actor/actor@model.actor.actor: categorical_unet_actor
 #  - override /reward@model.reward: pixelwise_accuracy
