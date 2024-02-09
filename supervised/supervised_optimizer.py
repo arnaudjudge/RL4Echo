@@ -11,11 +11,15 @@ from torch import nn, Tensor
 from torchmetrics.classification import Dice
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 from vital.models.segmentation.unet import UNet
+from vital.data.camus.config import Label
 
 from utils.Metrics import accuracy, dice_score, is_anatomically_valid
 from utils.file_utils import save_to_reward_dataset
 from utils.logging_helper import log_image
 from utils.tensor_utils import convert_to_numpy
+from utils.test_metrics import dice, hausdorff
+
+from matplotlib import pyplot as plt
 
 
 class DiceLoss(nn.Module):
@@ -112,30 +116,26 @@ class SupervisedOptimizer(pl.LightningModule):
             y_pred = torch.round(y_pred)
 
         acc = accuracy(y_pred, b_img, b_gt)
-        dice = dice_score(y_pred, b_gt)
+        simple_dice = dice_score(y_pred, b_gt)
+        test_dice = dice(y_pred.cpu().numpy(), b_gt.cpu().numpy(),
+                         labels=(Label.BG, Label.LV, Label.MYO), exclude_bg=True, all_classes=True)
+        test_hd = hausdorff(y_pred.cpu().numpy(), b_gt.cpu().numpy(),
+                            labels=(Label.BG, Label.LV, Label.MYO), exclude_bg=True, all_classes=True)
         anat_errors = is_anatomically_valid(y_pred)
-
-        if self.save_test_results:
-            affine = np.diag(np.asarray([1, 1, 1, 0]))
-            hdr = nib.Nifti1Header()
-            for i in range(len(b_img)):
-                mask_img = nib.Nifti1Image(y_pred[i, ...].cpu().numpy(), affine, hdr)
-                mask_img.to_filename(f"./data/mask/mask_{batch_idx}_{i}.nii.gz")
-
-                img = nib.Nifti1Image(b_img[i, ...].cpu().numpy(), affine, hdr)
-                img.to_filename(f"./data/images/image_{batch_idx}_{i}.nii.gz")
 
         logs = {'test_loss': loss,
                 'test_acc': acc.mean(),
-                'test_dice': dice.mean(),
+                'test_dice': simple_dice.mean(),
                 'test_anat_valid': anat_errors.mean()
                 }
+        logs.update(test_dice)
+        logs.update(test_hd)
 
         for i in range(len(b_img)):
             log_image(self.logger, img=b_img[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
             log_image(self.logger, img=b_gt[i].unsqueeze(0).permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
             log_image(self.logger, img=y_pred[i].unsqueeze(0).permute((0, 2, 1)), title='test_Prediction', number=batch_idx * (i + 1),
-                      img_text=dice[i].mean())
+                      img_text=simple_dice[i].mean())
 
         self.log_dict(logs)
 

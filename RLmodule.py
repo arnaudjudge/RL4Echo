@@ -10,11 +10,13 @@ import pytorch_lightning as pl
 import torch
 from torch import Tensor
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
+from vital.data.camus.config import Label
 
 from utils.Metrics import accuracy, dice_score, is_anatomically_valid
 from utils.file_utils import get_img_subpath, save_to_reward_dataset
 from utils.logging_helper import log_image
 from utils.tensor_utils import convert_to_numpy
+from utils.test_metrics import dice, hausdorff
 
 
 class RLmodule(pl.LightningModule):
@@ -140,15 +142,21 @@ class RLmodule(pl.LightningModule):
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt, b_use_gt))
         acc = accuracy(prev_actions, b_img, b_gt)
-        dice = dice_score(prev_actions, b_gt)
+        simple_dice = dice_score(prev_actions, b_gt)
+        test_dice = dice(prev_actions.cpu().numpy(), b_gt.cpu().numpy(),
+                         labels=(Label.BG, Label.LV, Label.MYO), exclude_bg=True, all_classes=True)
+        test_hd = hausdorff(prev_actions.cpu().numpy(), b_gt.cpu().numpy(),
+                         labels=(Label.BG, Label.LV, Label.MYO), exclude_bg=True, all_classes=True)
         anat_errors = is_anatomically_valid(prev_actions)
 
         logs = {'test_loss': loss,
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
                 'test_acc': acc.mean(),
-                "test_dice": dice.mean(),
+                "test_dice": simple_dice.mean(),
                 "test_anat_valid": anat_errors.mean()
                 }
+        logs.update(test_dice)
+        logs.update(test_hd)
 
         # for logging v
         _, _, _, _, v, _ = self.actor.evaluate(b_img, prev_actions)
@@ -157,12 +165,13 @@ class RLmodule(pl.LightningModule):
             log_image(self.logger, img=b_img[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
             log_image(self.logger, img=b_gt[i].unsqueeze(0).permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
             log_image(self.logger, img=prev_actions[i].unsqueeze(0).permute((0, 2, 1)), title='test_Prediction', number=batch_idx * (i + 1),
-                      img_text=dice[i].mean())
+                      img_text=simple_dice[i].mean())
             if v.shape == prev_actions.shape:
                 log_image(self.logger, img=v[i].unsqueeze(0).permute((0, 2, 1)), title='test_v_function', number=batch_idx * (i + 1),
                           img_text=v[i].mean())
             if prev_rewards.shape == prev_actions.shape:
-                log_image(self.logger, img=prev_rewards[i].unsqueeze(0).permute((0, 2, 1)), title='test_RewardMap', number=batch_idx * (i + 1))
+                log_image(self.logger, img=prev_rewards[i].unsqueeze(0).permute((0, 2, 1)), title='test_RewardMap', number=batch_idx * (i + 1),
+                          img_text=prev_rewards[i].mean())
 
         self.log_dict(logs)
         return logs
