@@ -13,7 +13,7 @@ from utils.file_utils import get_img_subpath
 
 
 class CamusDataset(Dataset):
-    def __init__(self, df, data_path, approx_gt_path=None, allow_real_gt=True, subset_frac=1.0, available_gt=None, seed=0, test=False, *args,
+    def __init__(self, df, data_path, approx_gt_path=None, allow_real_gt=True, subset_frac=1.0, available_gt=None, seed=0, test=False, class_label=None, *args,
                  **kwargs):
         super().__init__()
         self.df = df
@@ -21,6 +21,7 @@ class CamusDataset(Dataset):
         self.approx_gt_path = approx_gt_path
         self.allow_real_gt = allow_real_gt
         self.test = test
+        self.class_label = class_label
 
         print(f"Test step: {self.test} , len of dataset {len(self.df)}")
 
@@ -37,6 +38,9 @@ class CamusDataset(Dataset):
 
         img = np.expand_dims(nib.load(self.data_path + '/img/' + sub_path).get_fdata(), 0)
         gt = nib.load(self.data_path + '/gt/' + sub_path).get_fdata()
+
+        if self.class_label:
+            gt = (gt == self.class_label)
 
         if self.use_gt[idx]:
             approx_gt_path = self.approx_gt_path + '/approx_gt/' + sub_path
@@ -69,6 +73,7 @@ class CamusDataModule(pl.LightningDataModule):
                  predict_column='pred',
                  gt_frac=None,
                  seed=0,
+                 class_label=None,
                  *args, **kwargs):
         super().__init__()
         self.args = args
@@ -161,13 +166,15 @@ class CamusDataModule(pl.LightningDataModule):
                                        available_gt=self.df.loc[self.train_idx].get(self.hparams.gt_column, None),
                                        approx_gt_path=self.hparams.approx_gt_dir,
                                        allow_real_gt=self.hparams.supervised,
+                                       class_label=self.hparams.class_label
                                     )
 
             self.validate = CamusDataset(self.df.loc[self.val_idx],
                                           data_path=self.hparams.data_dir,
                                           subset_frac=self.hparams.subset_frac,
                                           seed=self.hparams.seed,
-                                          available_gt=None)
+                                          available_gt=None,
+                                          class_label=self.hparams.class_label)
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
@@ -176,14 +183,16 @@ class CamusDataModule(pl.LightningDataModule):
                                       subset_frac=self.hparams.subset_frac,
                                       seed=self.hparams.seed,
                                       available_gt=None,
-                                      test=True)
+                                      test=True,
+                                      class_label=self.hparams.class_label)
         if stage == "predict":
             self.pred = CamusDataset(self.df.loc[self.pred_idx],
                                       data_path=self.hparams.data_dir,
                                       subset_frac=self.hparams.subset_frac,
                                       seed=self.hparams.seed,
                                       available_gt=None,
-                                      test=True)
+                                      test=True,
+                                      class_label=self.hparams.class_label)
 
     # define your dataloaders
     # again, here defined for train, validate and test, not for predict as the project is not there yet.

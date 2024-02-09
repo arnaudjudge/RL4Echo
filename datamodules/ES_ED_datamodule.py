@@ -13,7 +13,7 @@ from utils.file_utils import get_img_subpath
 
 
 class ESEDDataset(Dataset):
-    def __init__(self, df, data_path, approx_gt_path=None, allow_real_gt=True, subset_frac=1.0, available_gt=None, seed=0, test=False, *args,
+    def __init__(self, df, data_path, approx_gt_path=None, allow_real_gt=True, subset_frac=1.0, available_gt=None, seed=0, test=False, class_label=None, *args,
                  **kwargs):
         super().__init__()
         self.df = df
@@ -21,6 +21,7 @@ class ESEDDataset(Dataset):
         self.approx_gt_path = approx_gt_path
         self.allow_real_gt = allow_real_gt
         self.test = test
+        self.class_label = class_label
 
         print(f"Test step: {self.test} , len of dataset {len(self.df)}")
 
@@ -33,13 +34,16 @@ class ESEDDataset(Dataset):
         return len(self.df.index)
 
     def __getitem__(self, idx):
-        sub_path = get_img_subpath(self.df.iloc[idx], suffix=f"_img_{self.df.iloc[idx]['instant']}")
+        sub_path = get_img_subpath(self.df.iloc[idx], suffix=f"_{self.df.iloc[idx]['instant']}" if type(self.df.iloc[idx]['instant']) == str else "")
 
-        img = np.expand_dims(nib.load(self.data_path + '/' + sub_path).get_fdata(), 0)
-        mask = nib.load(self.data_path + '/' + sub_path.replace("img", 'mask')).get_fdata()
+        img = np.expand_dims(nib.load(self.data_path + '/img/' + sub_path).get_fdata(), 0)
+        mask = nib.load(self.data_path + '/gt/' + sub_path).get_fdata()
+
+        if self.class_label:
+            mask = (mask == self.class_label)
 
         if self.use_gt[idx]:
-            approx_gt_path = self.approx_gt_path + '/approx_gt/' + sub_path.replace("_img", '')
+            approx_gt_path = self.approx_gt_path + '/approx_gt/' + sub_path
             approx_gt = nib.load(approx_gt_path).get_fdata()
         else:
             approx_gt = np.zeros_like(mask)
@@ -69,6 +73,7 @@ class ESEDDataModule(pl.LightningDataModule):
                  test_frac=0.1,
                  gt_frac=None,
                  seed=0,
+                 class_label=None,
                  *args, **kwargs):
         super().__init__()
         self.args = args
@@ -163,13 +168,15 @@ class ESEDDataModule(pl.LightningDataModule):
                                        available_gt=self.df.loc[self.train_idx].get(self.hparams.gt_column, None),
                                        approx_gt_path=self.hparams.approx_gt_dir,
                                        allow_real_gt=self.hparams.supervised,
+                                       class_label=self.hparams.class_label
                                     )
 
             self.validate = ESEDDataset(self.df.loc[self.val_idx],
                                           data_path=self.hparams.data_dir,
                                           subset_frac=self.hparams.subset_frac,
                                           seed=self.hparams.seed,
-                                          available_gt=None)
+                                          available_gt=None,
+                                          class_label=self.hparams.class_label)
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
@@ -178,14 +185,16 @@ class ESEDDataModule(pl.LightningDataModule):
                                       subset_frac=self.hparams.subset_frac,
                                       seed=self.hparams.seed,
                                       available_gt=None,
-                                      test=True)
+                                      test=True,
+                                      class_label=self.hparams.class_label)
         if stage == "predict":
             self.pred = ESEDDataset(self.df.loc[self.pred_idx],
                                       data_path=self.hparams.data_dir,
                                       subset_frac=self.hparams.subset_frac,
                                       seed=self.hparams.seed,
                                       available_gt=None,
-                                      test=True)
+                                      test=True,
+                                      class_label=self.hparams.class_label)
 
     # define your dataloaders
     # again, here defined for train, validate and test, not for predict as the project is not there yet.
