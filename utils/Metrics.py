@@ -29,7 +29,7 @@ def is_anatomically_valid(output):
     out = torch.zeros(len(output))
     for i in range(len(output)):
         try:
-            out[i] = int(check_segmentation_validity(output[i].cpu().numpy().T, (1.0, 1.0), [0, 1, 2]))
+            out[i] = int(check_segmentation_validity(output[i].T, (1.0, 1.0), [0, 1, 2]))
         except:
             out[i] = 0
     return out

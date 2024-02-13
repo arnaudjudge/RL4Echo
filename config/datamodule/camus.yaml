@@ -1,7 +1,7 @@
 _target_: datamodules.camus_RL_datamodule.CamusDataModule
 
-data_dir: '/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_2/'
-csv_file: 'camus_regular_split.csv'
+data_dir: '/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_affine/'
+csv_file: 'camus_split_5.csv'
 
 subset_frac: 1.0
 available_gt: 0.0
