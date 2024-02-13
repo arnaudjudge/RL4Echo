@@ -136,24 +136,34 @@ class RLmodule(pl.LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, b_use_gt = batch['img'], batch['gt'], batch['use_gt']
+        b_img, b_gt, b_use_gt, voxel_spacing = batch['img'], batch['gt'], batch['use_gt'],  batch['vox']
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt, b_use_gt))
         acc = accuracy(prev_actions, b_img, b_gt)
         simple_dice = dice_score(prev_actions, b_gt)
-        test_dice = dice(prev_actions.cpu().numpy(), b_gt.cpu().numpy(),
-                         labels=(Label.BG, Label.LV, Label.MYO), exclude_bg=True, all_classes=True)
-        test_hd = hausdorff(prev_actions.cpu().numpy(), b_gt.cpu().numpy(),
-                         labels=(Label.BG, Label.LV, Label.MYO), exclude_bg=True, all_classes=True)
-        anat_errors = is_anatomically_valid(prev_actions)
+        y_pred_np = prev_actions.cpu().numpy()
+        b_gt_np = b_gt.cpu().numpy()
+        test_dice = dice(y_pred_np, b_gt_np, labels=(Label.BG, Label.LV, Label.MYO),
+                         exclude_bg=True, all_classes=True)
+        test_dice_epi = dice((y_pred_np != 0).astype(np.uint8), (b_gt_np != 0).astype(np.uint8),
+                             labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False)
+
+        test_hd = hausdorff(y_pred_np, b_gt_np, labels=(Label.BG, Label.LV, Label.MYO),
+                            exclude_bg=True, all_classes=True, voxel_spacing=voxel_spacing.cpu().numpy())
+        test_hd_epi = hausdorff((y_pred_np != 0).astype(np.uint8), (b_gt_np != 0).astype(np.uint8),
+                                labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False,
+                                voxel_spacing=voxel_spacing.cpu().numpy())['Hausdorff']
+        anat_errors = is_anatomically_valid(y_pred_np)
 
         logs = {'test_loss': loss,
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
                 'test_acc': acc.mean(),
                 "test_dice": simple_dice.mean(),
-                "test_anat_valid": anat_errors.mean()
+                "test_anat_valid": anat_errors.mean(),
+                'dice_epi': test_dice_epi,
+                'hd_epi': test_hd_epi,
                 }
         logs.update(test_dice)
         logs.update(test_hd)

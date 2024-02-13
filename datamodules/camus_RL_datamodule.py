@@ -36,7 +36,8 @@ class CamusDataset(Dataset):
     def __getitem__(self, idx):
         sub_path = self.df.iloc[idx]['id'] + '.nii.gz'
 
-        img = np.expand_dims(nib.load(self.data_path + '/img/' + sub_path).get_fdata(), 0)
+        img_nifti = nib.load(self.data_path + '/img/' + sub_path)
+        img = np.expand_dims(img_nifti.get_fdata(), 0)
         gt = nib.load(self.data_path + '/gt/' + sub_path).get_fdata()
 
         if self.class_label:
@@ -53,6 +54,7 @@ class CamusDataset(Dataset):
                 'approx_gt': torch.tensor(approx_gt).type(torch.LongTensor),
                 'use_gt': torch.tensor(self.use_gt[idx]),
                 'id': self.df.iloc[idx]['id'],
+                'vox': img_nifti.header['pixdim'][1:3]
                 }
 
 

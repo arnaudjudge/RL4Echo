@@ -34,9 +34,10 @@ class ESEDDataset(Dataset):
         return len(self.df.index)
 
     def __getitem__(self, idx):
-        sub_path = get_img_subpath(self.df.iloc[idx], suffix=f"_{self.df.iloc[idx]['instant']}" if type(self.df.iloc[idx]['instant']) == str else "")
+        sub_path = get_img_subpath(self.df.iloc[idx], suffix=f"_{self.df.iloc[idx]['instant']}")
 
-        img = np.expand_dims(nib.load(self.data_path + '/img/' + sub_path).get_fdata(), 0)
+        img_nifti = nib.load(self.data_path + '/img/' + sub_path)
+        img = np.expand_dims(img_nifti.get_fdata(), 0)
         mask = nib.load(self.data_path + '/gt/' + sub_path).get_fdata()
 
         if self.class_label:
@@ -49,11 +50,12 @@ class ESEDDataset(Dataset):
             approx_gt = np.zeros_like(mask)
 
         return {'img': torch.tensor(img, dtype=torch.float32),
-                'gt': torch.tensor(mask).type(torch.LongTensor) if self.allow_real_gt else torch.zeros_like(torch.tensor(mask)),
+                'gt': torch.tensor(mask).type(torch.LongTensor) if self.allow_real_gt or self.test else torch.zeros_like(torch.tensor(mask)),
                 'approx_gt': torch.tensor(approx_gt).type(torch.LongTensor),
                 'use_gt': torch.tensor(self.use_gt[idx]),
-                'id': self.df.iloc[idx]['dicom_uuid'],
-                'instant': self.df.iloc[idx]['instant']
+                'id': str(self.df.iloc[idx]['dicom_uuid']),
+                'instant': str(self.df.iloc[idx]['instant']),
+                'vox': img_nifti.header['pixdim'][1:3]
                 }
 
 
@@ -109,7 +111,7 @@ class ESEDDataModule(pl.LightningDataModule):
         # Assign train/val datasets for use in dataloaders
         # the stage is used in the Pytorch Lightning trainer method, which you can call as fit (training, evaluation) or test, also you can use it for predict, not implemented here
 
-        self.df = self.df[(self.df['passed'] == True) & (self.df['relative_path'].notna())]
+        #self.df = self.df[(self.df['passed'] == True)]
 
         # Do splits
         if self.hparams.splits_column and self.hparams.splits_column in self.df.columns:

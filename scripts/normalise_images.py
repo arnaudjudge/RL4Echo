@@ -6,9 +6,9 @@ from matplotlib import pyplot as plt
 
 
 if __name__ == "__main__":
-    data_path = "/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_2/"
+    data_path = "/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_affine/"
     img_folder = "img/"
-    output_path = "/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_2/"
+    output_path = "/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_affine/"
 
     for p in Path(data_path + img_folder).rglob('*.nii.gz'):
         print(p)

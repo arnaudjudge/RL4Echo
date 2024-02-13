@@ -105,7 +105,7 @@ class SupervisedOptimizer(pl.LightningModule):
         return logs
 
     def test_step(self, batch, batch_idx):
-        b_img, b_gt = batch['img'], batch['gt']
+        b_img, b_gt, voxel_spacing = batch['img'], batch['gt'], batch['vox']
         y_pred = self.forward(b_img)
 
         loss = self.loss(y_pred, b_gt)
@@ -117,16 +117,26 @@ class SupervisedOptimizer(pl.LightningModule):
 
         acc = accuracy(y_pred, b_img, b_gt)
         simple_dice = dice_score(y_pred, b_gt)
-        test_dice = dice(y_pred.cpu().numpy(), b_gt.cpu().numpy(),
-                         labels=(Label.BG, Label.LV, Label.MYO), exclude_bg=True, all_classes=True)
-        test_hd = hausdorff(y_pred.cpu().numpy(), b_gt.cpu().numpy(),
-                            labels=(Label.BG, Label.LV, Label.MYO), exclude_bg=True, all_classes=True)
-        anat_errors = is_anatomically_valid(y_pred)
+        y_pred_np = y_pred.cpu().numpy()
+        b_gt_np = b_gt.cpu().numpy()
+        test_dice = dice(y_pred_np, b_gt_np, labels=(Label.BG, Label.LV, Label.MYO),
+                         exclude_bg=True, all_classes=True)
+        test_dice_epi = dice((y_pred_np != 0).astype(np.uint8), (b_gt_np != 0).astype(np.uint8),
+                             labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False)
+
+        test_hd = hausdorff(y_pred_np, b_gt_np, labels=(Label.BG, Label.LV, Label.MYO),
+                            exclude_bg=True, all_classes=True, voxel_spacing=voxel_spacing.cpu().numpy())
+        test_hd_epi = hausdorff((y_pred_np != 0).astype(np.uint8), (b_gt_np != 0).astype(np.uint8),
+                                labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False,
+                                voxel_spacing=voxel_spacing.cpu().numpy())['Hausdorff']
+        anat_errors = is_anatomically_valid(y_pred_np)
 
         logs = {'test_loss': loss,
                 'test_acc': acc.mean(),
                 'test_dice': simple_dice.mean(),
-                'test_anat_valid': anat_errors.mean()
+                'test_anat_valid': anat_errors.mean(),
+                'dice_epi': test_dice_epi,
+                'hd_epi': test_hd_epi,
                 }
         logs.update(test_dice)
         logs.update(test_hd)
@@ -201,6 +211,14 @@ class SupervisedOptimizer(pl.LightningModule):
                     else:
                         deformed_action = torch.round(deformed_action)
 
+                    # f, (ax1, ax2) = plt.subplots(1, 2)
+                    # ax1.set_title(f"Good initial action")
+                    # ax1.imshow(actions[i, ...].cpu().numpy().T)
+                    #
+                    # ax2.set_title(f"Deformed network's action")
+                    # ax2.imshow(deformed_action[0, ...].cpu().numpy().T)
+                    # plt.show()
+
                     filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
@@ -210,6 +228,14 @@ class SupervisedOptimizer(pl.LightningModule):
             else:
                 if not corrected_validity[i]:
                     continue
+
+                # f, (ax1, ax2) = plt.subplots(1, 2)
+                # ax1.set_title(f"Bad initial action")
+                # ax1.imshow(actions[i, ...].cpu().numpy().T)
+                #
+                # ax2.set_title(f"Corrected action")
+                # ax2.imshow(corrected[i, ...].T)
+                # plt.show()
 
                 filename = f"{batch_idx}_{itr}_{i}_{int(round(datetime.now().timestamp()))}.nii.gz"
                 save_to_reward_dataset(self.predict_save_dir,
