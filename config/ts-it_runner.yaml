@@ -13,7 +13,7 @@ seed: 1
 
 logger:
   save_dir: "./logs/ts_it/"
-  name: '${get_class_name: ${model._target_}}_${run_name}'
+  name: '${get_class_name: ${model._target_}}_${model.class_label}'
 
 callbacks:
   model_checkpoint:

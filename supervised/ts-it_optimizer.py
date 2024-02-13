@@ -171,7 +171,7 @@ class TSITOptimizer(pl.LightningModule):
         return logs
 
     def test_step(self, batch, batch_idx):
-        b_img, b_gt = batch['img'], batch['gt'].float()
+        b_img, b_gt, voxel_spacing = batch['img'], batch['gt'].float(), batch['vox']
         y_pred = self.forward(b_img)
 
         loss = self.loss(y_pred, b_gt)
@@ -184,12 +184,12 @@ class TSITOptimizer(pl.LightningModule):
         acc = accuracy(y_pred, b_img, b_gt)
         simple_dice = dice_score(y_pred, b_gt)
         #anat_errors = is_anatomically_valid(y_pred)
-        labels = (Label.BG, Label.LV) if self.class_label == 1 else (Label.BG, Label.MYO)
+
+        labels = (Label.BG, Label.LV)  # only 0 or 1 since done separately here
         test_dice = dice(y_pred.cpu().numpy(), b_gt.cpu().numpy(),
                          labels=labels, exclude_bg=True, all_classes=True)
         test_hd = hausdorff(y_pred.cpu().numpy(), b_gt.cpu().numpy(),
-                         labels=labels, exclude_bg=True, all_classes=True)
-
+                         labels=labels, exclude_bg=True, all_classes=False, voxel_spacing=voxel_spacing.cpu().numpy())
         logs = {'test_loss': loss,
                 'test_acc': acc.mean(),
                 'test_dice': simple_dice.mean(),
