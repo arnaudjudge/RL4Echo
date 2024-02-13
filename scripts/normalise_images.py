@@ -21,12 +21,21 @@ if __name__ == "__main__":
         data = data / 255
         print(data.mean())
         print(data.std())
-        # plt.figure()
-        # plt.imshow(data)
+
+        # f, (ax1, ax2) = plt.subplots(2, 2)
+        # ax1[1].hist(data.flatten() * 255, bins=255, range=[2, 255])
+        # ax1[1].set_title("Before Equalization")
+        #
+        # ax1[0].imshow(data.T * 255)
+        # ax1[0].set_title("Before Equalization")
 
         data = exp.equalize_adapthist(data, clip_limit=0.01)
-        # plt.figure()
-        # plt.imshow(data)
+
+        # ax2[0].imshow(data.T * 255)
+        # ax2[0].set_title("After Equalization")
+        #
+        # ax2[1].hist(data.flatten()*255, bins=255, range=[2, 255])
+        # ax2[1].set_title("After Equalization")
         # plt.show()
 
         out_img = nib.Nifti1Image(data, img.affine, img.header)
