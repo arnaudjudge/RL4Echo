@@ -1,6 +1,6 @@
 _target_: datamodules.ES_ED_datamodule.ESEDDataModule
 
-data_dir: '/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_2/'
+data_dir: '/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_affine/'
 csv_file: 'subset_official_test.csv'
 
 subset_frac: 1.0
