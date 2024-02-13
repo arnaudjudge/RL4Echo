@@ -40,6 +40,9 @@ class CamusRL(Camus):
         # Collect data
         with h5py.File(self.root, "r") as dataset:
             view_imgs, view_gts = self._get_data(dataset, patient_view_key, CamusTags.img_proc, CamusTags.gt_proc)
+            voxelspacing, clinically_important_instants = Camus._get_metadata(
+                dataset, patient_view_key, CamusTags.voxelspacing, CamusTags.instants
+            )
 
         # Format data
         img = view_imgs[instant]
@@ -54,12 +57,15 @@ class CamusRL(Camus):
         frame_pos = torch.tensor([instant / len(view_imgs)])
         #gt_attrs = get_segmentation_attributes(gt, self.labels)
 
+
+
         return {
             CamusTags.id: f"{patient_view_key}/{instant}",
             CamusTags.group: patient_view_key,
             CamusTags.img: img,
             CamusTags.gt: gt,
             CamusTags.frame_pos: frame_pos,
+            CamusTags.voxelspacing: voxelspacing,
             #**gt_attrs,
         }
 
@@ -102,83 +108,129 @@ class CamusRLDataModule(CamusDataModule):
 if __name__ == "__main__":
     import nibabel as nib
     import numpy as np
-    save_dir = Path('/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_matched_hist/')
+    save_dir = Path('/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_affine')
 
     dl = CamusRLDataModule(dataset_path="/home/local/USHERBROOKE/juda2901/dev/data/camus/camus.h5", labels=[0, 1, 2],
                            batch_size=1)
-    dl.setup(stage="test")
+    dl.setup(stage="fit")
 
     row_list = []
 
+    for i, batch in enumerate(dl.train_dataloader()):
+        print(i)
+        print(batch.keys())
+        print(batch['id'][0])
+        print(batch['img'].shape)
+        print(batch['gt'].shape)
+        print(batch['voxelspacing'])
+
+        # vox = batch['voxelspacing'][0]
+        # affine = np.diag(np.asarray([-vox[2], -vox[1], 1, 0]))
+        # hdr = nib.Nifti1Header()
+        #
+        # img_path = save_dir / 'img' / (batch['id'][0] + '.nii.gz')
+        # img_path.parent.mkdir(parents=True, exist_ok=True)
+        # data = batch['img'].cpu().numpy()[0][0]
+        #
+        # nifti_img = nib.Nifti1Image(data.T, affine, hdr)
+        # nifti_img.to_filename(img_path)
+        # print(img_path)
+        #
+        # gt_path = save_dir / 'gt' / (batch['id'][0] + '.nii.gz')
+        # gt_path.parent.mkdir(parents=True, exist_ok=True)
+        # nifti_gt = nib.Nifti1Image(batch['gt'].cpu().numpy()[0].T, affine, hdr)
+        # nifti_gt.to_filename(gt_path)
+        # print(gt_path)
+
+        filename = batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES")
+        row_list += [{'id': batch['id'][0][:16].lower() + batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES"),
+                         'split_0': 'train',
+                         'study': batch['id'][0].split('/')[0],
+                         'view': batch['id'][0].split('/')[1],
+                         'instant': "_ED" if batch['frame_pos'][0] < 5 else "_ES",
+                         'dicom_uuid': filename,
+                         'valid_segmentation': True,
+                         'Gt_0': None,
+                     }]
+
+    for i, batch in enumerate(dl.val_dataloader()):
+        print(i)
+        print(batch.keys())
+        print(batch['id'][0])
+        print(batch['img'].shape)
+        print(batch['gt'].shape)
+        print(batch['voxelspacing'])
+        #
+        # vox = batch['voxelspacing'][0]
+        # affine = np.diag(np.asarray([-vox[2], -vox[1], 1, 0]))
+        # hdr = nib.Nifti1Header()
+        #
+        # img_path = save_dir / 'img' / (batch['id'][0] + '.nii.gz')
+        # img_path.parent.mkdir(parents=True, exist_ok=True)
+        # data = batch['img'].cpu().numpy()[0][0]
+        #
+        # nifti_img = nib.Nifti1Image(data.T, affine, hdr)
+        # nifti_img.to_filename(img_path)
+        # print(img_path)
+        #
+        # gt_path = save_dir / 'gt' / (batch['id'][0] + '.nii.gz')
+        # gt_path.parent.mkdir(parents=True, exist_ok=True)
+        # nifti_gt = nib.Nifti1Image(batch['gt'].cpu().numpy()[0].T, affine, hdr)
+        # nifti_gt.to_filename(gt_path)
+        # print(gt_path)
+
+
+        filename = batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES")
+        row_list += [{'id': batch['id'][0][:16].lower() + batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES"),
+                         'split_0': 'val',
+                         'study': batch['id'][0].split('/')[0],
+                         'view': batch['id'][0].split('/')[1],
+                         'instant': "_ED" if batch['frame_pos'][0] < 5 else "_ES",
+                         'dicom_uuid': filename,
+                         'valid_segmentation': True,
+                         'Gt_0': None,
+                     }]
+
+    dl.setup('test')
     for i, batch in enumerate(dl.test_dataloader()):
         print(i)
         print(batch.keys())
         print(batch['id'][0])
         print(batch['img'].shape)
         print(batch['gt'].shape)
+        print(batch['voxelspacing'])
 
-        affine = np.diag(np.asarray([-1, -1, 1, 0]))
-        hdr = nib.Nifti1Header()
-
-        img_path = save_dir / 'img' / (batch['id'][0] + '.nii.gz')
-        img_path.parent.mkdir(parents=True, exist_ok=True)
-        data = np.rot90(batch['img'].cpu().numpy()[0][0], k=1)
-
-        d = nib.load(
-            '/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset/st-2B01-4362-9229/a2c/di-153F-C20A-1CD1_img_ES.nii.gz').get_fdata()
-
-        import matplotlib.pyplot as plt
-
-        # plt.figure()
-        # plt.hist(data.astype(np.uint8).flatten(), bins=256, range=[0, 255])
-
-        hist, _ = np.histogram(d.flatten(), 256, [0, 255])
-        cdf = hist.cumsum()
-        cdf_m = np.ma.masked_equal(cdf, 0)
-        cdf_m = (cdf_m - cdf_m.min()) * 255 / (cdf_m.max() - cdf_m.min())
-        cdf = np.ma.filled(cdf_m, 0).astype('uint8')
-        data = cdf[data.astype(np.uint8)]
-        from skimage import exposure as exp
-        matched = exp.match_histograms(data, d, multichannel=False)
-
-        # plt.figure()
-        # plt.hist(data.flatten(), bins=256, range=[0, 255])
+        # vox = batch['voxelspacing'][0]
+        # affine = np.diag(np.asarray([-vox[2], -vox[1], 1, 0]))
+        # hdr = nib.Nifti1Header()
         #
-        # plt.figure()
-        # plt.hist(d.flatten(), bins=256, range=[0, 255])
+        # img_path = save_dir / 'img' / (batch['id'][0] + '.nii.gz')
+        # img_path.parent.mkdir(parents=True, exist_ok=True)
+        # data = batch['img'].cpu().numpy()[0][0]
         #
-        # plt.figure()
-        # plt.hist(matched.flatten(), bins=256, range=[0, 255])
+        # nifti_img = nib.Nifti1Image(data.T, affine, hdr)
+        # nifti_img.to_filename(img_path)
+        # print(img_path)
         #
-        # plt.show()
+        # gt_path = save_dir / 'gt' / (batch['id'][0] + '.nii.gz')
+        # gt_path.parent.mkdir(parents=True, exist_ok=True)
+        # nifti_gt = nib.Nifti1Image(batch['gt'].cpu().numpy()[0].T, affine, hdr)
+        # nifti_gt.to_filename(gt_path)
+        # print(gt_path)
 
-        # p1, p99 = np.percentile(data, (0.1, 99.1))
-        # data = exposure.rescale_intensity(data, in_range=(p1, p99)) * 255
 
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.imshow(data.T, cmap='gray')
-        # plt.show()
-
-        nifti_img = nib.Nifti1Image(matched, affine, hdr)
-        nifti_img.to_filename(img_path)
-        print(img_path)
-
-        gt_path = save_dir / 'gt' / (batch['id'][0] + '.nii.gz')
-        gt_path.parent.mkdir(parents=True, exist_ok=True)
-        nifti_gt = nib.Nifti1Image(np.rot90(batch['gt'].cpu().numpy()[0], k=1), affine, hdr)
-        nifti_gt.to_filename(gt_path)
-        print(gt_path)
-
-        row_list += [{'id': batch['id'][0],
-                     'split_0': 'test',
-                     'study': batch['id'][0].split('/')[0],
-                     'view': batch['id'][0].split('/')[1],
-                      'dicom_uuid': batch['id'][0].split('/')[2],
-                      'valid_segmentation': True,
+        filename = batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES")
+        row_list += [{'id': batch['id'][0][:16].lower() + batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES"),
+                         'split_0': 'test',
+                         'study': batch['id'][0].split('/')[0],
+                         'view': batch['id'][0].split('/')[1],
+                         'instant': "_ED" if batch['frame_pos'][0] < 5 else "_ES",
+                         'dicom_uuid': filename,
+                         'valid_segmentation': True,
+                         'Gt_0': None,
                      }]
 
 
     df = pd.DataFrame.from_dict(row_list)
     print(df)
-    df.to_csv(save_dir / 'camus_test.csv')
+    df.to_csv(save_dir / 'camus_split_5.csv')
