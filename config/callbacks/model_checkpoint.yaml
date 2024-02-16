@@ -3,3 +3,4 @@ model_checkpoint:
 
   monitor: val_reward
   mode: max
+  save_last: True
