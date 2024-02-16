@@ -8,6 +8,7 @@ import nibabel as nib
 import numpy as np
 import pytorch_lightning as pl
 import torch
+from torchvision.transforms.functional import adjust_contrast
 from torch import Tensor
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 from vital.data.camus.config import Label
@@ -136,11 +137,11 @@ class RLmodule(pl.LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, b_use_gt, voxel_spacing = batch['img'], batch['gt'], batch['use_gt'],  batch['vox']
+        b_img, b_gt, voxel_spacing = batch['img'], batch['gt'], batch['vox']
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
-                                                                    prev_log_probs, b_gt, b_use_gt))
+                                                                    prev_log_probs, b_gt, False))
         acc = accuracy(prev_actions, b_img, b_gt)
         simple_dice = dice_score(prev_actions, b_gt)
         y_pred_np = prev_actions.cpu().numpy()
@@ -259,6 +260,47 @@ class RLmodule(pl.LightningModule):
                                            convert_to_numpy(b_img[i]),
                                            np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
                                            convert_to_numpy(deformed_action))
+
+                contrast_factors = [0.7, 0.8]
+                for factor in contrast_factors:
+                    in_img = b_img[i].unsqueeze(0).clone()
+                    in_img = adjust_contrast(in_img, factor)
+                    #in_img /= in_img.max()
+
+                    # make prediction
+                    contr_action, *_ = self.actor.actor(in_img)
+                    if len(contr_action.shape) > 3:
+                        contr_action = contr_action.argmax(dim=1)
+                    else:
+                        contr_action = torch.round(contr_action)
+                    time_seed = int(round(datetime.now().timestamp())) + int(factor*10)
+                    filename = f"{batch_idx}_{itr}_{i}_{time_seed}_contrast.nii.gz"
+                    save_to_reward_dataset(self.predict_save_dir,
+                                           filename,
+                                           convert_to_numpy(b_img[i]),
+                                           np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
+                                           convert_to_numpy(contr_action))
+
+                gaussian_blurs = [0.05, 0.1]
+                for blur in gaussian_blurs:
+                    in_img = b_img[i].unsqueeze(0).clone()
+                    in_img += torch.randn(in_img.size()).cuda() * blur
+                    in_img /= in_img.max()
+
+                    # make prediction
+                    blurred_action, *_ = self.actor.actor(in_img)
+                    if len(blurred_action.shape) > 3:
+                        blurred_action = blurred_action.argmax(dim=1)
+                    else:
+                        blurred_action = torch.round(blurred_action)
+                    time_seed = int(round(datetime.now().timestamp())) + int(blur*100)
+                    filename = f"{batch_idx}_{itr}_{i}_{time_seed}_blur.nii.gz"
+                    save_to_reward_dataset(self.predict_save_dir,
+                                           filename,
+                                           convert_to_numpy(b_img[i]),
+                                           np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
+                                           convert_to_numpy(blurred_action))
+
             else:
                 if not corrected_validity[i]:
                     continue
