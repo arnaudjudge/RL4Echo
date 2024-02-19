@@ -180,7 +180,7 @@ class RewardOptimizer(pl.LightningModule):
         optimizer.step(eval)
 
         print(f"TEMPERATURE: {self.temperature}")
-        self.trainer.logger.log_hyperparams({'Temperature factor': self.temperature})
+        self.trainer.logger.log_hyperparams({'Temperature factor': self.temperature.detach().cpu().numpy()[0]})
 
         if self.var_file:
             pickle.dump({"Temperature_factor": self.temperature.detach().cpu().numpy()[0]}, open(self.var_file, "wb"))
