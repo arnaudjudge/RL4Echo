@@ -25,4 +25,4 @@ rl_num_predict: 2000
 #
 # RewardNet params
 #
-rn_num_epochs: 2
+rn_num_epochs: 50
