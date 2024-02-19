@@ -1,27 +1,41 @@
+import pickle
 import random
 from typing import Dict
 
 import pytorch_lightning as pl
 import torch
-from torch import nn
-from torchvision import models
+from torch import nn, optim
+from torch.nn import functional as F
 from vital.models.segmentation.unet import UNet
 
+from rewardnet.unet_heads import UNet_multihead
 from utils.Metrics import accuracy
 from utils.logging_helper import log_image
 
+import torch.distributions as distributions
+
 
 class RewardOptimizer(pl.LightningModule):
-    def __init__(self, save_model_path=None, **kwargs):
+    def __init__(self, save_model_path=None, uncertainty=False, var_file=None, **kwargs):
         super().__init__(**kwargs)
 
-        self.net = UNet(input_shape=(2, 256, 256), output_shape=(1, 256, 256))
+        if uncertainty:
+            self.net = UNet_multihead(input_shape=(2, 256, 256), output_shape=(1, 256, 256), sigma_out=True)
+        else:
+            self.net = UNet(input_shape=(2, 256, 256), output_shape=(1, 256, 256))
+
+        self.uncertainty = uncertainty
+        self.is_log_sigma = True
+        self.iterations = 10
+
+        self.temperature = nn.Parameter(torch.ones(1).to(self.device))
+        self.var_file = var_file
 
         self.loss = nn.BCELoss()
         self.save_model_path = save_model_path
 
     def forward(self, x):
-        out = self.net.forward(x)
+        out = self.net(x)
         return out
 
     def configure_optimizers(self):
@@ -32,8 +46,23 @@ class RewardOptimizer(pl.LightningModule):
     def training_step(self, batch, *args, **kwargs) -> Dict:
         x, y = batch
 
-        y_pred = torch.sigmoid(self.forward(x))
-        loss = self.loss(y_pred, y)
+        if self.uncertainty:
+            logits, sigma = self(x)  # (N, C, H, W), (N, C, H, W)
+            sigma = F.softplus(sigma)
+
+            if self.is_log_sigma:
+                distribution = distributions.Normal(logits, torch.exp(sigma))
+            else:
+                distribution = distributions.Normal(logits, sigma + 1e-8)
+
+            x_hat = distribution.rsample((self.iterations,))
+
+            mc_expectation = torch.sigmoid(x_hat).mean(dim=0)
+            loss = F.binary_cross_entropy(mc_expectation.squeeze(), y.float().squeeze())
+
+        else:
+            y_pred = torch.sigmoid(self(x))
+            loss = self.loss(y_pred, y)
 
         logs = {
             'loss': loss,
@@ -43,38 +72,69 @@ class RewardOptimizer(pl.LightningModule):
         return logs
 
     def validation_step(self, batch, batch_idx: int):
+        x, y = batch
 
-        imgs, y_true = batch
-        y_pred = torch.sigmoid(self.forward(imgs))
-        loss = self.loss(y_pred, y_true)
+        if self.uncertainty:
+            logits, sigma = self(x)  # (N, C, H, W), (N, C, H, W)
+            sigma = F.softplus(sigma)
 
-        acc = accuracy(y_pred, imgs, y_true)
+            if self.is_log_sigma:
+                distribution = distributions.Normal(logits, torch.exp(sigma))
+            else:
+                distribution = distributions.Normal(logits, sigma + 1e-8)
+
+            x_hat = distribution.rsample((self.iterations,))
+
+            mc_expectation = torch.sigmoid(x_hat).mean(dim=0)
+            loss = F.binary_cross_entropy(mc_expectation.squeeze(), y.float().squeeze())
+            y_pred = torch.sigmoid(logits)
+        else:
+            y_pred = torch.sigmoid(self(x))
+            loss = self.loss(y_pred, y)
+
+        acc = accuracy(y_pred, x, y)
 
         self.log_dict({"val_loss": loss,
                        "val_acc": acc.mean()})
 
         # log images
-        idx = random.randint(0, len(imgs) - 1)  # which image to log
-        log_image(self.logger, img=imgs[idx].permute((0, 2, 1)), title='Image', number=batch_idx)
-        log_image(self.logger, img=y_true[idx].permute((0, 2, 1)), title='GroundTruth', number=batch_idx)
+        idx = random.randint(0, len(x) - 1)  # which image to log
+        log_image(self.logger, img=x[idx].permute((0, 2, 1)), title='Image', number=batch_idx)
+        log_image(self.logger, img=y[idx].permute((0, 2, 1)), title='GroundTruth', number=batch_idx)
         log_image(self.logger, img=y_pred[idx].permute((0, 2, 1)), title='Prediction', number=batch_idx,
                   img_text=acc[idx].mean())
 
         return {'loss': loss}
 
     def test_step(self, batch, batch_idx):
-        imgs, y_true = batch
-        y_pred = torch.sigmoid(self.forward(imgs))
-        loss = self.loss(y_pred, y_true)
+        x, y = batch
 
-        acc = accuracy(y_pred, imgs, y_true)
+        if self.uncertainty:
+            logits, sigma = self(x)  # (N, C, H, W), (N, C, H, W)
+            sigma = F.softplus(sigma)
+
+            if self.is_log_sigma:
+                distribution = distributions.Normal(logits, torch.exp(sigma))
+            else:
+                distribution = distributions.Normal(logits, sigma + 1e-8)
+
+            x_hat = distribution.rsample((self.iterations,))
+
+            mc_expectation = torch.sigmoid(x_hat).mean(dim=0)
+            loss = F.binary_cross_entropy(mc_expectation.squeeze(), y.float().squeeze())
+            y_pred = torch.sigmoid(logits)
+        else:
+            y_pred = torch.sigmoid(self(x))
+            loss = self.loss(y_pred, y)
+
+        acc = accuracy(y_pred, x, y)
 
         self.log_dict({"test_loss": loss,
                        "test_acc": acc.mean()})
 
-        for i in range(len(imgs)):
-            log_image(self.logger, img=imgs[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
-            log_image(self.logger, img=y_true[i].permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
+        for i in range(len(x)):
+            log_image(self.logger, img=x[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
+            log_image(self.logger, img=y[i].permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
             log_image(self.logger, img=y_pred[i].permute((0, 2, 1)), title='test_Prediction', number=batch_idx * (i + 1),
                       img_text=acc[i].mean())
 
@@ -87,3 +147,41 @@ class RewardOptimizer(pl.LightningModule):
         if self.save_model_path:
             sd = self.net.state_dict()
             torch.save(sd, self.save_model_path)
+
+    def temperature_scale(self, logits):
+        """
+        Perform temperature scaling on logits
+        """
+        # Expand temperature to match the size of logits
+        #temperature = self.temperature.unsqueeze(1).expand(logits.size()).to(self.device)
+        return torch.div(logits, self.temperature)
+
+    def on_train_end(self) -> None:
+        val_loader = self.trainer.datamodule.val_dataloader()
+
+        logits_list = []
+        labels_list = []
+        with torch.no_grad():
+            for input, label in val_loader:
+                logits = self(input.to(self.device))
+                logits_list.append(torch.stack((1-logits, logits), dim=1).squeeze(2))
+                labels_list.append(label.squeeze(1).to(torch.long))
+            logits = torch.cat(logits_list).to(self.device)
+            labels = torch.cat(labels_list).to(self.device)
+
+        optimizer = optim.LBFGS([self.temperature], lr=0.01, max_iter=10000)
+        criterion = nn.CrossEntropyLoss().to(self.device)
+
+        def eval():
+            optimizer.zero_grad()
+            loss = criterion(self.temperature_scale(logits), labels)
+            loss.backward()
+            return loss
+        optimizer.step(eval)
+
+        print(f"TEMPERATURE: {self.temperature}")
+        self.trainer.logger.log_hyperparams({'Temperature factor': self.temperature})
+
+        if self.var_file:
+            pickle.dump({"Temperature_factor": self.temperature.detach().cpu().numpy()[0]}, open(self.var_file, "wb"))
+

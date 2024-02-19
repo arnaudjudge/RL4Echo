@@ -1,6 +1,8 @@
 
 num_iter: 5
-output_path: ./logs/run_7_CB_gc/
+output_path: ./logs/run_8_CB_gc_ts/
+
+var_file: ${output_path}/variables.pkl
 
 target: es_ed
 source: camus
@@ -23,4 +25,4 @@ rl_num_predict: 2000
 #
 # RewardNet params
 #
-rn_num_epochs: 50
+rn_num_epochs: 2

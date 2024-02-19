@@ -1,3 +1,4 @@
+import pickle
 from datetime import datetime
 from pathlib import Path
 
@@ -72,13 +73,18 @@ def main(cfg):
         # train reward net
         overrides = main_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
                                       f"datamodule.data_path={output_path}/",
-                                      f"model.save_model_path={output_path}/{i-1}/rewardnet.ckpt"]
+                                      f"model.save_model_path={output_path}/{i-1}/rewardnet.ckpt",
+                                      f"+model.var_file={cfg.var_file}"]
         sub_cfg = compose(config_name=f"reward_runner.yaml", overrides=overrides)
         print(OmegaConf.to_yaml(sub_cfg))
         runner_main(sub_cfg)
 
         next_output_path = f'{output_path}/{i}/'
         Path(next_output_path).mkdir(parents=True, exist_ok=True)
+
+        # TODO: MAYBE RETHINK THIS WAY OF PASSING THE VARIABLE(S)
+        # load temporary variable file
+        saved_vars = pickle.load(open(cfg.var_file, "rb"))
 
         # train PPO model with fresh reward net
         overrides = main_overrides + [f"trainer.max_epochs={cfg.rl_num_epochs}",
@@ -88,6 +94,7 @@ def main(cfg):
                                       f"model.actor.actor.pretrain_ckpt={output_path}/{i-1}/actor.ckpt",
                                       f"model.actor.actor.ref_ckpt={output_path}/{i-1}/actor.ckpt", # always supervised?
                                       f"model.reward.state_dict_path={output_path}/{i-1}/rewardnet.ckpt",
+                                      f"model.reward.temp_factor={float(saved_vars['Temperature_factor'])}",
                                       f"model.actor_save_path={output_path}/{i}/actor.ckpt",
                                       f"model.critic_save_path={output_path}/{i}/critic.ckpt",
                                       f'model.predict_save_dir={output_path if iterations > i else None}',

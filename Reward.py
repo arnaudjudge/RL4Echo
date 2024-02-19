@@ -1,11 +1,15 @@
 import numpy as np
 import skimage.morphology
 import torch
+import torch.nn.functional as F
 from bdicardio.utils.ransac_utils import ransac_sector_extraction
 from scipy import ndimage
 from scipy.ndimage import binary_fill_holes
+from torch import distributions
 from torchmetrics.functional import dice
 from vital.models.segmentation.unet import UNet
+
+from rewardnet.unet_heads import UNet_multihead
 
 """
 Reward functions must each have pred, img, gt as input parameters
@@ -19,8 +23,22 @@ class Reward:
 
 
 class RewardUnet(Reward):
-    def __init__(self, state_dict_path):
+    def __init__(self, state_dict_path, temp_factor=1):
         self.net = UNet(input_shape=(2, 256, 256), output_shape=(1, 256, 256))
+        self.net.load_state_dict(torch.load(state_dict_path))
+        self.temp_factor = temp_factor
+        if torch.cuda.is_available():
+            self.net.cuda()
+
+    @torch.no_grad()
+    def __call__(self, pred, imgs, gt):
+        stack = torch.stack((imgs.squeeze(1), pred), dim=1)
+        return torch.sigmoid(self.net(stack)/self.temp_factor).squeeze(1)
+
+
+class RewardUnetSigma(Reward):
+    def __init__(self, state_dict_path):
+        self.net = UNet_multihead(input_shape=(2, 256, 256), output_shape=(1, 256, 256),  sigma_out=True)
         self.net.load_state_dict(torch.load(state_dict_path))
         if torch.cuda.is_available():
             self.net.cuda()
@@ -28,7 +46,15 @@ class RewardUnet(Reward):
     @torch.no_grad()
     def __call__(self, pred, imgs, gt):
         stack = torch.stack((imgs.squeeze(1), pred), dim=1)
-        return torch.sigmoid(self.net(stack)).squeeze(1)
+        logits, sigma = self.net(stack)  # (N, C, H, W), (N, C, H, W)
+        sigma = F.softplus(sigma)
+
+        distribution = distributions.Normal(logits, torch.exp(sigma))
+
+        x_hat = distribution.rsample((10,))
+
+        mc_expectation = torch.sigmoid(x_hat).mean(dim=0)
+        return mc_expectation.squeeze(1)
 
 
 class AccuracyMap(Reward):
