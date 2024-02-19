@@ -1,0 +1,26 @@
+
+num_iter: 5
+output_path: ./logs/run_7_CB_gc/
+
+target: es_ed
+source: camus
+
+#
+# supervised params
+#
+sup_num_epochs: 50
+
+# Increases randomness in initial model
+sup_loss_label_smoothing: 0.65
+
+#
+# RL params
+#
+rl_num_epochs: 5
+rl_num_predict: 2000
+
+
+#
+# RewardNet params
+#
+rn_num_epochs: 50

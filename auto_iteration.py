@@ -10,27 +10,28 @@ from omegaconf import OmegaConf
 from runner import main as runner_main
 
 
-@hydra.main(version_base=None, config_path="config", config_name="experiment")
+@hydra.main(version_base=None, config_path="config", config_name="auto_iteration")
 def main(cfg):
     GlobalHydra.instance().clear()
     initialize(version_base=None, config_path='./config')
 
-    iterations = 5
-    output_path = f'./logs/camus_good_es_ed_ppo_adapthist/'
+    iterations = cfg.num_iter
+    output_path = cfg.output_path
     Path(output_path+"/0/").mkdir(parents=True, exist_ok=True)
     main_overrides = [f"logger.save_dir={output_path}"]
-    target_experiment = 'es_ed'
-    source_experiment = 'camus'
+    target_experiment = cfg.target
+    source_experiment = cfg.source
 
     timestamp = datetime.now().timestamp()
     experiment_split_column = f"split_{timestamp}"
     experiment_gt_column = f"Gt_{timestamp}"
 
     # train supervised network for initial actor
-    overrides = main_overrides + ["trainer.max_epochs=25",
+    overrides = main_overrides + [f"trainer.max_epochs={cfg.sup_num_epochs}",
                                   #"datamodule.subset_frac=0.0075",
                                   f'model.predict_save_dir={None}',  # no predictions here
                                   f"model.ckpt_path={output_path}/{0}/actor.ckpt",
+                                  f"model.loss.label_smoothing={cfg.sup_loss_label_smoothing}",
                                   f"experiment=supervised_{source_experiment}"]
     sub_cfg = compose(config_name=f"supervised_runner.yaml", overrides=overrides)
     print(OmegaConf.to_yaml(sub_cfg))
@@ -47,7 +48,7 @@ def main(cfg):
 
     # Predict and test (baseline) on target domain
     overrides = main_overrides + [f"trainer.max_epochs=0",
-                                  "predict_subset_frac=2000",
+                                  f"predict_subset_frac={cfg.rl_num_predict}",
                                   f"model.actor.actor.pretrain_ckpt={output_path}/{0}/actor.ckpt",
                                   f"model.actor.actor.ref_ckpt={output_path}/{0}/actor.ckpt",  # always supervised?
                                   "reward@model.reward=pixelwise_accuracy",  # dummy, will not
@@ -69,7 +70,7 @@ def main(cfg):
 
     for i in range(1, iterations+1):
         # train reward net
-        overrides = main_overrides + ["trainer.max_epochs=50",
+        overrides = main_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
                                       f"datamodule.data_path={output_path}/",
                                       f"model.save_model_path={output_path}/{i-1}/rewardnet.ckpt"]
         sub_cfg = compose(config_name=f"reward_runner.yaml", overrides=overrides)
@@ -80,8 +81,8 @@ def main(cfg):
         Path(next_output_path).mkdir(parents=True, exist_ok=True)
 
         # train PPO model with fresh reward net
-        overrides = main_overrides + [f"trainer.max_epochs=5",
-                                      "predict_subset_frac=2000",
+        overrides = main_overrides + [f"trainer.max_epochs={cfg.rl_num_epochs}",
+                                      f"predict_subset_frac={cfg.rl_num_predict}",
                                       f"datamodule.splits_column={experiment_split_column}",
                                       f"datamodule.gt_column={experiment_gt_column}",
                                       f"model.actor.actor.pretrain_ckpt={output_path}/{i-1}/actor.ckpt",
@@ -90,8 +91,8 @@ def main(cfg):
                                       f"model.actor_save_path={output_path}/{i}/actor.ckpt",
                                       f"model.critic_save_path={output_path}/{i}/critic.ckpt",
                                       f'model.predict_save_dir={output_path if iterations > i else None}',
-                                      f"model.entropy_coeff={0.05*(iterations+1-i)}",
-                                      "model.divergence_coeff=0.05",
+                                      f"model.entropy_coeff={0.1 - 0.02*i}",
+                                      f"model.divergence_coeff={0.05}",
                                       f"experiment=ppo_{target_experiment}"
                                       ]
         if Path(f"{output_path}/{i-1}/critic.ckpt").exists():
