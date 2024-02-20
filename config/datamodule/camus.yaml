@@ -1,6 +1,6 @@
 _target_: datamodules.camus_RL_datamodule.CamusDataModule
 
-data_dir: '/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_affine/'
+data_dir: ${oc.env:DATA_PATH}/camus/RLcamus_affine/
 csv_file: 'camus_split_5.csv'
 
 subset_frac: 1.0

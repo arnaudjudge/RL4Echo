@@ -1,6 +1,6 @@
 
 num_iter: 5
-output_path: ./logs/run_8_CB_gc_ts/
+output_path: ${oc.env:LOG_PATH}/run_8_CB_gc_ts/
 
 var_file: ${output_path}/variables.pkl
 
