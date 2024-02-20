@@ -53,6 +53,8 @@ class PPO(RLmodule):
 
             opt_net.zero_grad()
             self.manual_backward(loss, retain_graph=True)
+            nn.utils.clip_grad_norm_(self.actor.parameters(),
+                                     0.5)
             opt_net.step()
 
             # TODO: should this be outside the loop? According to real algo...
