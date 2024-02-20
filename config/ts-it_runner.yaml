@@ -19,7 +19,6 @@ callbacks:
   model_checkpoint:
     monitor: val_acc
 
-predict_subset_frac: 1000
 
 datamodule:
   gt_column: Gt_0

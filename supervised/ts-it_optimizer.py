@@ -7,6 +7,7 @@ import nibabel as nib
 import numpy as np
 import pytorch_lightning as pl
 import torch
+from scipy import ndimage
 from torch import nn, Tensor
 from torchmetrics.classification import Dice
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
@@ -49,6 +50,7 @@ class TSITOptimizer(pl.LightningModule):
         super().__init__(**kwargs)
 
         self.net = UNet(input_shape=input_shape, output_shape=output_shape)
+        # self.net.load_state_dict(torch.load("./auto_iteration3/0/actor.ckpt"))
         self.input_shape = input_shape
         self.output_shape = output_shape
 
@@ -60,8 +62,8 @@ class TSITOptimizer(pl.LightningModule):
         print("TS-IT")
 
         self.icardio_dl = ESEDDataModule(
-            data_dir='/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_2/',
-            csv_file='subset.csv',
+            data_dir='/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_affine/',
+            csv_file='subset_official_test.csv',
             test_frac=0.1,
             class_label=class_label)
         self.class_label = class_label
@@ -71,11 +73,11 @@ class TSITOptimizer(pl.LightningModule):
         self.test_loader_ensemble_iterator = iter(self.test_loader_ensemble)
 
         self.ens_loss = Ens_loss(thr=0.85)
-        self.SemiSup_initial_epoch = 0
-        self.supervised_share = 1
-        self.ensemble_batch_size = 4
+        self.SemiSup_initial_epoch = 25
+        # self.supervised_share = 1
+        # self.ensemble_batch_size = 4
         self.GCC = 2
-        self.LW = 1
+        self.LW = 0.5
 
     def forward(self, x):
         out = self.net.forward(x)
@@ -186,9 +188,26 @@ class TSITOptimizer(pl.LightningModule):
         #anat_errors = is_anatomically_valid(y_pred)
 
         labels = (Label.BG, Label.LV)  # only 0 or 1 since done separately here
-        test_dice = dice(y_pred.cpu().numpy(), b_gt.cpu().numpy(),
+        y_pred_np = y_pred.cpu().numpy()
+        b_gt_np = b_gt.cpu().numpy()
+
+        for i in range(len(y_pred_np)):
+            # if y_pred_np[i].sum() == 0:
+            #     y_pred_np[i] = b_gt_np[i]
+            lbl, num = ndimage.measurements.label(y_pred_np[i])
+            # Count the number of elements per label
+            count = np.bincount(lbl.flat)
+            # Select the largest blob
+            maxi = np.argmax(count[1:]) + 1
+            # Remove the other blobs
+            lbl[lbl != maxi] = 0
+            lbl[lbl == maxi] = 1
+            y_pred_np[i] = lbl.astype(np.uint8)
+
+        test_dice = dice(y_pred_np, b_gt_np,
                          labels=labels, exclude_bg=True, all_classes=True)
-        test_hd = hausdorff(y_pred.cpu().numpy(), b_gt.cpu().numpy(),
+
+        test_hd = hausdorff(y_pred_np, b_gt_np,
                          labels=labels, exclude_bg=True, all_classes=False, voxel_spacing=voxel_spacing.cpu().numpy())
         logs = {'test_loss': loss,
                 'test_acc': acc.mean(),
