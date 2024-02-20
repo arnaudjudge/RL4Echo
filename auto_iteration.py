@@ -51,8 +51,8 @@ def main(cfg):
     overrides = main_overrides + [f"trainer.max_epochs=0",
                                   f"predict_subset_frac={cfg.rl_num_predict}",
                                   f"model.actor.actor.pretrain_ckpt={output_path}/{0}/actor.ckpt",
-                                  f"model.actor.actor.ref_ckpt={output_path}/{0}/actor.ckpt",  # always supervised?
-                                  "reward@model.reward=pixelwise_accuracy",  # dummy, will not
+                                  f"model.actor.actor.ref_ckpt={output_path}/{0}/actor.ckpt",  # always supervised
+                                  "reward@model.reward=pixelwise_accuracy",  # dummy, will not be used
                                   f"model.actor_save_path=null",  # no need
                                   f"model.critic_save_path=null",  # no need
                                   f'model.predict_save_dir={output_path}',
