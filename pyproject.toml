@@ -19,7 +19,7 @@ classifiers=[
     "Programming Language :: Python :: 3.10",
 ]
 packages = [
-    { include = "RL4Echo" },
+    { include = "." },
     { include = "hydra_plugins" },
 ]
 
