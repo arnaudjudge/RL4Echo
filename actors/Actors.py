@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 from torch.distributions import Bernoulli, Categorical
 from vital.models.segmentation.unet import UNet
-from rewardnet.reward_net import get_resnet
 
 
 class UnetActorBinary(nn.Module):
