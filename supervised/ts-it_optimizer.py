@@ -64,7 +64,6 @@ class TSITOptimizer(pl.LightningModule):
         self.icardio_dl = ESEDDataModule(
             data_dir='/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_affine/',
             csv_file='subset_official_test.csv',
-            test_frac=0.1,
             class_label=class_label)
         self.class_label = class_label
         self.icardio_dl.setup('fit')

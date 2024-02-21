@@ -10,9 +10,9 @@ from vital.data.camus.config import Label
 from statsmodels.formula.api import ols
 from statsmodels.stats.outliers_influence import OLSInfluence
 
-path = 'reward_eval_uncertainty_tempscaled.h5'
+path = 'reward_eval_uncertainty_tempscaled_fulltrain.h5'
 
-output = Path('reward_uncertainty_ts')
+output = Path('reward_uncertainty_ts_ft')
 
 output.mkdir(exist_ok=True)
 
@@ -239,21 +239,21 @@ with h5py.File(path, "r") as h5:
         accuracy = np.array(h5[key]['accuracy_map']).T
         error = 1 - accuracy
 
-        # f, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(1, 5, figsize=(24, 6))
-        # ax1.imshow(img.squeeze(), cmap='gray')
-        # ax2.imshow(gt.squeeze(), cmap='gray')
-        # ax3.imshow(pred.squeeze(), cmap='gray')
-        # ax4.imshow(error.squeeze(), cmap='gray')
-        # ax5.imshow(uncertainty_map.squeeze(), cmap='gray')
-        #
-        # ax1.set_title("Image")
-        # ax2.set_title("GT")
-        # ax3.set_title("Pred")
-        # ax4.set_title("Error")
-        # ax5.set_title("Uncertainty")
+        f, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(1, 5, figsize=(24, 6))
+        ax1.imshow(img.squeeze(), cmap='gray')
+        ax2.imshow(gt.squeeze(), cmap='gray')
+        ax3.imshow(pred.squeeze(), cmap='gray')
+        ax4.imshow(error.squeeze(), cmap='gray')
+        ax5.imshow(uncertainty_map.squeeze(), cmap='gray')
 
-        # plt.savefig(output / f'{key}.jpg')
-        # plt.close()
+        ax1.set_title("Image")
+        ax2.set_title("GT")
+        ax3.set_title("Pred")
+        ax4.set_title("Error")
+        ax5.set_title("Uncertainty")
+
+        plt.savefig(output / f'{key}.jpg')
+        plt.close()
 
         mi_norm = compute_mi(accuracy, reward_map, norm=True)
         mi = compute_mi(accuracy, reward_map, norm=False)

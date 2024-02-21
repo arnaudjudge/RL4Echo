@@ -4,6 +4,7 @@ from pathlib import Path
 
 import hydra
 import pandas as pd
+from dotenv import load_dotenv
 from hydra import initialize, compose
 from hydra.core.global_hydra import GlobalHydra
 from omegaconf import OmegaConf
@@ -98,7 +99,7 @@ def main(cfg):
                                       f"model.actor_save_path={output_path}/{i}/actor.ckpt",
                                       f"model.critic_save_path={output_path}/{i}/critic.ckpt",
                                       f'model.predict_save_dir={output_path if iterations > i else None}',
-                                      f"model.entropy_coeff={0.1 - 0.02*i}",
+                                      f"model.entropy_coeff={max(0.1 - 0.02*i, 0)}",
                                       f"model.divergence_coeff={0.05}",
                                       f"experiment=ppo_{target_experiment}"
                                       ]
@@ -110,4 +111,6 @@ def main(cfg):
 
 
 if __name__ == '__main__':
+    # Load any available `.env` file
+    load_dotenv()
     main()

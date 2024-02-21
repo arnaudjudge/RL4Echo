@@ -27,11 +27,11 @@ def save_to_reward_dataset(save_dir, filename, image, gt, action):
 
     # save three files
     nifti_img = nib.Nifti1Image(image, affine, hdr)
-    nifti_img.to_filename(f"./{save_dir}/images/{filename}")
+    nifti_img.to_filename(f"{save_dir}/images/{filename}")
 
     nifti_gt = nib.Nifti1Image(gt, affine, hdr)
-    nifti_gt.to_filename(f"./{save_dir}/gt/{filename}")
+    nifti_gt.to_filename(f"{save_dir}/gt/{filename}")
 
     nifti_pred = nib.Nifti1Image(action, affine, hdr)
-    nifti_pred.to_filename(f"./{save_dir}/pred/{filename}")
+    nifti_pred.to_filename(f"{save_dir}/pred/{filename}")
 

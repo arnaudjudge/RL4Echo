@@ -9,7 +9,7 @@ model:
   output_shape: [3, 256, 256]
   loss:
     _target_: torch.nn.CrossEntropyLoss
-    label_smoothing: 0.5
+    label_smoothing: 0.0
 
 datamodule:
   supervised: True
