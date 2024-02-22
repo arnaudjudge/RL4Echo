@@ -1,0 +1,31 @@
+work_dir: ${hydra:runtime.cwd}
+run_name: default
+
+defaults:
+  - logger: tensorboard
+  - model: seg
+  - datamodule: camus
+  - callbacks: default
+  - _self_
+
+seed: 1
+
+datamodule:
+#  subset_frac: 0.1
+# gt_column: Gt_0
+  supervised: True
+
+logger:
+  name: seg_test
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  devices: 'auto'
+  accelerator: 'auto'
+#  num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)
+
+callbacks:
+  model_checkpoint:
+    monitor: val/loss
+    mode: min
+    save_last: True
