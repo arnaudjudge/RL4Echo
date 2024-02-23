@@ -10,9 +10,10 @@ from vital.data.camus.config import Label
 from statsmodels.formula.api import ols
 from statsmodels.stats.outliers_influence import OLSInfluence
 
-path = 'reward_eval_uncertainty_tempscaled_fulltrain.h5'
+# path = 'reward_eval_uncertainty_tempscaled_fulltrain.h5'
+path = '/home/judge/dev/RL4Echo/outputs/2024-02-23/15-31-28/RESULTS.h5'
 
-output = Path('reward_uncertainty_ts_ft')
+output = Path('reward_uncertainty_test')
 
 output.mkdir(exist_ok=True)
 
@@ -230,11 +231,12 @@ with h5py.File(path, "r") as h5:
     print(len(h5.keys()))
 
     for key in h5.keys():
+
         ids.append(str(key))
         img = np.array(h5[key]['img']).T
         pred = np.array(h5[key]['pred']).T
         gt = np.array(h5[key]['gt']).T
-        reward_map = np.array(h5[key]['reward_map']).T
+        reward_map = 1 - np.array(h5[key]['reward_map']).T
         uncertainty_map = 1 - reward_map
         accuracy = np.array(h5[key]['accuracy_map']).T
         error = 1 - accuracy

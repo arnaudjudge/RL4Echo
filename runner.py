@@ -30,17 +30,23 @@ def main(cfg):
 
     callbacks = instantiate_callbacks(cfg.callbacks)
 
-    trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
+    trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=True)
 
-    trainer.fit(train_dataloaders=datamodule, model=model)
-    if cfg.trainer.max_epochs > 0:
-        ckpt_path = 'best'
+    if cfg.get("train", True):
+        trainer.fit(train_dataloaders=datamodule, model=model)
+
+    if cfg.ckpt_path is None:
+        if cfg.trainer.max_epochs > 0:
+            ckpt_path = 'best'
+        else:
+            ckpt_path = None
     else:
-        ckpt_path = None
+        ckpt_path = cfg.ckpt_path
 
     # test with everything
     datamodule.hparams.subset_frac = 1.0
-    trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
+    if cfg.get("test", True):
+        trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
     if getattr(cfg.model, "predict_save_dir", None):
         datamodule.hparams.subset_frac = cfg.predict_subset_frac

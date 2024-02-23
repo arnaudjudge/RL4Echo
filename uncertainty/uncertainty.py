@@ -4,10 +4,13 @@ import pytorch_lightning as pl
 import torch
 from torch import Tensor
 from torch.nn import functional as F
-
+import scipy
 from uncertainty.unet import UNet
 from vital.metrics.train.metric import DifferentiableDiceCoefficient
 from vital.data.camus.config import Label
+
+import numpy as np
+
 
 def prefix(map: Mapping[str, Any], prefix: str, exclude: Union[str, Sequence[str]] = None) -> Dict[str, Any]:
     """Prepends a prefix to the keys of a mapping with string keys.
@@ -33,7 +36,6 @@ class SegmentationUncertainty(pl.LightningModule):
         super().__init__(**kwargs)
         self.save_hyperparameters()
 
-        self.net = UNet(input_shape=input_shape, output_shape=output_shape)
         self.input_shape = input_shape
         self.output_shape = output_shape
 
@@ -42,6 +44,12 @@ class SegmentationUncertainty(pl.LightningModule):
         self.hparams.ce_weight = 0.1
         self.hparams.dice_weight = 1
 
+        self.net = self.configure_model()
+
+        self.output_file = "RESULTS.h5"
+
+    def configure_model(self):
+        return UNet(input_shape=self.input_shape, output_shape=self.output_shape)
 
     def forward(self, x):
         return self.net.forward(x)
@@ -83,5 +91,42 @@ class SegmentationUncertainty(pl.LightningModule):
         self.log_dict(result, prog_bar=False, logger=True, on_step=None, on_epoch=True)
         return result
 
-    def test_step(self, batch, batch_idx):
+    def on_test_epoch_start(self) -> None:
         pass
+
+    def test_step(self, batch, batch_idx):
+        print(batch.keys())
+        print(batch["id"])
+
+        exit(0)
+
+    def sample_entropy(self, samples, apply_activation=False):
+        """
+            samples: (N, T, C, H, W)
+        """
+        samples = torch.tensor(samples)
+
+        if apply_activation:
+            probs = torch.sigmoid(samples) if samples.shape[2] == 1 else F.softmax(samples, dim=2)
+        else:
+            probs = samples
+            # activate_fn = torch.sigmoid if samples.shape[2] == 1 else partial(F.softmax, dim=2)
+
+        # probs = torch.stack(probs, dim=0)
+        y_hat = probs.mean(0)
+
+        # from matplotlib import pyplot as plt
+        # plt.figure()
+        # plt.imshow(y_hat.squeeze())
+
+        if samples.shape[2] == 1:
+            y_hat = torch.cat([y_hat, 1 - y_hat], dim=0)
+            base = 2
+        else:
+            base = samples.shape[2]
+
+        uncertainty_map = scipy.stats.entropy(y_hat.cpu().numpy(), axis=1, base=base)
+
+        print('UMAP', uncertainty_map.shape)
+
+        return uncertainty_map

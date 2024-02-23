@@ -29,3 +29,9 @@ callbacks:
     monitor: val/loss
     mode: min
     save_last: True
+
+
+# Prefer old Hydra default of changing directory for each job from version<=1.1
+hydra:
+  job:
+    chdir: True

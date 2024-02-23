@@ -14,14 +14,15 @@ class UNet(nn.Module):
     """
 
     def __init__(
-        self,
-        input_shape: Tuple[int, ...],
-        output_shape: Tuple[int, ...],
-        init_channels: int = 32,
-        use_batchnorm: bool = True,
-        bilinear: bool = False,
-        dropout: float = 0.0,
-        sigma_out=False,
+            self,
+            input_shape: Tuple[int, ...],
+            output_shape: Tuple[int, ...],
+            init_channels: int = 32,
+            use_batchnorm: bool = True,
+            bilinear: bool = False,
+            dropout: float = 0.0,
+            sigma_out=False,
+            ssn_rank=0
     ):
         """Initializes class instance.
 
@@ -37,6 +38,7 @@ class UNet(nn.Module):
         """
         super().__init__()
         self.sigma_out = sigma_out
+        self.ssn_rank = ssn_rank
         in_channels = input_shape[0]
         out_channels = output_shape[0]
 
@@ -58,6 +60,13 @@ class UNet(nn.Module):
         if self.sigma_out:
             self.layer11_s = _Up(init_channels, init_channels // 2, 0, use_batchnorm, bilinear=bilinear)
             self.layer12_s = nn.Conv2d(init_channels // 2, out_channels, kernel_size=1)
+
+        if ssn_rank != 0:
+            self.layer11_ssn1 = _Up(init_channels, init_channels // 2, 0, use_batchnorm, bilinear=bilinear)
+            self.layer12_ssn1 = nn.Conv2d(init_channels // 2, out_channels, kernel_size=1)
+
+            self.layer11_ssn1 = _Up(init_channels, init_channels // 2, 0, use_batchnorm, bilinear=bilinear)
+            self.layer12_ssn1 = nn.Conv2d(init_channels // 2, out_channels * ssn_rank, kernel_size=1)
 
         # Use Xavier initialisation for weights
         for m in self.modules():
@@ -93,6 +102,16 @@ class UNet(nn.Module):
 
             out = self.layer12(out)
             return out, out2
+        if self.ssn_rank != 0:
+            out_ssn2 = self.layer11_ssn1(out2, x1)
+            out_ssn2 = self.layer12_ssn1(out_ssn2)
+
+            out_ssn3 = self.layer11_ssn1(out2, x1)
+            out_ssn3 = self.layer12_ssn1(out_ssn3)
+
+            out = self.layer12(out)
+            return out, out_ssn2, out_ssn3
+
         return self.layer12(out)
 
 
