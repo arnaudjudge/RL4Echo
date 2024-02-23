@@ -1,6 +1,6 @@
 _target_: datamodules.SectorDataModule.SectorDataModule
 
-data_dir: '/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset_10k/'
+data_dir: ${oc.env:DATA_PATH}/icardio/train_subset_10k/
 csv_file: 'subset_w_split_0_pred.csv'
 
 subset_frac: 1.0

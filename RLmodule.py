@@ -8,6 +8,7 @@ import nibabel as nib
 import numpy as np
 import pytorch_lightning as pl
 import torch
+from scipy import ndimage
 from torchvision.transforms.functional import adjust_contrast
 from torch import Tensor
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
@@ -146,6 +147,16 @@ class RLmodule(pl.LightningModule):
         simple_dice = dice_score(prev_actions, b_gt)
         y_pred_np = prev_actions.cpu().numpy()
         b_gt_np = b_gt.cpu().numpy()
+
+        for i in range(len(y_pred_np)):
+            lbl, num = ndimage.measurements.label(y_pred_np[i] != 0)
+            # Count the number of elements per label
+            count = np.bincount(lbl.flat)
+            # Select the largest blob
+            maxi = np.argmax(count[1:]) + 1
+            # Remove the other blobs
+            y_pred_np[i][lbl != maxi] = 0
+
         test_dice = dice(y_pred_np, b_gt_np, labels=(Label.BG, Label.LV, Label.MYO),
                          exclude_bg=True, all_classes=True)
         test_dice_epi = dice((y_pred_np != 0).astype(np.uint8), (b_gt_np != 0).astype(np.uint8),
