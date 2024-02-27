@@ -1,7 +1,7 @@
 defaults:
   - submitit_slurm
 
-timeout_min: ${oc.select:run_time_min,60}
+timeout_min: ${oc.select:run_time_min,150}
 setup:
   - "module load httpproxy" # load module allowing to connect to whitelisted domains
   - "mkdir $SLURM_TMPDIR/RL4ECHO/data -p" # make sure the full path to where the data will be copied exists

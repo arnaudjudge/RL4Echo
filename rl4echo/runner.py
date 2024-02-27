@@ -13,7 +13,7 @@ OmegaConf.register_new_resolver(
 )
 
 
-@hydra.main(version_base=None, config_path="config", config_name="RL_runner")
+@hydra.main(version_base=None, config_path="config", config_name="supervised_runner")
 def main(cfg):
     # Load any available `.env` file
     load_dotenv()
@@ -49,4 +49,5 @@ def main(cfg):
 
 
 if __name__ == "__main__":
+    load_dotenv()
     main()

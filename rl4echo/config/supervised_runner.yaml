@@ -13,6 +13,7 @@ seed: 1
 
 logger:
   name: '${get_class_name: ${model._target_}}_${run_name}'
+  save_dir: ${oc.env:LOG_PATH}
 
 callbacks:
   model_checkpoint:
