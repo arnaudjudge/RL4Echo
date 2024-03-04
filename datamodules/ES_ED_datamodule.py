@@ -76,6 +76,7 @@ class ESEDDataModule(pl.LightningDataModule):
                  gt_frac=None,
                  seed=0,
                  class_label=None,
+                 train_batch_size=32,
                  *args, **kwargs):
         super().__init__()
         self.args = args
@@ -201,7 +202,7 @@ class ESEDDataModule(pl.LightningDataModule):
     # define your dataloaders
     # again, here defined for train, validate and test, not for predict as the project is not there yet.
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=32, num_workers=16, shuffle=True)
+        return DataLoader(self.train, batch_size=self.hparams.train_batch_size, num_workers=16, shuffle=True)
 
     def val_dataloader(self):
         return DataLoader(self.validate, batch_size=32, num_workers=16)
