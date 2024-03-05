@@ -65,8 +65,8 @@ class UNet(nn.Module):
             self.layer11_ssn1 = _Up(init_channels, init_channels // 2, 0, use_batchnorm, bilinear=bilinear)
             self.layer12_ssn1 = nn.Conv2d(init_channels // 2, out_channels, kernel_size=1)
 
-            self.layer11_ssn1 = _Up(init_channels, init_channels // 2, 0, use_batchnorm, bilinear=bilinear)
-            self.layer12_ssn1 = nn.Conv2d(init_channels // 2, out_channels * ssn_rank, kernel_size=1)
+            self.layer11_ssn2 = _Up(init_channels, init_channels // 2, 0, use_batchnorm, bilinear=bilinear)
+            self.layer12_ssn2 = nn.Conv2d(init_channels // 2, out_channels * ssn_rank, kernel_size=1)
 
         # Use Xavier initialisation for weights
         for m in self.modules():
@@ -106,8 +106,8 @@ class UNet(nn.Module):
             out_ssn2 = self.layer11_ssn1(out2, x1)
             out_ssn2 = self.layer12_ssn1(out_ssn2)
 
-            out_ssn3 = self.layer11_ssn1(out2, x1)
-            out_ssn3 = self.layer12_ssn1(out_ssn3)
+            out_ssn3 = self.layer11_ssn2(out2, x1)
+            out_ssn3 = self.layer12_ssn2(out_ssn3)
 
             out = self.layer12(out)
             return out, out_ssn2, out_ssn3

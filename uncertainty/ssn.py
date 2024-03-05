@@ -232,3 +232,7 @@ class StochasticSegmentationNetwork(SegmentationUncertainty):
 
         return {"loss": loss, 'dice': mean_dice, **dices}
 
+    def configure_optimizers(self):
+        # add weight decay so predictions are less certain, more randomness?
+        return torch.optim.RMSprop(self.parameters(), lr=0.001, weight_decay=1e-4)
+
