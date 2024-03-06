@@ -240,24 +240,44 @@ class StochasticSegmentationNetwork(SegmentationUncertainty):
     def test_step(self, batch, batch_idx):
         x, y = batch[Tags.img], batch[Tags.gt]
 
-        preds, samples = [], []
+        logit_mean, output_dict = self.forward(x)
+        batch_size = x.shape[0]
+        num_classes = logit_mean.shape[1]
 
-        for i in range(self.hparams.t_e):
-            model = self.model[i] if self.ensembling else self.model
-            pred, batch_samples = self.predict_on_batch(img, model)
-            preds.append(pred)
-            samples.append(batch_samples.swapaxes(1, 0))
+        if num_classes == 1:
+            pred = torch.sigmoid(logit_mean)
 
-        preds = torch.stack(preds).swapaxes(1, 0)
-        samples = torch.stack(samples).swapaxes(1, 0)
+        samples = []
+
+        for i in range(batch_size):
+            sampler = LowRankMultivariateNormalRandomSampler(output_dict['logit_mean'][i],
+                                                             output_dict['cov_diag'][i],
+                                                             output_dict['cov_factor'][i])
+            samples, prob_maps = sampler(self.hparams.t_a)
+            # print(samples.shape)
+            # print(prob_maps.shape)
+            # f, ax = plt.subplots(1, 5)
+            # for j in range(5):
+            #     ax[j].imshow(samples[j].detach().cpu().numpy().squeeze())
+            # f, ax = plt.subplots(1, 5)
+            # for j in range(5):
+            #     ax[j].imshow(prob_maps[j].detach().cpu().numpy().squeeze())
+            # plt.show()
+            if num_classes != 1:
+                samples = to_onehot(samples, num_classes=len(self.hparams.data_params.labels))
+            samples.append(samples.unsqueeze(1))
+
+        samples = torch.cat(samples, dim=1).float()
+
+
 
         uncertainty_map = np.ones((2, 256, 256))
 
-        pred = preds.mean(1)
+        pred = logit_mean
 
         entropy = self.sample_entropy(samples, apply_activation=False)
 
-        print(preds.shape)
+        print(pred.shape)
         print(entropy.shape)
 
         print(samples.shape)
