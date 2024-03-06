@@ -17,7 +17,7 @@ import numpy as np
 from vital.data.camus.config import Label
 from uncertainty.uncertainty import SegmentationUncertainty
 from uncertainty.unet import UNet
-
+import h5py
 
 class Sampler(object):
     def __init__(self, seed=None):
@@ -235,4 +235,61 @@ class StochasticSegmentationNetwork(SegmentationUncertainty):
     def configure_optimizers(self):
         # add weight decay so predictions are less certain, more randomness?
         return torch.optim.RMSprop(self.parameters(), lr=0.001, weight_decay=1e-4)
+
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch[Tags.img], batch[Tags.gt]
+
+        preds, samples = [], []
+
+        for i in range(self.hparams.t_e):
+            model = self.model[i] if self.ensembling else self.model
+            pred, batch_samples = self.predict_on_batch(img, model)
+            preds.append(pred)
+            samples.append(batch_samples.swapaxes(1, 0))
+
+        preds = torch.stack(preds).swapaxes(1, 0)
+        samples = torch.stack(samples).swapaxes(1, 0)
+
+        uncertainty_map = np.ones((2, 256, 256))
+
+        pred = preds.mean(1)
+
+        entropy = self.sample_entropy(samples, apply_activation=False)
+
+        print(preds.shape)
+        print(entropy.shape)
+
+        print(samples.shape)
+
+        # from matplotlib import pyplot as plt
+        #
+        # f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4)
+        # ax1.imshow(x[0].cpu().squeeze())
+        # ax2.imshow(y_hat[0].argmax(0).cpu().squeeze())
+        # ax3.imshow(samples[0, 0].argmax(0).cpu().squeeze())
+        # ax4.imshow(entropy[0].squeeze())
+        #
+        # plt.show()
+
+        # with h5py.File('jsrt_contour.h5', "w") as dataset:
+        #
+        #
+        #     for i in range(x.shape[0]):
+        #         group = dataset.create_group(batch['id'][i])
+        #
+        #         group.create_dataset(name=Tags.img, data=x[i].cpu(), **img_save_options)
+        #         group.create_dataset(name=Tags.gt, data=y[i].cpu(), **seg_save_options)
+        #         group.create_dataset(name=ContourTags.contour, data=landmarks)
+
+        with h5py.File(self.output_file, 'a') as f:
+            for i in range(x.shape[0]):
+                dicom = batch['id'][i].replace('/', '_')
+                print(dicom)
+                f.create_group(dicom)
+                f[dicom]['img'] = x[i].cpu().numpy()
+                f[dicom]['gt'] = y[i].cpu().numpy()
+                f[dicom]['pred'] = pred[i].cpu().numpy()
+                f[dicom]['reward_map'] = entropy[i]
+                f[dicom]['accuracy_map'] = (pred[i].cpu().numpy() != y[i].cpu().numpy()).astype(np.uint8)
 
