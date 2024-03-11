@@ -60,6 +60,9 @@ def hausdorff(pred: np.ndarray, target: np.ndarray, labels: Tuple[LabelEnum], ex
                 pass
             else:
                 pred_mask, gt_mask = np.isin(pred[i], label), np.isin(target[i], label)
+                if pred_mask.sum() == 0:
+                    pred_mask[0, 0] = True
+                    print('empty mask')
                 hausdorffs.append(hd(pred_mask, gt_mask, voxel_spacing[i] if voxel_spacing is not None else None))
         if all_classes:
             for label, haus in zip(labels[1:], hausdorffs):
