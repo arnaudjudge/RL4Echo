@@ -30,6 +30,16 @@ if __name__ == "__main__":
         # ax1[0].set_title("Before Equalization")
 
         data = exp.equalize_adapthist(data, clip_limit=0.01)
+        # data = exp.equalize_hist(data)
+        # data = exp.rescale_intensity(data)
+
+        # plots
+        # hist, _ = np.histogram(data.flatten(), 256, [0, 256])
+        # cdf = hist.cumsum()
+        # cdf_m = np.ma.masked_equal(cdf, 0)
+        # cdf_m = (cdf_m - cdf_m.min()) * 255 / (cdf_m.max() - cdf_m.min())
+        # cdf = np.ma.filled(cdf_m, 0).astype('uint8')
+        # data = cdf[data]
 
         # ax2[0].imshow(data.T * 255)
         # ax2[0].set_title("After Equalization")

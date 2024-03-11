@@ -2,8 +2,8 @@ import shutil
 from pathlib import Path
 
 if __name__ == "__main__":
-    in_path = '/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_posttreat/'
-    out_path = '/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_2/'
+    in_path = '/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset/'
+    out_path = '/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_no_adapthist/'
 
     for p in Path(in_path).rglob('*_img_*.nii.gz'):
         print(p)

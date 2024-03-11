@@ -45,6 +45,7 @@ class CamusRL(Camus):
             )
 
         # Format data
+        frame_pos = torch.tensor([instant / len(view_imgs)])
         img = view_imgs[instant]
         gt = self._process_target_data(view_gts[instant])
         img, gt = to_tensor(img), segmentation_to_tensor(gt)
@@ -54,7 +55,7 @@ class CamusRL(Camus):
             img, gt = self.transforms(img, gt)
 
         # Compute attributes on the data
-        frame_pos = torch.tensor([instant / len(view_imgs)])
+        #frame_pos = torch.tensor([instant / len(view_imgs)])
         #gt_attrs = get_segmentation_attributes(gt, self.labels)
 
 
@@ -106,8 +107,6 @@ class CamusRLDataModule(CamusDataModule):
 
 
 if __name__ == "__main__":
-    import nibabel as nib
-    import numpy as np
     save_dir = Path('/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_affine')
 
     dl = CamusRLDataModule(dataset_path="/home/local/USHERBROOKE/juda2901/dev/data/camus/camus.h5", labels=[0, 1, 2],
@@ -124,30 +123,12 @@ if __name__ == "__main__":
         print(batch['gt'].shape)
         print(batch['voxelspacing'])
 
-        # vox = batch['voxelspacing'][0]
-        # affine = np.diag(np.asarray([-vox[2], -vox[1], 1, 0]))
-        # hdr = nib.Nifti1Header()
-        #
-        # img_path = save_dir / 'img' / (batch['id'][0] + '.nii.gz')
-        # img_path.parent.mkdir(parents=True, exist_ok=True)
-        # data = batch['img'].cpu().numpy()[0][0]
-        #
-        # nifti_img = nib.Nifti1Image(data.T, affine, hdr)
-        # nifti_img.to_filename(img_path)
-        # print(img_path)
-        #
-        # gt_path = save_dir / 'gt' / (batch['id'][0] + '.nii.gz')
-        # gt_path.parent.mkdir(parents=True, exist_ok=True)
-        # nifti_gt = nib.Nifti1Image(batch['gt'].cpu().numpy()[0].T, affine, hdr)
-        # nifti_gt.to_filename(gt_path)
-        # print(gt_path)
-
-        filename = batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES")
-        row_list += [{'id': batch['id'][0][:16].lower() + batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES"),
+        filename = batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 0.5 else "_ES")
+        row_list += [{'id': batch['id'][0][:16].lower() + batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 0.5 else "_ES"),
                          'split_0': 'train',
                          'study': batch['id'][0].split('/')[0],
                          'view': batch['id'][0].split('/')[1],
-                         'instant': "_ED" if batch['frame_pos'][0] < 5 else "_ES",
+                         'instant': "_ED" if batch['frame_pos'][0] < 0.5 else "_ES",
                          'dicom_uuid': filename,
                          'valid_segmentation': True,
                          'Gt_0': None,
@@ -160,32 +141,13 @@ if __name__ == "__main__":
         print(batch['img'].shape)
         print(batch['gt'].shape)
         print(batch['voxelspacing'])
-        #
-        # vox = batch['voxelspacing'][0]
-        # affine = np.diag(np.asarray([-vox[2], -vox[1], 1, 0]))
-        # hdr = nib.Nifti1Header()
-        #
-        # img_path = save_dir / 'img' / (batch['id'][0] + '.nii.gz')
-        # img_path.parent.mkdir(parents=True, exist_ok=True)
-        # data = batch['img'].cpu().numpy()[0][0]
-        #
-        # nifti_img = nib.Nifti1Image(data.T, affine, hdr)
-        # nifti_img.to_filename(img_path)
-        # print(img_path)
-        #
-        # gt_path = save_dir / 'gt' / (batch['id'][0] + '.nii.gz')
-        # gt_path.parent.mkdir(parents=True, exist_ok=True)
-        # nifti_gt = nib.Nifti1Image(batch['gt'].cpu().numpy()[0].T, affine, hdr)
-        # nifti_gt.to_filename(gt_path)
-        # print(gt_path)
 
-
-        filename = batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES")
-        row_list += [{'id': batch['id'][0][:16].lower() + batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES"),
+        filename = batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 0.5 else "_ES")
+        row_list += [{'id': batch['id'][0][:16].lower() + batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 0.5 else "_ES"),
                          'split_0': 'val',
                          'study': batch['id'][0].split('/')[0],
                          'view': batch['id'][0].split('/')[1],
-                         'instant': "_ED" if batch['frame_pos'][0] < 5 else "_ES",
+                         'instant': "_ED" if batch['frame_pos'][0] < 0.5 else "_ES",
                          'dicom_uuid': filename,
                          'valid_segmentation': True,
                          'Gt_0': None,
@@ -200,31 +162,12 @@ if __name__ == "__main__":
         print(batch['gt'].shape)
         print(batch['voxelspacing'])
 
-        # vox = batch['voxelspacing'][0]
-        # affine = np.diag(np.asarray([-vox[2], -vox[1], 1, 0]))
-        # hdr = nib.Nifti1Header()
-        #
-        # img_path = save_dir / 'img' / (batch['id'][0] + '.nii.gz')
-        # img_path.parent.mkdir(parents=True, exist_ok=True)
-        # data = batch['img'].cpu().numpy()[0][0]
-        #
-        # nifti_img = nib.Nifti1Image(data.T, affine, hdr)
-        # nifti_img.to_filename(img_path)
-        # print(img_path)
-        #
-        # gt_path = save_dir / 'gt' / (batch['id'][0] + '.nii.gz')
-        # gt_path.parent.mkdir(parents=True, exist_ok=True)
-        # nifti_gt = nib.Nifti1Image(batch['gt'].cpu().numpy()[0].T, affine, hdr)
-        # nifti_gt.to_filename(gt_path)
-        # print(gt_path)
-
-
-        filename = batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES")
-        row_list += [{'id': batch['id'][0][:16].lower() + batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 5 else "_ES"),
+        filename = batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 0.5 else "_ES")
+        row_list += [{'id': batch['id'][0][:16].lower() + batch['group'][0].replace("/", "_") + ("_ED" if batch['frame_pos'][0] < 0.5 else "_ES"),
                          'split_0': 'test',
                          'study': batch['id'][0].split('/')[0],
                          'view': batch['id'][0].split('/')[1],
-                         'instant': "_ED" if batch['frame_pos'][0] < 5 else "_ES",
+                         'instant': "_ED" if batch['frame_pos'][0] < 0.5 else "_ES",
                          'dicom_uuid': filename,
                          'valid_segmentation': True,
                          'Gt_0': None,
