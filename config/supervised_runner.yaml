@@ -16,12 +16,14 @@ logger:
 
 callbacks:
   model_checkpoint:
-    monitor: val_acc
+    monitor: val_dice
 
 predict_subset_frac: 1000
 
 datamodule:
   gt_column: Gt_0
+
+train: True
 
 trainer:
   _target_: pytorch_lightning.Trainer

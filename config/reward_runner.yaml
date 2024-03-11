@@ -10,10 +10,10 @@ defaults:
   - _self_
 
 datamodule:
-  data_path: ./loop2.0/ds/
+  data_path: ./logs/run_7_CB_gc/
 
 model:
-  save_model_path: ./loop2.0/reward_net2.ckpt
+  save_model_path: #./logs/reward_CB.ckpt
 
 seed: 1
 
@@ -26,6 +26,8 @@ callbacks:
     mode: min
 
 run_predict: False
+
+train: True
 
 trainer:
   _target_: pytorch_lightning.Trainer

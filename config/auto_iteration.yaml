@@ -1,6 +1,7 @@
 
-num_iter: 5
-output_path: ${oc.env:LOG_PATH}/run_8_CB_gc_ts/
+num_iter: 4
+run_name: run
+output_path: ${oc.env:LOG_PATH}/${run_name}/
 
 var_file: ${output_path}/variables.pkl
 
@@ -13,14 +14,14 @@ source: camus
 sup_num_epochs: 50
 
 # Increases randomness in initial model
-sup_loss_label_smoothing: 0.65
+sup_loss_label_smoothing: 0.0
 
 #
 # RL params
 #
 rl_num_epochs: 5
-rl_num_predict: 2000
-
+rl_num_predict: 2500
+rl_overrides: []
 
 #
 # RewardNet params
