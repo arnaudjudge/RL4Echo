@@ -12,7 +12,7 @@ defaults:
 seed: 1
 
 logger:
-  save_dir: "./logs/ts_it/"
+  save_dir: ${oc.env:LOG_PATH}/test/
   name: '${get_class_name: ${model._target_}}_${model.class_label}'
 
 callbacks:
@@ -22,6 +22,8 @@ callbacks:
 
 datamodule:
   gt_column: Gt_0
+
+train: True
 
 trainer:
   _target_: pytorch_lightning.Trainer
