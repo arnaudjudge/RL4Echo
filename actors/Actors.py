@@ -46,6 +46,10 @@ class UnetActorCategorical(nn.Module):
 
         if pretrain_ckpt:
             # if starting from pretrained model, keep version of
+
+            # FOR UDAS TESTING
+            # self.net.init_path = self.net.layer1
+
             self.net.load_state_dict(torch.load(pretrain_ckpt))
 
             if ref_ckpt:
@@ -66,17 +70,17 @@ class UnetActorCategorical(nn.Module):
         return logits, dist, old_dist
 
 
-class Critic(nn.Module):
-
-    def __init__(self, input_channels=1, num_classes=1, pretrain_ckpt=None):
-        super().__init__()
-        self.net = get_resnet(input_channels=input_channels, num_classes=num_classes)
-
-        if pretrain_ckpt:
-            self.net.load_state_dict(torch.load(pretrain_ckpt))
-
-    def forward(self, x):
-        return torch.sigmoid(self.net(x))
+# class Critic(nn.Module):
+#
+#     def __init__(self, input_channels=1, num_classes=1, pretrain_ckpt=None):
+#         super().__init__()
+#         self.net = get_resnet(input_channels=input_channels, num_classes=num_classes)
+#
+#         if pretrain_ckpt:
+#             self.net.load_state_dict(torch.load(pretrain_ckpt))
+#
+#     def forward(self, x):
+#         return torch.sigmoid(self.net(x))
 
 
 class UnetCritic(nn.Module):
