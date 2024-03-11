@@ -229,43 +229,6 @@ class RLmodule(pl.LightningModule):
                     f[dicom]['reward_map'] = prev_rewards[i].cpu().numpy()
                     f[dicom]['accuracy_map'] = (prev_actions[i].cpu().numpy() != b_gt[i].cpu().numpy()).astype(np.uint8)
 
-        # create files for figure
-        # dicom_list = ["di-FC9F-91EC-F095", "di-7B00-899D-99F7", "di-AD3D-984E-4C22", "di-D743-7A76-069A",
-        #               "di-3943-5614-4505", "di-03EF-C595-467A", "di-922F-5B7F-F23B", "di-A29A-55AC-FE06"]
-        # folder = "/data/rl_figure/sup2/"
-        # for i in range(len(b_img)):
-        #     if batch['id'][i] in dicom_list:
-        #         affine = np.diag(np.asarray([-1, -1, 1, 0]))
-        #         hdr = nib.Nifti1Header()
-        #         Path(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}").mkdir(exist_ok=True)
-        #         nifti_img = nib.Nifti1Image(b_img[i, 0].cpu().numpy(), affine, hdr)
-        #         nifti_img.to_filename(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}/img.nii.gz")
-        #         nifti_img = nib.Nifti1Image(y_pred_np[i], affine, hdr)
-        #         nifti_img.to_filename(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}/act.nii.gz")
-        #         nifti_img = nib.Nifti1Image(b_gt[i].cpu().numpy(), affine, hdr)
-        #         nifti_img.to_filename(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}/gt.nii.gz")
-
-
-        # import matplotlib.pyplot as plt
-        # for i in range(len(b_img)):
-        #     if not anat_errors[i]: #batch['id'][i] in dicom_list:
-        #         fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-        #         ax1.imshow(b_img[i, 0, ...].cpu().numpy().T, cmap='gray')
-        #         ax1.imshow(prev_actions[i, ...].cpu().numpy().T, alpha=0.35, cmap='PuRd')
-        #         ax1.set_title(f"Action {batch['id'][i]}")
-        #
-        #         # ax2.imshow(b_img[i, 0, ...].cpu().numpy().T, cmap='gray')
-        #         ax2.imshow((prev_actions[i].cpu().numpy() != b_gt[i].cpu().numpy()).T, alpha=0.35, cmap='PuRd')
-        #         ax2.set_title("GT")
-        #
-        #         ax3.imshow(prev_rewards[i, ...].cpu().numpy().T, cmap='gray')
-        #         ax3.set_title("Reward")
-        #
-        #         plt.title(f'{i} : {anat_errors[i]}')
-        #         # mng = plt.get_current_fig_manager()
-        #         # mng.resize(*mng.window.maxsize())
-        #         plt.show()
-
         return logs
 
     def on_test_end(self) -> None:
