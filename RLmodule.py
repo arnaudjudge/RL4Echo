@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import h5py
 import nibabel as nib
 import numpy as np
 import pytorch_lightning as pl
@@ -23,8 +24,20 @@ from utils.test_metrics import dice, hausdorff
 
 class RLmodule(pl.LightningModule):
 
-    def __init__(self, actor, reward, corrector=None, actor_save_path=None, critic_save_path=None, predict_save_dir=None, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, actor, reward,
+                 corrector=None,
+                 actor_save_path=None,
+                 critic_save_path=None,
+                 save_uncertainty_path=None,
+                 predict_save_dir=None,
+                 predict_do_swap_img=True,
+                 predict_do_model_perturb=True,
+                 predict_do_img_perturb=True,
+                 predict_do_corrections=True,
+                 *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+
+        #TODO: use automatic hparams
 
         self.actor = actor
         self.reward_func = reward
@@ -32,8 +45,15 @@ class RLmodule(pl.LightningModule):
         self.actor_save_path = actor_save_path
         self.critic_save_path = critic_save_path
 
+        self.save_uncertainty_path = save_uncertainty_path
+
         self.predict_save_dir = predict_save_dir
         self.pred_corrector = corrector
+
+        self.predict_do_swap_img = predict_do_swap_img
+        self.predict_do_model_perturb = predict_do_model_perturb
+        self.predict_do_img_perturb = predict_do_img_perturb
+        self.predict_do_corrections = predict_do_corrections
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()
@@ -196,6 +216,56 @@ class RLmodule(pl.LightningModule):
                           img_text=prev_rewards[i].mean())
 
         self.log_dict(logs)
+
+        if self.save_uncertainty_path:
+            with h5py.File(self.save_uncertainty_path, 'a') as f:
+                for i in range(len(b_img)):
+                    dicom = batch['id'][i] + "_" + batch['instant'][i]
+                    if dicom not in f:
+                        f.create_group(dicom)
+                    f[dicom]['img'] = b_img[i].cpu().numpy()
+                    f[dicom]['gt'] = b_gt[i].cpu().numpy()
+                    f[dicom]['pred'] = prev_actions[i].cpu().numpy()
+                    f[dicom]['reward_map'] = prev_rewards[i].cpu().numpy()
+                    f[dicom]['accuracy_map'] = (prev_actions[i].cpu().numpy() != b_gt[i].cpu().numpy()).astype(np.uint8)
+
+        # create files for figure
+        # dicom_list = ["di-FC9F-91EC-F095", "di-7B00-899D-99F7", "di-AD3D-984E-4C22", "di-D743-7A76-069A",
+        #               "di-3943-5614-4505", "di-03EF-C595-467A", "di-922F-5B7F-F23B", "di-A29A-55AC-FE06"]
+        # folder = "/data/rl_figure/sup2/"
+        # for i in range(len(b_img)):
+        #     if batch['id'][i] in dicom_list:
+        #         affine = np.diag(np.asarray([-1, -1, 1, 0]))
+        #         hdr = nib.Nifti1Header()
+        #         Path(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}").mkdir(exist_ok=True)
+        #         nifti_img = nib.Nifti1Image(b_img[i, 0].cpu().numpy(), affine, hdr)
+        #         nifti_img.to_filename(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}/img.nii.gz")
+        #         nifti_img = nib.Nifti1Image(y_pred_np[i], affine, hdr)
+        #         nifti_img.to_filename(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}/act.nii.gz")
+        #         nifti_img = nib.Nifti1Image(b_gt[i].cpu().numpy(), affine, hdr)
+        #         nifti_img.to_filename(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}/gt.nii.gz")
+
+
+        # import matplotlib.pyplot as plt
+        # for i in range(len(b_img)):
+        #     if not anat_errors[i]: #batch['id'][i] in dicom_list:
+        #         fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
+        #         ax1.imshow(b_img[i, 0, ...].cpu().numpy().T, cmap='gray')
+        #         ax1.imshow(prev_actions[i, ...].cpu().numpy().T, alpha=0.35, cmap='PuRd')
+        #         ax1.set_title(f"Action {batch['id'][i]}")
+        #
+        #         # ax2.imshow(b_img[i, 0, ...].cpu().numpy().T, cmap='gray')
+        #         ax2.imshow((prev_actions[i].cpu().numpy() != b_gt[i].cpu().numpy()).T, alpha=0.35, cmap='PuRd')
+        #         ax2.set_title("GT")
+        #
+        #         ax3.imshow(prev_rewards[i, ...].cpu().numpy().T, cmap='gray')
+        #         ax3.set_title("Reward")
+        #
+        #         plt.title(f'{i} : {anat_errors[i]}')
+        #         # mng = plt.get_current_fig_manager()
+        #         # mng.resize(*mng.window.maxsize())
+        #         plt.show()
+
         return logs
 
     def on_test_end(self) -> None:
@@ -228,108 +298,173 @@ class RLmodule(pl.LightningModule):
                 nifti = nib.Nifti1Image(torch.round(actions_unsampled[i]).cpu().numpy(), np.diag(np.asarray([-1, -1, 1, 0])), hdr)
                 nifti.to_filename(approx_gt_path)
 
-                # force actions to resemble image?
-                filename = f"{batch_idx}_{itr}_{i}_wrong_s_{int(round(datetime.now().timestamp()))}.nii.gz"
-                save_to_reward_dataset(self.predict_save_dir,
-                                       filename,
-                                       convert_to_numpy(b_img[i]),
-                                       np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
-                                       np.expand_dims(convert_to_numpy(actions[random.randint(0, len(b_img)-1)]), 0))
-
-                for j, multiplier in enumerate([0.005, 0.01, 0.015, 0.02]):
-                    # get random seed based on time to maximise randomness of noise and subsequent predictions
-                    # explore as much space around policy as possible
-                    time_seed = int(round(datetime.now().timestamp())) + i
-                    torch.manual_seed(time_seed)
-
-                    # load initial params so noise is not compounded
-                    self.actor.actor.net.load_state_dict(initial_params, strict=True)
-
-                    # add noise to params
-                    with torch.no_grad():
-                        for param in self.actor.actor.net.parameters():
-                            param.add_(torch.randn(param.size()).cuda() * multiplier)
-
-                    # make prediction
-                    deformed_action, *_ = self.actor.actor(b_img[i].unsqueeze(0))
-                    if len(deformed_action.shape) > 3:
-                        deformed_action = deformed_action.argmax(dim=1)
-                    else:
-                        deformed_action = torch.round(deformed_action)
-
-                    # f, (ax1, ax2) = plt.subplots(1, 2)
-                    # ax1.set_title(f"Good initial action")
-                    # ax1.imshow(actions_unsampled[i, ...].cpu().numpy().T)
-                    #
-                    # ax2.set_title(f"Deformed network's action")
-                    # ax2.imshow(deformed_action[0, ...].cpu().numpy().T)
-                    # plt.show()
-
-                    filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
+                if self.predict_do_swap_img:
+                    # force actions to resemble image?
+                    filename = f"{batch_idx}_{itr}_{i}_wrong_s_{int(round(datetime.now().timestamp()))}.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img[i]),
                                            np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
-                                           convert_to_numpy(deformed_action))
+                                           np.expand_dims(convert_to_numpy(actions[random.randint(0, len(b_img)-1)]), 0))
+                if self.predict_do_model_perturb:
+                    for j, multiplier in enumerate([0.005, 0.01, 0.015, 0.02]):
+                        # get random seed based on time to maximise randomness of noise and subsequent predictions
+                        # explore as much space around policy as possible
+                        time_seed = int(round(datetime.now().timestamp())) + i
+                        torch.manual_seed(time_seed)
 
-                contrast_factors = [0.7, 0.8]
-                for factor in contrast_factors:
-                    in_img = b_img[i].unsqueeze(0).clone()
-                    in_img = adjust_contrast(in_img, factor)
-                    #in_img /= in_img.max()
+                        # load initial params so noise is not compounded
+                        self.actor.actor.net.load_state_dict(initial_params, strict=True)
 
-                    # make prediction
-                    contr_action, *_ = self.actor.actor(in_img)
-                    if len(contr_action.shape) > 3:
-                        contr_action = contr_action.argmax(dim=1)
-                    else:
-                        contr_action = torch.round(contr_action)
-                    time_seed = int(round(datetime.now().timestamp())) + int(factor*10)
-                    filename = f"{batch_idx}_{itr}_{i}_{time_seed}_contrast.nii.gz"
-                    save_to_reward_dataset(self.predict_save_dir,
-                                           filename,
-                                           convert_to_numpy(b_img[i]),
-                                           np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
-                                           convert_to_numpy(contr_action))
+                        # add noise to params
+                        with torch.no_grad():
+                            for param in self.actor.actor.net.parameters():
+                                param.add_(torch.randn(param.size()).cuda() * multiplier)
 
-                gaussian_blurs = [0.05, 0.1]
-                for blur in gaussian_blurs:
-                    in_img = b_img[i].unsqueeze(0).clone()
-                    in_img += torch.randn(in_img.size()).cuda() * blur
-                    in_img /= in_img.max()
+                        # make prediction
+                        deformed_action, *_ = self.actor.actor(b_img[i].unsqueeze(0))
+                        if len(deformed_action.shape) > 3:
+                            deformed_action = deformed_action.argmax(dim=1)
+                        else:
+                            deformed_action = torch.round(deformed_action)
 
-                    # make prediction
-                    blurred_action, *_ = self.actor.actor(in_img)
-                    if len(blurred_action.shape) > 3:
-                        blurred_action = blurred_action.argmax(dim=1)
-                    else:
-                        blurred_action = torch.round(blurred_action)
-                    time_seed = int(round(datetime.now().timestamp())) + int(blur*100)
-                    filename = f"{batch_idx}_{itr}_{i}_{time_seed}_blur.nii.gz"
-                    save_to_reward_dataset(self.predict_save_dir,
-                                           filename,
-                                           convert_to_numpy(b_img[i]),
-                                           np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
-                                           convert_to_numpy(blurred_action))
+                        # f, (ax1, ax2) = plt.subplots(1, 2)
+                        # ax1.set_title(f"Good initial action")
+                        # ax1.imshow(actions_unsampled[i, ...].cpu().numpy().T)
+                        #
+                        # ax2.set_title(f"Deformed network's action")
+                        # ax2.imshow(deformed_action[0, ...].cpu().numpy().T)
+                        # plt.show()
+
+                        if deformed_action.sum() == 0:
+                            continue
+
+                        filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
+                        save_to_reward_dataset(self.predict_save_dir,
+                                               filename,
+                                               convert_to_numpy(b_img[i]),
+                                               np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
+                                               convert_to_numpy(deformed_action))
+                if self.predict_do_img_perturb:
+                    contrast_factors = [0.7, 0.8]
+                    for factor in contrast_factors:
+                        in_img = b_img[i].unsqueeze(0).clone()
+                        in_img = adjust_contrast(in_img, factor)
+                        #in_img /= in_img.max()
+
+                        # make prediction
+                        contr_action, *_ = self.actor.actor(in_img)
+                        if len(contr_action.shape) > 3:
+                            contr_action = contr_action.argmax(dim=1)
+                        else:
+                            contr_action = torch.round(contr_action)
+
+                        # f, (ax1, ax2) = plt.subplots(1, 2)
+                        # ax1.set_title(f"Good action")
+                        # ax1.imshow(actions_unsampled[i, ...].cpu().numpy().T)
+                        #
+                        # ax2.set_title(f"contrast action")
+                        # ax2.imshow(contr_action[0, ...].cpu().numpy().T)
+                        # plt.show()
+
+                        # f, (ax1) = plt.subplots(1)
+                        # # ax1.set_title(f"Bad initial action")
+                        # ax1.imshow(actions_unsampled[i, ...].cpu().numpy().T, cmap='gray')
+                        # ax1.axis('off')
+                        # plt.savefig("/data/good_initial.png", bbox_inches='tight', pad_inches=0)
+                        #
+                        # f2, (ax2) = plt.subplots(1)
+                        # ax2.imshow(contr_action[0, ...].cpu().numpy().T, cmap='gray')
+                        # ax2.axis('off')
+                        # plt.savefig('/data/deformed.png', bbox_inches='tight', pad_inches=0)
+                        #
+                        # f3, (ax3) = plt.subplots(1)
+                        # ax3.imshow(b_img[i, ...].cpu().numpy().T, cmap='gray')
+                        # ax3.axis('off')
+                        # plt.savefig('/data/def_image.png', bbox_inches='tight', pad_inches=0)
+                        #
+                        # f4, (ax4) = plt.subplots(1)
+                        # ax4.axis('off')
+                        # ax4.imshow((actions_unsampled[i] == contr_action[0]).cpu().numpy().T, cmap='gray')
+                        # plt.savefig('/data/def_diff.png', bbox_inches='tight', pad_inches=0)
+                        #
+                        # plt.show()
+
+
+                        if contr_action.sum() == 0:
+                            continue
+
+                        time_seed = int(round(datetime.now().timestamp())) + int(factor*10)
+                        filename = f"{batch_idx}_{itr}_{i}_{time_seed}_contrast.nii.gz"
+                        save_to_reward_dataset(self.predict_save_dir,
+                                               filename,
+                                               convert_to_numpy(b_img[i]),
+                                               np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
+                                               convert_to_numpy(contr_action))
+
+                    gaussian_blurs = [0.05, 0.1]
+                    for blur in gaussian_blurs:
+                        in_img = b_img[i].unsqueeze(0).clone()
+                        in_img += torch.randn(in_img.size()).cuda() * blur
+                        in_img /= in_img.max()
+
+                        # make prediction
+                        blurred_action, *_ = self.actor.actor(in_img)
+                        if len(blurred_action.shape) > 3:
+                            blurred_action = blurred_action.argmax(dim=1)
+                        else:
+                            blurred_action = torch.round(blurred_action)
+
+                        # f, (ax1, ax2) = plt.subplots(1, 2)
+                        # ax1.set_title(f"Good action")
+                        # ax1.imshow(actions_unsampled[i, ...].cpu().numpy().T)
+                        #
+                        # ax2.set_title(f"blurred action")
+                        # ax2.imshow(blurred_action[0, ...].cpu().numpy().T)
+                        # plt.show()
+
+                        if blurred_action.sum() == 0:
+                            continue
+
+                        time_seed = int(round(datetime.now().timestamp())) + int(blur*100)
+                        filename = f"{batch_idx}_{itr}_{i}_{time_seed}_blur.nii.gz"
+                        save_to_reward_dataset(self.predict_save_dir,
+                                               filename,
+                                               convert_to_numpy(b_img[i]),
+                                               np.expand_dims(convert_to_numpy(actions_unsampled[i]), 0),
+                                               convert_to_numpy(blurred_action))
 
             else:
                 if not corrected_validity[i]:
                     continue
 
-                # f, (ax1, ax2) = plt.subplots(1, 2)
-                # ax1.set_title(f"Bad initial action")
-                # ax1.imshow(actions[i, ...].cpu().numpy().T)
+                # if ae_comp[i] < 0.85:
+                #     f, (ax1) = plt.subplots(1)
+                #     #ax1.set_title(f"Bad initial action")
+                #     ax1.imshow(actions[i, ...].cpu().numpy().T, cmap='gray')
+                #     ax1.axis('off')
+                #     plt.savefig("/data/bad_initial.png", bbox_inches = 'tight', pad_inches = 0)
                 #
-                # ax2.set_title(f"Corrected action")
-                # ax2.imshow(corrected[i, ...].T)
-                # plt.show()
-
-                filename = f"{batch_idx}_{itr}_{i}_{int(round(datetime.now().timestamp()))}.nii.gz"
-                save_to_reward_dataset(self.predict_save_dir,
-                                       filename,
-                                       convert_to_numpy(b_img[i]),
-                                       convert_to_numpy(corrected[i]),
-                                       np.expand_dims(convert_to_numpy(actions[i]), 0))
+                #     f2, (ax2) = plt.subplots(1)
+                #     # ax2.set_title(f"Corrected action")
+                #     ax2.imshow(corrected[i, ...].T, cmap='gray')
+                #     ax2.axis('off')
+                #     plt.savefig('/data/corrected.png', bbox_inches = 'tight', pad_inches = 0)
+                #
+                #     f3, (ax3) = plt.subplots(1)
+                #     # ax2.set_title(f"Corrected action")
+                #     ax3.imshow(b_img[i, ...].cpu().numpy().T, cmap='gray')
+                #     ax3.axis('off')
+                #     plt.savefig('/data/corr_image.png', bbox_inches = 'tight', pad_inches = 0)
+                #
+                #     plt.show()
+                if self.predict_do_corrections:
+                    filename = f"{batch_idx}_{itr}_{i}_{int(round(datetime.now().timestamp()))}.nii.gz"
+                    save_to_reward_dataset(self.predict_save_dir,
+                                           filename,
+                                           convert_to_numpy(b_img[i]),
+                                           convert_to_numpy(corrected[i]),
+                                           np.expand_dims(convert_to_numpy(actions[i]), 0))
 
         self.trainer.datamodule.update_dataframe()
         # make sure initial params are back at end of step
