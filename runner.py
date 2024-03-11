@@ -32,7 +32,9 @@ def main(cfg):
 
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
 
-    trainer.fit(train_dataloaders=datamodule, model=model)
+    if cfg.train:
+        trainer.fit(train_dataloaders=datamodule, model=model)
+
     if cfg.trainer.max_epochs > 0:
         ckpt_path = 'best'
     else:
@@ -49,4 +51,5 @@ def main(cfg):
 
 
 if __name__ == "__main__":
+    load_dotenv()
     main()

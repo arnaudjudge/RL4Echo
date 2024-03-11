@@ -11,6 +11,8 @@ from omegaconf import OmegaConf
 
 from runner import main as runner_main
 
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 @hydra.main(version_base=None, config_path="config", config_name="auto_iteration")
 def main(cfg):
@@ -49,16 +51,16 @@ def main(cfg):
     runner_main(sub_cfg)
 
     # Predict and test (baseline) on target domain
-    overrides = main_overrides + [f"trainer.max_epochs=0",
-                                  f"predict_subset_frac={cfg.rl_num_predict}",
-                                  f"model.actor.actor.pretrain_ckpt={output_path}/{0}/actor.ckpt",
-                                  f"model.actor.actor.ref_ckpt={output_path}/{0}/actor.ckpt",  # always supervised
-                                  "reward@model.reward=pixelwise_accuracy",  # dummy, will not be used
-                                  f"model.actor_save_path=null",  # no need
-                                  f"model.critic_save_path=null",  # no need
-                                  f'model.predict_save_dir={output_path}',
-                                  f"experiment=ppo_{target_experiment}"
-                                  ]
+    overrides = main_overrides + cfg.rl_overrides + [f"trainer.max_epochs=0",
+                                                     f"predict_subset_frac={cfg.rl_num_predict}",
+                                                     f"model.actor.actor.pretrain_ckpt={output_path}/{0}/actor.ckpt",
+                                                     f"model.actor.actor.ref_ckpt={output_path}/{0}/actor.ckpt",  # always supervised
+                                                     "reward@model.reward=pixelwise_accuracy",  # dummy, will not be used
+                                                     f"model.actor_save_path=null",  # no need
+                                                     f"model.critic_save_path=null",  # no need
+                                                     f'model.predict_save_dir={output_path}',
+                                                     f"experiment=ppo_{target_experiment}"
+                                                     ]
     sub_cfg = compose(config_name=f"RL_runner.yaml", overrides=overrides)
     # prepare dataset with custom split and gt column
     if experiment_split_column != sub_cfg.datamodule.splits_column:
@@ -88,21 +90,22 @@ def main(cfg):
         saved_vars = pickle.load(open(cfg.var_file, "rb"))
 
         # train PPO model with fresh reward net
-        overrides = main_overrides + [f"trainer.max_epochs={cfg.rl_num_epochs}",
-                                      f"predict_subset_frac={cfg.rl_num_predict}",
-                                      f"datamodule.splits_column={experiment_split_column}",
-                                      f"datamodule.gt_column={experiment_gt_column}",
-                                      f"model.actor.actor.pretrain_ckpt={output_path}/{i-1}/actor.ckpt",
-                                      f"model.actor.actor.ref_ckpt={output_path}/{i-1}/actor.ckpt", # always supervised?
-                                      f"model.reward.state_dict_path={output_path}/{i-1}/rewardnet.ckpt",
-                                      f"model.reward.temp_factor={float(saved_vars['Temperature_factor'])}",
-                                      f"model.actor_save_path={output_path}/{i}/actor.ckpt",
-                                      f"model.critic_save_path={output_path}/{i}/critic.ckpt",
-                                      f'model.predict_save_dir={output_path if iterations > i else None}',
-                                      f"model.entropy_coeff={max(0.1 - 0.02*i, 0)}",
-                                      f"model.divergence_coeff={0.05}",
-                                      f"experiment=ppo_{target_experiment}"
-                                      ]
+        overrides = main_overrides + cfg.rl_overrides + [f"trainer.max_epochs={cfg.rl_num_epochs}",
+                                                         f"predict_subset_frac={cfg.rl_num_predict}",
+                                                         f"datamodule.splits_column={experiment_split_column}",
+                                                         f"datamodule.gt_column={experiment_gt_column}",
+                                                         f"+datamodule.train_batch_size={8*i}", #current is 8*i
+                                                         f"model.actor.actor.pretrain_ckpt={output_path}/{i-1}/actor.ckpt",
+                                                         f"model.actor.actor.ref_ckpt={output_path}/{0}/actor.ckpt", # always supervised?
+                                                         f"model.reward.state_dict_path={output_path}/{i-1}/rewardnet.ckpt",
+                                                         #f"model.reward.temp_factor={float(saved_vars['Temperature_factor'])}",
+                                                         f"model.actor_save_path={output_path}/{i}/actor.ckpt",
+                                                         f"model.critic_save_path={output_path}/{i}/critic.ckpt",
+                                                         f'model.predict_save_dir={output_path if iterations > i else None}',
+                                                         f"model.entropy_coeff={max(0.3 / (i*2), 0)}",
+                                                         f"model.divergence_coeff={0.1 / (i*2)}",
+                                                         f"experiment=ppo_{target_experiment}"
+                                                         ]
         if Path(f"{output_path}/{i-1}/critic.ckpt").exists():
             overrides += [f"model.actor.critic.pretrain_ckpt={output_path}/{i-1}/critic.ckpt"]
         sub_cfg = compose(config_name=f"RL_runner.yaml", overrides=overrides)
