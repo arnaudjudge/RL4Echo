@@ -83,7 +83,7 @@ class Ens_loss(nn.Module):
         loss_Dice = self.Dice_Conf(inp1, tar1, Conf_mask)
         loss_BCE = self.BCE1(inp1, tar1, Conf_mask)
 
-        return loss_BCE
+        return loss_BCE, Conf_mask
 
 
 

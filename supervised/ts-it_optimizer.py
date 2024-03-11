@@ -1,8 +1,10 @@
 import copy
 import random
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any
 
+import h5py
 import nibabel as nib
 import numpy as np
 import pytorch_lightning as pl
@@ -46,7 +48,14 @@ class DiceLoss(nn.Module):
 
 
 class TSITOptimizer(pl.LightningModule):
-    def __init__(self, input_shape=(1, 256, 256), output_shape=(1, 256, 256), loss=nn.BCELoss(), ckpt_path=None, class_label=1, **kwargs):
+    def __init__(self,
+                 input_shape=(1, 256, 256),
+                 output_shape=(1, 256, 256),
+                 loss=nn.BCELoss(),
+                 ckpt_path=None,
+                 class_label=1,
+                 save_uncertainty_path=None,
+                 *kwargs):
         super().__init__(**kwargs)
 
         self.net = UNet(input_shape=input_shape, output_shape=output_shape)
@@ -57,6 +66,7 @@ class TSITOptimizer(pl.LightningModule):
         self.loss = loss
         self.save_test_results = False
         self.ckpt_path = ckpt_path
+        self.save_uncertainty_path = save_uncertainty_path
 
         self.dice = Dice()
         print("TS-IT")
@@ -124,7 +134,7 @@ class TSITOptimizer(pl.LightningModule):
             # plt.imshow(imgs_T[0, 0, ...].cpu().numpy().T)
             # plt.show()
 
-            loss_T = self.ens_loss(masks_TA, masks_T)
+            loss_T, _ = self.ens_loss(masks_TA, masks_T)
             Ti = 1 / (self.trainer.max_epochs - self.SemiSup_initial_epoch)
             Lambda = self.LW * torch.exp(torch.tensor(0 - self.GCC * (1 - (self.current_epoch - self.SemiSup_initial_epoch) * Ti)))
 
@@ -175,6 +185,15 @@ class TSITOptimizer(pl.LightningModule):
         b_img, b_gt, voxel_spacing = batch['img'], batch['gt'].float(), batch['vox']
         y_pred = self.forward(b_img)
 
+        random.seed(10)
+        torch.random.manual_seed(10)
+        imgs_TA, NI = image_transforms(b_img, torch.zeros_like(b_img))
+
+        masks_TA = self.forward(imgs_TA)
+        with torch.no_grad():
+            masks_T = self.forward(b_img)
+        loss_T, conf_mask = self.ens_loss(masks_TA, masks_T)
+
         loss = self.loss(y_pred, b_gt)
 
         if self.output_shape[0] > 1:
@@ -224,6 +243,33 @@ class TSITOptimizer(pl.LightningModule):
 
         self.log_dict(logs)
 
+        # create files for figure
+        # dicom_list = ["di-FC9F-91EC-F095", "di-7B00-899D-99F7", "di-AD3D-984E-4C22", "di-D743-7A76-069A",
+        #               "di-3943-5614-4505", "di-03EF-C595-467A", "di-922F-5B7F-F23B", "di-A29A-55AC-FE06"]
+        # folder = "/data/rl_figure/TS-IT_2/"
+        # # for i in range(len(b_img)):
+        # #     if batch['id'][i] in dicom_list:
+        # #         affine = np.diag(np.asarray([-1, -1, 1, 0]))
+        # #         hdr = nib.Nifti1Header()
+        # #         Path(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}").mkdir(exist_ok=True)
+        # #         nifti_img = nib.Nifti1Image(b_img[i, 0].cpu().numpy(), affine, hdr)
+        # #         nifti_img.to_filename(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}/img.nii.gz")
+        # #         nifti_img = nib.Nifti1Image(y_pred_np[i], affine, hdr)
+        # #         nifti_img.to_filename(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}/act.nii.gz")
+        # #         nifti_img = nib.Nifti1Image(b_gt[i].cpu().numpy(), affine, hdr)
+        # #         nifti_img.to_filename(f"{folder}/{batch['id'][i]}_{batch['instant'][i]}/gt.nii.gz")
+
+        if self.save_uncertainty_path:
+            with h5py.File(self.save_uncertainty_path, 'a') as f:
+                for i in range(len(b_img)):
+                    dicom = batch['id'][i] + "_" + batch['instant'][i]
+                    if dicom not in f:
+                        f.create_group(dicom)
+                    f[dicom]['img'] = b_img[i].cpu().numpy()
+                    f[dicom]['gt'] = b_gt[i].cpu().numpy()
+                    f[dicom]['pred'] = y_pred_np[i]
+                    f[dicom]['reward_map'] = conf_mask[i].cpu().numpy()
+                    f[dicom]['accuracy_map'] = (y_pred_np[i] != b_gt[i].cpu().numpy()).astype(np.uint8)
         return logs
 
     def on_test_end(self) -> None:
