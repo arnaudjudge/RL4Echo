@@ -1,7 +1,7 @@
 import numpy as np
-from bdicardio.utils.morphological_and_ae import MorphologicalAndTemporalCorrectionAEApplicator
-from bdicardio.utils.ransac_utils import ransac_sector_extraction
-from bdicardio.utils.segmentation_validity import compare_segmentation_with_ae
+from utils.corrector_utils import MorphologicalAndTemporalCorrectionAEApplicator
+# from bdicardio.utils.ransac_utils import ransac_sector_extraction
+from utils.corrector_utils import compare_segmentation_with_ae
 from scipy import ndimage
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 
