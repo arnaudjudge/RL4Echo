@@ -1,0 +1,3 @@
+_target_: Reward.RewardUnetSigma
+
+state_dict_path: ./logs/test_logs/rewardnet.ckpt

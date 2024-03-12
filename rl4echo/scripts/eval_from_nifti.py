@@ -3,8 +3,8 @@ from pathlib import Path
 import numpy as np
 import nibabel as nib
 from vital.data.camus.config import Label
-from utils.Metrics import is_anatomically_valid
-from utils.test_metrics import dice, hausdorff
+from rl4echo.utils.Metrics import is_anatomically_valid
+from rl4echo.utils.test_metrics import dice, hausdorff
 
 if __name__ == "__main__":
     seg_path = '/data/nnunet_test/out4/inference_raw/'

@@ -3,7 +3,6 @@ import random
 from datetime import datetime
 from typing import Dict, Any
 
-import nibabel as nib
 import numpy as np
 import pytorch_lightning as pl
 import torch
@@ -13,13 +12,11 @@ from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 from vital.models.segmentation.unet import UNet
 from vital.data.camus.config import Label
 
-from utils.Metrics import accuracy, dice_score, is_anatomically_valid
-from utils.file_utils import save_to_reward_dataset
-from utils.logging_helper import log_image
-from utils.tensor_utils import convert_to_numpy
-from utils.test_metrics import dice, hausdorff
-
-from matplotlib import pyplot as plt
+from rl4echo.utils.Metrics import accuracy, dice_score, is_anatomically_valid
+from rl4echo.utils.file_utils import save_to_reward_dataset
+from rl4echo.utils.logging_helper import log_image
+from rl4echo.utils.tensor_utils import convert_to_numpy
+from rl4echo.utils.test_metrics import dice, hausdorff
 
 
 class DiceLoss(nn.Module):

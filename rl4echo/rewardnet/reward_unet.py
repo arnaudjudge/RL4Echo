@@ -8,9 +8,9 @@ from torch import nn, optim
 from torch.nn import functional as F
 from vital.models.segmentation.unet import UNet
 
-from rewardnet.unet_heads import UNet_multihead
-from utils.Metrics import accuracy
-from utils.logging_helper import log_image
+from rl4echo.rewardnet.unet_heads import UNet_multihead
+from rl4echo.utils.Metrics import accuracy
+from rl4echo.utils.logging_helper import log_image
 
 import torch.distributions as distributions
 
