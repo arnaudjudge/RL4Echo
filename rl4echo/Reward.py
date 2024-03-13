@@ -2,7 +2,7 @@ import numpy as np
 import skimage.morphology
 import torch
 import torch.nn.functional as F
-from bdicardio.utils.ransac_utils import ransac_sector_extraction
+#from bdicardio.utils.ransac_utils import ransac_sector_extraction
 from scipy import ndimage
 from scipy.ndimage import binary_fill_holes
 from torch import distributions

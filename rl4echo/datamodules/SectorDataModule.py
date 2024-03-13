@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
-from utils.file_utils import get_img_subpath
+from rl4echo.utils.file_utils import get_img_subpath
 
 
 class SectorDataset(Dataset):

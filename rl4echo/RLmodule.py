@@ -22,6 +22,19 @@ from utils.tensor_utils import convert_to_numpy
 from utils.test_metrics import dice, hausdorff
 
 
+def shrink_perturb(model, lamda=0.5, sigma=0.01):
+    for (name, param) in model.named_parameters():
+        if 'weight' in name:  # just weights
+            # nc = param.shape[0]  # cols
+            # nr = param.shape[1]  # rows
+            # for i in range(nr):
+            #     for j in range(nc):
+            param.data = \
+                (lamda * param.data) + \
+                torch.normal(0.0, sigma, size=(param.data.shape), device=next(model.parameters()).device)
+    return model
+
+
 class RLmodule(pl.LightningModule):
 
     def __init__(self, actor, reward,
@@ -234,8 +247,13 @@ class RLmodule(pl.LightningModule):
     def on_test_end(self) -> None:
         if self.actor_save_path:
             torch.save(self.actor.actor.net.state_dict(), self.actor_save_path)
+
+            actor_net = shrink_perturb(copy.deepcopy(self.actor.actor.net))
+            torch.save(actor_net.state_dict(), self.actor_save_path.replace('.ckpt', '_s-p.ckpt'))
         if self.critic_save_path:
             torch.save(self.actor.critic.net.state_dict(), self.critic_save_path)
+            critic_net = shrink_perturb(copy.deepcopy(self.actor.critic.net))
+            torch.save(critic_net.state_dict(), self.critic_save_path.replace('.ckpt', '_s-p.ckpt'))
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
         b_img, ids, inst = batch['img'], batch['id'], batch.get('instant', None)

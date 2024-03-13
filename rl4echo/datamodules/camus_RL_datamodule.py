@@ -9,8 +9,6 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 
-from utils.file_utils import get_img_subpath
-
 
 class CamusDataset(Dataset):
     def __init__(self, df, data_path, approx_gt_path=None, allow_real_gt=True, subset_frac=1.0, available_gt=None, seed=0, test=False, class_label=None, *args,

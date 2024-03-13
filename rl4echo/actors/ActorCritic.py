@@ -1,10 +1,9 @@
-from actors.Actors import Actor
+from rl4echo.actors.Actors import Actor
 
 
-class ActorCriticUnetCritic(Actor):
+class ActorCritic(Actor):
     """
         ActorCritic actor class, evaluates actor and value function approximate
-        Value function is represented as a grid/matrix, unet is value function approximator
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -27,11 +26,10 @@ class ActorCriticUnetCritic(Actor):
         else:
             old_log_probs = log_probs.detach()
 
-        sampled_actions = distribution.sample()
+        actions = distribution.sample()
         entropy = distribution.entropy()
 
-        v = self.critic(imgs).squeeze(1)
+        # unsqueeze to match shape to multiply with logprobs
+        v = self.critic(imgs).unsqueeze(-1)
 
-        return sampled_actions, logits, log_probs, entropy, v, old_log_probs
-
-
+        return actions, logits, log_probs, entropy, v, old_log_probs
