@@ -1,8 +1,5 @@
 import numpy as np
 import torch
-import scipy
-import nibabel as nib
-from pathlib import Path
 from vital.data.camus.utils.process import TEDTemporalRegularization
 from vital.utils.image.process.morphological import Post2DBigBlob, Post2DFillIntraHoles, Post2DFillInterHoles
 
