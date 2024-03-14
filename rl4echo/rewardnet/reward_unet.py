@@ -99,10 +99,19 @@ class RewardOptimizer(pl.LightningModule):
 
         # log images
         idx = random.randint(0, len(x) - 1)  # which image to log
-        log_image(self.logger, img=x[idx].permute((0, 2, 1)), title='Image', number=batch_idx)
-        log_image(self.logger, img=y[idx].permute((0, 2, 1)), title='GroundTruth', number=batch_idx)
-        log_image(self.logger, img=y_pred[idx].permute((0, 2, 1)), title='Prediction', number=batch_idx,
-                  img_text=acc[idx].mean())
+        log_image(self.logger, img=x[idx].permute((0, 2, 1))[1].unsqueeze(0),
+                  title='Image',
+                  number=batch_idx,
+                  epoch=self.current_epoch)
+        log_image(self.logger, img=y[idx].permute((0, 2, 1)),
+                  title='GroundTruth',
+                  number=batch_idx,
+                  epoch=self.current_epoch)
+        log_image(self.logger, img=y_pred[idx].permute((0, 2, 1)),
+                  title='Prediction',
+                  number=batch_idx,
+                  img_text=acc[idx].mean(),
+                  epoch=self.current_epoch)
 
         return {'loss': loss}
 
@@ -133,10 +142,19 @@ class RewardOptimizer(pl.LightningModule):
                        "test_acc": acc.mean()})
 
         for i in range(len(x)):
-            log_image(self.logger, img=x[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
-            log_image(self.logger, img=y[i].permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
-            log_image(self.logger, img=y_pred[i].permute((0, 2, 1)), title='test_Prediction', number=batch_idx * (i + 1),
-                      img_text=acc[i].mean())
+            log_image(self.logger, img=x[i].permute((0, 2, 1))[1].unsqueeze(0),
+                      title='test_Image',
+                      number=batch_idx * (i + 1),
+                      epoch=self.current_epoch)
+            log_image(self.logger, img=y[i].permute((0, 2, 1)),
+                      title='test_GroundTruth',
+                      number=batch_idx * (i + 1),
+                      epoch=self.current_epoch)
+            log_image(self.logger, img=y_pred[i].permute((0, 2, 1)),
+                      title='test_Prediction',
+                      number=batch_idx * (i + 1),
+                      img_text=acc[i].mean(),
+                      epoch=self.current_epoch)
 
         return {'loss': loss}
 
