@@ -1,6 +1,8 @@
 work_dir: ${hydra:runtime.cwd}
 run_name: supervised_default
 
+logger_run_name: '${get_class_name: ${model._target_}}_${run_name}'
+
 defaults:
   - logger: comet
   - model: supervised
@@ -10,9 +12,6 @@ defaults:
   - experiment: supervised_camus
 
 seed: 1
-
-logger:
-  experiment_name: '${get_class_name: ${model._target_}}_${run_name}'
 
 callbacks:
   model_checkpoint:

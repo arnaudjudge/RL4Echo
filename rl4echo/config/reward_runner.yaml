@@ -1,6 +1,8 @@
 work_dir: ${hydra:runtime.cwd}
 run_name: test
 
+logger_run_name: '${get_class_name: ${model._target_}}_${run_name}'
+
 defaults:
   - logger: comet
   - model: rewardnet
@@ -16,9 +18,6 @@ model:
   save_model_path: #./logs/reward_CB.ckpt
 
 seed: 1
-
-logger:
-  experiment_name: '${get_class_name: ${model._target_}}_${run_name}'
 
 callbacks:
   model_checkpoint:

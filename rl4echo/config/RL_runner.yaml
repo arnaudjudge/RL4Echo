@@ -1,6 +1,8 @@
 work_dir: ${hydra:runtime.cwd}
 run_name: default
 
+logger_run_name: '${get_class_name: ${model._target_}}_${get_class_name: ${model.reward._target_}}_${run_name}'
+
 defaults:
   - logger: comet
   - model: ppo
@@ -10,9 +12,6 @@ defaults:
   - experiment: ppo_es_ed
 
 seed: 1
-
-logger:
-  experiment_name: '${get_class_name: ${model._target_}}_${get_class_name: ${model.reward._target_}}_${run_name}'
 
 datamodule:
 #  subset_frac: 0.1
