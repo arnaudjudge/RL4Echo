@@ -1,7 +1,10 @@
+import warnings
+
 import torch
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 from vital.metrics.train.functional import differentiable_dice_score
 
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def accuracy(pred, imgs, gt):
     actions = torch.round(pred)
