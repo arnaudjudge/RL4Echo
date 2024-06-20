@@ -18,7 +18,19 @@ CSV_PATH = "/data/icardio/MICCAI2024/MICCAI2024.csv"
 IMG_PATH = "/data/icardio/processed/img/"
 
 OUT_PATH = "/data/icardio/MICCAI2024/segmentation/"
-CAP = 10000
+CAP = 80000
+
+
+def remove_blobs(seg):
+    lbl, num = ndimage.label(seg != 0)
+    # Count the number of elements per label
+    count = np.bincount(lbl.flat)
+    # Select the largest blob
+    maxi = np.argmax(count[1:]) + 1
+    # Remove the other blobs
+    seg[lbl != maxi] = 0
+    return seg
+
 
 if __name__ == "__main__":
 
@@ -35,11 +47,13 @@ if __name__ == "__main__":
         if torch.cuda.is_available():
             model.cuda()
             img = img.cuda()
+        print(img.shape)
+
         out = torch.sigmoid(model(img))
         return out.cpu().detach().numpy()
     j = 1
 
-    for idx in tqdm(df[df['MICCAI2024_overall_AV'].isna()].index, total=CAP):
+    for idx in tqdm(df[df['MICCAI2024_overall_AV'].isna()].index, total=min(CAP, len(df[df['MICCAI2024_overall_AV'].isna()]))):
         row = df.loc[idx].to_dict()
 
         img_path = f"{IMG_PATH}/{row['study']}/{row['view'].lower()}/{row['dicom_uuid']}_0000.nii.gz"
@@ -59,13 +73,7 @@ if __name__ == "__main__":
         s = get_segmentation(d_small.numpy().transpose((3, 0, 1, 2)))
         s = np.argmax(s, axis=1)
         for i in range(len(s)):
-            lbl, num = ndimage.label(s[i] != 0)
-            # Count the number of elements per label
-            count = np.bincount(lbl.flat)
-            # Select the largest blob
-            maxi = np.argmax(count[1:]) + 1
-            # Remove the other blobs
-            s[i][lbl != maxi] = 0
+            remove_blobs(s[i])
 
         label = LabelMap(tensor=s.transpose((1, 2, 0))[None, ...], affine=d_small.affine)
         label = resize_up(label).numpy()[0]
