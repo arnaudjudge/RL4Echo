@@ -20,15 +20,12 @@ from utils.file_utils import get_img_subpath, save_to_reward_dataset
 from utils.logging_helper import log_image
 from utils.tensor_utils import convert_to_numpy
 from utils.test_metrics import dice, hausdorff
+from vital.utils.image.us.measure import EchoMeasure
 
 
-def shrink_perturb(model, lamda=0.5, sigma=0.01):
+def shrink_perturb(model, lamda=0.4, sigma=0.1):
     for (name, param) in model.named_parameters():
         if 'weight' in name:  # just weights
-            # nc = param.shape[0]  # cols
-            # nr = param.shape[1]  # rows
-            # for i in range(nr):
-            #     for j in range(nc):
             param.data = \
                 (lamda * param.data) + \
                 torch.normal(0.0, sigma, size=(param.data.shape), device=next(model.parameters()).device)
@@ -222,6 +219,27 @@ class RLmodule(pl.LightningModule):
                 'dice_epi': test_dice_epi,
                 'hd_epi': test_hd_epi,
                 }
+
+        mae = []
+        mse = []
+        for i in range(len(b_gt_np)):
+            try:
+                lv_points = np.asarray(
+                    EchoMeasure._endo_base(b_gt_np[i], lv_labels=Label.LV, myo_labels=Label.MYO))
+                p_points = np.asarray(
+                    EchoMeasure._endo_base(y_pred_np[i], lv_labels=Label.LV, myo_labels=Label.MYO))
+                mae += [np.abs(lv_points - p_points).mean()]
+                mse += [((lv_points - p_points)**2).mean()]
+            except Exception as e:
+                print(f"except : {e}")
+                mae += [y_pred_np.shape[-1]]
+                mse += [y_pred_np.shape[-1]**2]
+
+        mae = torch.tensor(mae)
+        logs['landmark_mae'] = mae.mean()
+        mse = torch.tensor(mse)
+        logs['landmark_mse'] = mse.mean()
+
         logs.update(test_dice)
         logs.update(test_hd)
 

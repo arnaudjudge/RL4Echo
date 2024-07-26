@@ -17,6 +17,7 @@ from rl4echo.utils.file_utils import save_to_reward_dataset
 from rl4echo.utils.logging_helper import log_image
 from rl4echo.utils.tensor_utils import convert_to_numpy
 from rl4echo.utils.test_metrics import dice, hausdorff
+from vital.utils.image.us.measure import EchoMeasure
 
 
 class DiceLoss(nn.Module):
@@ -144,6 +145,22 @@ class SupervisedOptimizer(pl.LightningModule):
                 'dice_epi': test_dice_epi,
                 'hd_epi': test_hd_epi,
                 }
+
+        mae = []
+        for i in range(len(b_gt_np)):
+            try:
+                lv_points = np.asarray(
+                    EchoMeasure._endo_base(b_gt_np[i], lv_labels=Label.LV, myo_labels=Label.MYO))
+                p_points = np.asarray(
+                    EchoMeasure._endo_base(y_pred_np[i], lv_labels=Label.LV, myo_labels=Label.MYO))
+                mae += [np.abs(lv_points - p_points).mean()]
+            except Exception as e:
+
+                print(f"except : {e}")
+                mae += [y_pred_np.shape[-1]]
+        mae = torch.tensor(mae)
+        logs['landmark_mae'] = mae.mean()
+
         logs.update(test_dice)
         logs.update(test_hd)
 

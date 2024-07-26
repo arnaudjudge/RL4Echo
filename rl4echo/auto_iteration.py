@@ -31,31 +31,32 @@ def main(cfg):
     timestamp = datetime.now().timestamp()
     experiment_split_column = f"split_{timestamp}"
     experiment_gt_column = f"Gt_{timestamp}"
+    pretrain_path = cfg.get("pretrain_path", None)
+    if not pretrain_path:
+        # train supervised network for initial actor
+        overrides = main_overrides + [f"trainer.max_epochs={cfg.sup_num_epochs}",
+                                      f'model.predict_save_dir=null',  # no predictions here
+                                      f"model.ckpt_path={output_path}/{0}/actor.ckpt",
+                                      f"model.loss.label_smoothing={cfg.sup_loss_label_smoothing}",
+                                      f"experiment=supervised_{source_experiment}"]
+        sub_cfg = compose(config_name=f"supervised_runner.yaml", overrides=overrides)
+        print(OmegaConf.to_yaml(sub_cfg))
 
-    # train supervised network for initial actor
-    overrides = main_overrides + [f"trainer.max_epochs={cfg.sup_num_epochs}",
-                                  f'model.predict_save_dir={None}',  # no predictions here
-                                  f"model.ckpt_path={output_path}/{0}/actor.ckpt",
-                                  f"model.loss.label_smoothing={cfg.sup_loss_label_smoothing}",
-                                  f"experiment=supervised_{source_experiment}"]
-    sub_cfg = compose(config_name=f"supervised_runner.yaml", overrides=overrides)
-    print(OmegaConf.to_yaml(sub_cfg))
-
-    # prepare dataset with custom split and gt column
-    if experiment_split_column != sub_cfg.datamodule.splits_column:
-        df = pd.read_csv(sub_cfg.datamodule.data_dir + sub_cfg.datamodule.csv_file, index_col=0)
-        df[experiment_split_column] = df.loc[:, sub_cfg.datamodule.splits_column]
-        df[experiment_gt_column] = df.loc[:, sub_cfg.datamodule.gt_column]
-        df.to_csv(sub_cfg.datamodule.data_dir + sub_cfg.datamodule.csv_file)
-    sub_cfg.datamodule.splits_column = experiment_split_column
-    sub_cfg.datamodule.gt_column = experiment_gt_column
-    #runner_main(sub_cfg)
+        # prepare dataset with custom split and gt column
+        if experiment_split_column != sub_cfg.datamodule.splits_column:
+            df = pd.read_csv(sub_cfg.datamodule.data_dir + sub_cfg.datamodule.csv_file, index_col=0)
+            df[experiment_split_column] = df.loc[:, sub_cfg.datamodule.splits_column]
+            df[experiment_gt_column] = df.loc[:, sub_cfg.datamodule.gt_column]
+            df.to_csv(sub_cfg.datamodule.data_dir + sub_cfg.datamodule.csv_file)
+        sub_cfg.datamodule.splits_column = experiment_split_column
+        sub_cfg.datamodule.gt_column = experiment_gt_column
+        runner_main(sub_cfg)
 
     # Predict and test (baseline) on target domain
     overrides = main_overrides + cfg.rl_overrides + [f"trainer.max_epochs=0",
                                                      f"predict_subset_frac={cfg.rl_num_predict}",
-                                                     f"model.actor.actor.pretrain_ckpt={output_path}/{0}/actor.ckpt",
-                                                     f"model.actor.actor.ref_ckpt={output_path}/{0}/actor.ckpt",
+                                                     f"model.actor.actor.pretrain_ckpt={f'{output_path}/{0}/actor.ckpt' if pretrain_path is None else pretrain_path}",
+                                                     f"model.actor.actor.ref_ckpt={f'{output_path}/{0}/actor.ckpt' if pretrain_path is None else pretrain_path}",
                                                      "reward@model.reward=pixelwise_accuracy",  # will not be used
                                                      f"model.actor_save_path={output_path}/{0}/actor.ckpt",  # no need
                                                      f"model.critic_save_path=null",  # no need
