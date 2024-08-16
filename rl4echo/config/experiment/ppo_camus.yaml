@@ -4,11 +4,11 @@ defaults:
   - override /model: ppo
   - override /datamodule: camus
   - override /actor/actor@model.actor.actor: categorical_unet_actor
-#  - override /reward@model.reward: pixelwise_accuracy
+#  - override /reward@model.reward: landmark_w_gt
   - override /corrector@model.corrector: ae
 
 datamodule:
-  supervised: False
+  supervised: True
 
 model:
   actor:

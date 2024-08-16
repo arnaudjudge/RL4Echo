@@ -1,3 +1,5 @@
 _target_: actors.Actors.UnetActorCategorical
-pretrain_ckpt: null
-ref_ckpt: null
+pretrain_ckpt: /data/rl_logs/lm_camus_test/pretrained_norand_moredata.ckpt #/data/rl_logs/run_1_batchsize_increase/0/actor.ckpt
+ref_ckpt: /data/rl_logs/lm_camus_test/pretrained_norand_moredata.ckpt
+#pretrain_ckpt: /data/rl_logs/only_camus_approxGT/0/actor.ckpt
+#ref_ckpt: /data/rl_logs/only_camus_approxGT/0/actor.ckpt

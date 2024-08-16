@@ -6,7 +6,7 @@ defaults:
   - model: ppo
   - datamodule: ???
   - callbacks: default
-  - experiment: ppo_es_ed
+  - experiment: ppo_camus
   - _self_
 #  - override /reward@model.reward: rewardunet_multihead
 #  - override /reward@model.reward: pixelwise_accuracy
@@ -18,8 +18,8 @@ defaults:
 #  class_label: 1
 
 model:
-  reward:
-    state_dict_path: /data/rl_logs/1_entropy/3/rewardnet.ckpt
+#  reward:
+#    state_dict_path: /data/rl_logs/1_entropy/3/rewardnet.ckpt
 #    temp_factor: 1 #4.1778
   actor:
     actor:
@@ -28,11 +28,12 @@ model:
 seed: 1
 
 logger:
-  save_dir: /data/rl_logs/test/
-  name: "v2"
+  save_dir: /data/rl_logs/lm_tests/
+  name: "deleteme"
 
-#ckpt_path:  /data/rl_logs//run_1_batchsize_increase/PPO_RewardUnet_es_ed/version_3/checkpoints/epoch=1-step=5920.ckpt # /data/rl_logs//run_6_batchsize_increase/PPO_RewardUnet_es_ed/version_3/checkpoints/epoch=0-step=2960.ckpt
-
+#ckpt_path: /data/rl_logs/lm_merge_tests/LM_tiny_div/version_11/checkpoints/epoch=25-step=13000.ckpt #/data/rl_logs//run_1_batchsize_increase/PPO_RewardUnet_es_ed/version_3/checkpoints/epoch=1-step=5920.ckpt # /data/rl_logs//run_6_batchsize_increase/PPO_RewardUnet_es_ed/version_3/checkpoints/epoch=0-step=2960.ckpt
+ckpt_path: /data/rl_logs/lm_tests/both-rewards/version_2/checkpoints/epoch=2-step=1500.ckpt #/data/rl_logs/lm_tests/pretrained_tiny_div/version_3/checkpoints/epoch=12-step=6500.ckpt #/data/rl_logs/lm_tests/deleteme/version_98/checkpoints/epoch=20-step=10500.ckpt #/data/rl_logs/lm_tests/pretrained_w_pixelwise/version_0/checkpoints/epoch=13-step=7000.ckpt
+# /data/rl_logs/lm_dist_and_reward_bigger/PPO_RewardUnet_es_ed/version_1/checkpoints/epoch=0-step=3190.ckpt #/data/rl_logs/lm_dist_and_reward_bigger/PPO_RewardUnet_es_ed/version_3/checkpoints/epoch=2-step=8880.ckpt #
 trainer:
   _target_: pytorch_lightning.Trainer
   log_every_n_steps: 1

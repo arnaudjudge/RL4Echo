@@ -18,6 +18,7 @@ from vital.data.camus.config import Label
 from vital.utils.image.us.measure import EchoMeasure
 
 from matplotlib import pyplot as plt
+from PIL import Image, ImageFilter
 
 """
 Reward functions must each have pred, img, gt as input parameters
@@ -204,7 +205,7 @@ class RewardUnet(Reward):
 
 class LandmarkWGTReward(Reward):
     @torch.no_grad()
-    def __call__(self, pred, imgs, gt): #, pred_unsampled=None):
+    def __call__(self, pred, imgs, gt, pred_unsampled=None):
         # GT must be available for this version of the reward,
         # another version with predictions for GT landmarks will exist
         r = torch.ones_like(pred).float() #.type(torch.float32)
@@ -226,36 +227,83 @@ class LandmarkWGTReward(Reward):
                 # Remove the other blobs
                 p[lbl != maxi] = 0
 
+                # plt.figure()
+                # # plt.imshow(gt[i].cpu().numpy().T)
+                # plt.imshow(p.T) #, alpha=0.35)
+
+                p1 = ndimage.median_filter(p, size=5)
+                #
+                # plt.figure()
+                # plt.imshow(p1.T)
+                # plt.show()
+                # remove border artifacts
+                lbl, num = ndimage.measurements.label(p1 == 1)
+                # Count the number of elements per label
+                count = np.bincount(lbl.flat)
+                # Select the largest blob
+                maxi = np.argmax(count[1:]) + 1
+                # Remove the other blobs
+                p1_ = p1.copy()
+                p1[lbl != maxi] = 0
+                p1[p1_ == 2] = 2
+
+                # plt.figure()
+                # plt.imshow(p1.T)
+                # plt.show()
+
                 p_points = np.asarray(
-                    EchoMeasure._endo_base(p.T, lv_labels=Label.LV, myo_labels=Label.MYO))
+                    EchoMeasure._endo_base(p1.T, lv_labels=Label.LV, myo_labels=Label.MYO))
                 a = np.ones_like(r[i].cpu().numpy())
                 b = np.ones_like(r[i].cpu().numpy())
 
                 lv_points = lv_points[np.argsort(lv_points[:, 1])]
                 p_points = p_points[np.argsort(p_points[:, 1])]
 
-                d0 = max(1, (np.linalg.norm(lv_points[0] - p_points[0]) / a.shape[0]*75))
-                d1 = max(1, (np.linalg.norm(lv_points[1] - p_points[1]) / b.shape[0]*75))
+                d0 = (np.linalg.norm(lv_points[0] - p_points[0]) / a.shape[0]*75)
+                d1 = (np.linalg.norm(lv_points[1] - p_points[1]) / b.shape[0]*75)
                 # d0 = min(max(1, np.exp(np.linalg.norm(lv_points[0] - p_points[0]) / b.shape[0] * 50)), 15)
                 # print(d0)
                 # d1 = min(max(1, np.exp(np.linalg.norm(lv_points[1] - p_points[1]) / b.shape[0] * 50)), 15)
                 # print(d1)
-
-                rr, cc, val = skimage.draw.line_aa(p_points[0, 1], p_points[0, 0], lv_points[0, 1], lv_points[0, 0])
-                a[rr, cc] = 1 - val
-                a = gaussian_filter(a, sigma=d0)
-                a = (a - np.min(a)) / (np.max(a) - np.min(a))
-                rr, cc, val = skimage.draw.line_aa(p_points[1, 1], p_points[1, 0], lv_points[1, 1], lv_points[1, 0])
-                b[rr, cc] = 1 - val
-                b = gaussian_filter(b, sigma=d1)
-                b = (b - np.min(b)) / (np.max(b) - np.min(b))
+                if d0 > 0:
+                    rr, cc, val = skimage.draw.line_aa(p_points[0, 1], p_points[0, 0], lv_points[0, 1], lv_points[0, 0])
+                    a[rr, cc] = 1 - val
+                    a = gaussian_filter(a, sigma=d0)
+                    a = (a - np.min(a)) / (np.max(a) - np.min(a))
+                if d1 > 0:
+                    rr, cc, val = skimage.draw.line_aa(p_points[1, 1], p_points[1, 0], lv_points[1, 1], lv_points[1, 0])
+                    b[rr, cc] = 1 - val
+                    b = gaussian_filter(b, sigma=d1)
+                    b = (b - np.min(b)) / (np.max(b) - np.min(b))
 
                 c = np.minimum(a, b)
+                c = np.minimum(c, (p1 == pred[i].cpu().numpy()).astype(np.uint8))
+
+                # plt.figure()
+                # plt.imshow(np.minimum(c, (p1 == p).astype(np.uint8)).T)
+                # plt.show()
+
+                # plt.figure()
+                # plt.imshow(gt[i].cpu().numpy().T)
+                # plt.imshow(p.T, alpha=0.35)
+                # plt.imshow(c.T, alpha=0.35)
+                # plt.scatter(p_points[0, 1], p_points[0, 0])
+                # plt.scatter(p_points[1, 1], p_points[1, 0])
+                # plt.show()
 
                 r[i] = torch.tensor(c).to(r.device)
             except Exception as e:
                 print(e)
+                # plt.figure()
+                # plt.imshow(gt[i].cpu().numpy().T)
+                # plt.imshow(p.T, alpha=0.35)
+                # # plt.imshow(c.T, alpha=0.35)
+                # # plt.scatter(p_points[0, 1], p_points[0, 0])
+                # # plt.scatter(p_points[1, 1], p_points[1, 0])
+                # plt.show()
+
                 r[i] = torch.zeros_like(r[i])
+                # r[i] = torch.ones_like(r[i])*0.5
         return r
 
 

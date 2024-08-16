@@ -40,10 +40,13 @@ class PPO(RLmodule):
         """
         opt_net, opt_critic = self.optimizers()
 
-        b_img, b_gt, b_use_gt = batch['img'], batch['approx_gt'], batch['use_gt']
+        b_img, b_gt, b_use_gt, b_approx_gt = batch['img'], batch['gt'], batch['use_gt'], batch['approx_gt']
 
         # get actions, log_probs, rewards, etc from pi (stays constant for all steps k)
-        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_use_gt)
+        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_approx_gt, b_use_gt, second_reward=True)
+        b_img = b_img.repeat(2, 1, 1, 1)
+        b_gt = b_gt.repeat(2, 1, 1)
+        b_use_gt = b_use_gt.repeat(2)
 
         # iterate with pi prime k times
         for k in range(self.k_steps):
@@ -51,6 +54,8 @@ class PPO(RLmodule):
             loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                         prev_log_probs, b_gt, b_use_gt))
 
+            # warm up critic with an epoch or 2?
+            # if self.current_epoch >= 1:
             opt_net.zero_grad()
             self.manual_backward(loss, retain_graph=True)
             nn.utils.clip_grad_norm_(self.actor.parameters(),

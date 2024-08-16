@@ -4,25 +4,26 @@ run_name: default
 logger_run_name: '${get_class_name: ${model._target_}}_${get_class_name: ${model.reward._target_}}_${run_name}'
 
 defaults:
-  - logger: comet
+  - logger: tensorboard
   - model: ppo
   - datamodule: ???
   - callbacks: default
   - _self_
-  - experiment: ppo_es_ed
+  - experiment: ppo_camus
 
 seed: 1
 
 datamodule:
 #  subset_frac: 0.1
  gt_column: Gt_0
+ supervised: True
 
-predict_subset_frac: 1000
+predict_subset_frac: 0
 train: True
 
 trainer:
   _target_: pytorch_lightning.Trainer
-  max_epochs: 10
+  max_epochs: 15
   log_every_n_steps: 1
   gpus: 1
 #  num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)

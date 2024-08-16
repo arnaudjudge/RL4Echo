@@ -1,4 +1,4 @@
 _target_: Reward.RewardUnet
 
-state_dict_path: ./logs/auto_iteration_entropy/4/rewardnet.ckpt
+state_dict_path: /data/rl_logs/only_camus_approxGT/3/rewardnet.ckpt #/data/rl_logs/run_1_batchsize_increase/3/rewardnet.ckpt
 temp_factor: 1

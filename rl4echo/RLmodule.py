@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import h5py
+import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 import pytorch_lightning as pl
@@ -12,6 +13,8 @@ import torch
 from scipy import ndimage
 from torchvision.transforms.functional import adjust_contrast
 from torch import Tensor
+
+from rl4echo.Reward import PixelWiseAccuracy
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 from vital.data.camus.config import Label
 
@@ -69,7 +72,7 @@ class RLmodule(pl.LightningModule):
         return self.actor.get_optimizers()
 
     @torch.no_grad()  # no grad since tensors are reused in PPO's for loop
-    def rollout(self, imgs: torch.tensor, gt: torch.tensor, use_gt: torch.tensor = None, sample: bool = True):
+    def rollout(self, imgs: torch.tensor, gt: torch.tensor, approx_gt: torch.tensor = None, use_gt: torch.tensor = None, sample: bool = True, second_reward: bool = False):
         """
             Rollout the policy over a batch of images and ground truth pairs
         Args:
@@ -82,12 +85,24 @@ class RLmodule(pl.LightningModule):
             Actions (used for rewards, log_pobs, etc), sampled_actions (mainly for display), log_probs, rewards
         """
         actions = self.actor.act(imgs, sample=sample)
-        rewards = self.reward_func(actions, imgs, gt)
+        actions_uns = self.actor.act(imgs, sample=False)
+        rewards = self.reward_func(actions, imgs, gt)#, actions_uns)
 
         if use_gt is not None:
-            actions[use_gt, ...] = gt[use_gt, ...]
+            actions[use_gt, ...] = approx_gt[use_gt, ...]
 
         _, _, log_probs, _, _, _ = self.actor.evaluate(imgs, actions)
+
+        if second_reward:
+            # # use second reward, ends up being like have batchsize x 2
+            from rl4echo.Reward import LandmarkWGTReward
+            lm_rewards = LandmarkWGTReward()(actions, imgs, gt, actions_uns)
+
+            rewards = torch.cat((2*lm_rewards, rewards), dim=0)
+            # imgs = imgs.repeat(2, 1, 1, 1)
+            actions = actions.repeat(2, 1, 1)
+            log_probs = log_probs.repeat(2, 1, 1)
+
         return actions, log_probs, rewards
 
     def training_step(self, batch: dict[str, Tensor], nb_batch):
@@ -128,10 +143,12 @@ class RLmodule(pl.LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, b_use_gt = batch['img'], batch['gt'], batch['use_gt']
+        b_img, b_gt, b_use_gt, approx_gt = batch['img'], batch['gt'], batch['use_gt'], batch['approx_gt']
 
-        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
-
+        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, second_reward=True)
+        b_img = b_img.repeat(2, 1, 1, 1)
+        b_gt = b_gt.repeat(2, 1, 1)
+        b_use_gt = b_use_gt.repeat(2)
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt, b_use_gt))
 
@@ -143,6 +160,33 @@ class RLmodule(pl.LightningModule):
                 "val_acc": acc.mean(),
                 "val_dice": dice.mean()
                 }
+
+        prev_actions_uns, _, _ = self.rollout(b_img, b_gt, sample=False)
+        mae = []
+        mse = []
+        mistakes = 0
+        for i in range(len(b_gt)):
+            try:
+                lv_points = np.asarray(
+                    EchoMeasure._endo_base(b_gt.cpu().numpy()[i].T, lv_labels=Label.LV, myo_labels=Label.MYO))
+                p_points = np.asarray(
+                    EchoMeasure._endo_base(prev_actions_uns.cpu().numpy()[i].T, lv_labels=Label.LV, myo_labels=Label.MYO))
+                mae_values = np.asarray([np.linalg.norm(lv_points[0] - p_points[0]),
+                                         np.linalg.norm(lv_points[1] - p_points[1])])
+                mae += [mae_values.mean()]
+                if (mae_values > 10).any():
+                    mistakes += 1
+                mse += [((lv_points - p_points) ** 2).mean()]
+            except Exception as e:
+                print(f"except : {e}")
+                mae += [prev_actions_uns.shape[-1]]
+                mse += [prev_actions_uns.shape[-1] ** 2]
+
+        mae = torch.tensor(mae)
+        logs['val_LM_mae'] = mae.mean()
+        mse = torch.tensor(mse)
+        logs['val_LM_mse'] = mse.mean()
+        self.log("val_LM_mistakes", mistakes, logger=True, reduce_fx='sum')
 
         # log images
         idx = random.randint(0, len(b_img) - 1)  # which image to log
@@ -222,14 +266,42 @@ class RLmodule(pl.LightningModule):
 
         mae = []
         mse = []
+        mistakes = 0
         for i in range(len(b_gt_np)):
             try:
                 lv_points = np.asarray(
-                    EchoMeasure._endo_base(b_gt_np[i], lv_labels=Label.LV, myo_labels=Label.MYO))
+                    EchoMeasure._endo_base(b_gt_np[i].T, lv_labels=Label.LV, myo_labels=Label.MYO))
                 p_points = np.asarray(
-                    EchoMeasure._endo_base(y_pred_np[i], lv_labels=Label.LV, myo_labels=Label.MYO))
-                mae += [np.abs(lv_points - p_points).mean()]
+                    EchoMeasure._endo_base(y_pred_np[i].T, lv_labels=Label.LV, myo_labels=Label.MYO))
+                mae_values = np.asarray([np.linalg.norm(lv_points[0] - p_points[0]),
+                                   np.linalg.norm(lv_points[1] - p_points[1])])
+                mae += [mae_values.mean()]
                 mse += [((lv_points - p_points)**2).mean()]
+
+                if (mae_values > 10).any():
+                    mistakes += 1
+
+                # plt.figure()
+                # plt.imshow(b_img[i].cpu().numpy().T)
+                # plt.imshow(y_pred_np[i].T, alpha=0.35)
+                # plt.title(mae_values)
+                # plt.scatter(p_points[0, 1], p_points[0, 0], c='r')
+                # plt.scatter(p_points[1, 1], p_points[1, 0], c='r')
+                # plt.scatter(lv_points[0, 1], lv_points[0, 0], marker='x', c='g')
+                # plt.scatter(lv_points[1, 1], lv_points[1, 0], marker='x', c='g')
+                # plt.show()
+                #
+                # with h5py.File("LM.h5", 'a') as f:
+                #     dicom = "Combined_" + batch['id'][i].replace("/", "_")
+                #     if dicom not in f:
+                #         f.create_group(dicom)
+                #     f[dicom]['img'] = b_img[i].cpu().numpy()
+                #     f[dicom]['gt'] = b_gt[i].cpu().numpy()
+                #     f[dicom]['pred'] = y_pred_np[i]
+                #     f[dicom]['p_points'] = p_points
+                #     f[dicom]['lv_points'] = lv_points
+                #     f[dicom]['mae'] = mae_values
+
             except Exception as e:
                 print(f"except : {e}")
                 mae += [y_pred_np.shape[-1]]
@@ -239,6 +311,7 @@ class RLmodule(pl.LightningModule):
         logs['landmark_mae'] = mae.mean()
         mse = torch.tensor(mse)
         logs['landmark_mse'] = mse.mean()
+        self.log("landmark_mistakes", mistakes, logger=True, reduce_fx='sum')
 
         logs.update(test_dice)
         logs.update(test_hd)
@@ -310,11 +383,13 @@ class RLmodule(pl.LightningModule):
 
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
         itr = 0
-
         for i in range(len(b_img)):
             self.trainer.datamodule.add_to_train(ids[i], inst[i] if inst else None)
-            if ae_comp[i] > 0.95 and check_segmentation_validity(actions_unsampled[i].cpu().numpy().T, (1.0, 1.0),
-                                                                 [0, 1, 2]):
+            try:
+                validity = check_segmentation_validity(actions_unsampled[i].cpu().numpy().T, (1.0, 1.0), [0, 1, 2])
+            except:
+                validity = False
+            if ae_comp[i] > 0.95 and validity:
                 self.trainer.datamodule.add_to_gt(ids[i], inst[i] if inst else None)
 
                 path = self.trainer.datamodule.get_approx_gt_subpath(ids[i], inst[i] if inst else None)
@@ -365,7 +440,7 @@ class RLmodule(pl.LightningModule):
                         if deformed_action.sum() == 0:
                             continue
 
-                        filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
+                        filename = f"{batch_idx}_{itr}_{i}_{time_seed}_model_perturb.nii.gz"
                         save_to_reward_dataset(self.predict_save_dir,
                                                filename,
                                                convert_to_numpy(b_img[i]),
@@ -485,13 +560,12 @@ class RLmodule(pl.LightningModule):
                 #
                 #     plt.show()
                 if self.predict_do_corrections:
-                    filename = f"{batch_idx}_{itr}_{i}_{int(round(datetime.now().timestamp()))}.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{i}_{int(round(datetime.now().timestamp()))}_corrected.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img[i]),
                                            convert_to_numpy(corrected[i]),
                                            np.expand_dims(convert_to_numpy(actions[i]), 0))
-
         self.trainer.datamodule.update_dataframe()
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)

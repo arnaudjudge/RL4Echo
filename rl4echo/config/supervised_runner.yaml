@@ -4,7 +4,7 @@ run_name: supervised_default
 logger_run_name: '${get_class_name: ${model._target_}}_${run_name}'
 
 defaults:
-  - logger: comet
+  - logger: tensorboard
   - model: supervised
   - datamodule: ???
   - callbacks: default
@@ -21,6 +21,7 @@ predict_subset_frac: 1000
 
 datamodule:
   gt_column: Gt_0
+#  subset_frac: 0.25
 
 train: True
 

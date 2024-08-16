@@ -88,12 +88,16 @@ class UnetCritic(nn.Module):
     def __init__(self, input_shape=(1, 256, 256), output_shape=(1, 256, 256), pretrain_ckpt=None):
         super().__init__()
         self.net = UNet(input_shape=input_shape, output_shape=output_shape)
+        # self.nets = [UNet(input_shape=input_shape, output_shape=output_shape) for _ in range(2)]
+        # self.nets[0].to('cuda:0')
+        # self.nets[1].to('cuda:0')
 
         if pretrain_ckpt:
             self.net.load_state_dict(torch.load(pretrain_ckpt))
 
     def forward(self, x):
         return torch.sigmoid(self.net(x))
+        # return torch.cat([torch.sigmoid(self.nets[i](x[i*32:(i+1)*32])) for i in range(len(self.nets))], dim=0)
 
 
 class Actor(nn.Module):
@@ -121,7 +125,8 @@ class Actor(nn.Module):
             return torch.optim.Adam(self.actor.net.parameters(), lr=self.actor_lr)
         else:
             return torch.optim.Adam(self.actor.net.parameters(), lr=self.actor_lr), \
-                   torch.optim.Adam(self.critic.net.parameters(), lr=self.critic_lr)
+                torch.optim.Adam(self.critic.net.parameters(), lr=self.critic_lr)
+                # torch.optim.Adam(list(self.critic.nets[0].parameters()) + list(self.critic.nets[1].parameters()), lr=self.critic_lr)
 
     def act(self, imgs, sample=True):
         """
