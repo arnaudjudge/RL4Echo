@@ -1,0 +1,15 @@
+_target_: datamodules.RL_3d_datamodule.RL3dDataModule
+data_dir: "/data/cardinal_landmarks/"
+num_workers: 12
+pin_memory: True
+batch_size: 1 # must be 1
+dataset_name: ""
+csv_file_name: cardinal.csv
+splits_column: lm_split2 # column for train-test-val split, will be created if doesn't yet exist
+seed: ${seed}
+
+common_spacing: [0.37, 0.37, 1] # approx average spacing in dataset
+max_window_len: 32
+max_batch_size: 1
+max_tensor_volume: 5000000 # alright for 24gb gpu
+shape_divisible_by: [32, 32, 4]

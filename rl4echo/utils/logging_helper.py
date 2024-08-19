@@ -15,3 +15,17 @@ def log_image(logger, img, title, number=0, img_text=None):
     if img_text:
         img = torch.tensor(put_text_to_image(img, img_text)).unsqueeze(0)
     logger.experiment.add_image(title, img, number)
+
+
+def log_sequence(logger, img, title, number=0, img_text=None):
+    img = img.cpu().numpy()
+
+    # concat images together into bigger image
+    img = np.concatenate([img[..., i].transpose((0, 2, 1)) for i in range(min(img.shape[-1], 4))], axis=2)
+
+    if logger is None:
+        return
+    img = (img.copy() * (255 / max(img.max(), 1))).astype(np.uint8)
+    if img_text:
+        img = torch.tensor(put_text_to_image(img, img_text)).unsqueeze(0)
+    logger.experiment.add_image(title, img, number)
