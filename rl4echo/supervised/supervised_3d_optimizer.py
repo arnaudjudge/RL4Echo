@@ -1,5 +1,6 @@
 import copy
 import random
+import time
 from datetime import datetime
 from typing import Dict, Any
 
@@ -23,7 +24,6 @@ from rl4echo.utils.logging_helper import log_image, log_sequence
 from rl4echo.utils.tensor_utils import convert_to_numpy
 from rl4echo.utils.test_metrics import dice, hausdorff
 
-from patchless_nnunet.models.components.unet import UNet
 from patchless_nnunet.models.patchless_nnunet_module import nnUNetPatchlessLitModule
 
 class DiceLoss(nn.Module):
@@ -39,12 +39,6 @@ class SupervisedOptimizer(nnUNetPatchlessLitModule):
     def __init__(self, ckpt_path=None, corrector=None, predict_save_dir=None, **kwargs):
         super().__init__(**kwargs)
 
-        # self.net = UNet(in_channels=1, num_classes=3, patch_size=[352, 288, 20],
-        #                 kernels= [[3, 3, 1], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3]],
-        #                 strides=[[1, 1, 1], [2, 2, 1], [2, 2, 2], [2, 2, 2], [2, 2, 1], [2, 2, 1]],
-        #                 deep_supervision=False)
-
-        # self.loss = loss
         self.save_test_results = False
         self.ckpt_path = ckpt_path
         self.predict_save_dir = predict_save_dir
@@ -65,11 +59,11 @@ class SupervisedOptimizer(nnUNetPatchlessLitModule):
         return torch.optim.Adam(self.parameters(), lr=0.001, weight_decay=0)
 
     def training_step(self, batch: dict[str, Tensor], *args, **kwargs) -> Dict:
-        x, y = batch['img'].squeeze(0), batch['gt'].squeeze(0).squeeze(0)
+        x, y = batch['img'].squeeze(0), batch['gt'].squeeze(0)
 
         y_hat = self.forward(x)
 
-        loss = self.loss(y_hat, y.long())
+        loss = self.loss(y_hat, y)
 
         logs = {
             'loss': loss,
@@ -79,10 +73,10 @@ class SupervisedOptimizer(nnUNetPatchlessLitModule):
         return logs
 
     def validation_step(self, batch: dict[str, Tensor], batch_idx: int):
-        b_img, b_gt = batch['img'].squeeze(0), batch['gt'].squeeze(0).squeeze(0)
+        b_img, b_gt = batch['img'].squeeze(0), batch['gt'].squeeze(0)
         y_pred = self.forward(b_img)
 
-        loss = self.loss(y_pred, b_gt.long())
+        loss = self.loss(y_pred, b_gt)
 
         if self.net.num_classes > 1:
             y_pred = y_pred.argmax(dim=1)
@@ -118,8 +112,15 @@ class SupervisedOptimizer(nnUNetPatchlessLitModule):
         return
 
     def test_step(self, batch, batch_idx):
-        b_img, b_gt, meta_dict = batch['img'], batch['gt'].squeeze(0), batch['image_meta_dict']
+        b_img, b_gt, meta_dict = batch['img'], batch['gt'], batch['image_meta_dict']
+
+        self.patch_size = list([b_img.shape[-3], b_img.shape[-2], self.hparams.sliding_window_len])
+        self.inferer.roi_size = self.patch_size
+
+        start_time = time.time()
         y_pred = self.predict(b_img)
+        print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
+
 
         loss = self.loss(y_pred, b_gt.long())
 
@@ -130,7 +131,6 @@ class SupervisedOptimizer(nnUNetPatchlessLitModule):
 
         acc = accuracy(y_pred, b_img, b_gt)
         simple_dice = dice_score(y_pred, b_gt)
-
 
         y_pred_np_as_batch = y_pred.cpu().numpy().squeeze(0).transpose((2, 0, 1))
         b_gt_np_as_batch = b_gt.cpu().numpy().squeeze(0).transpose((2, 0, 1))

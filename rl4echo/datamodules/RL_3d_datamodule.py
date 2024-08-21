@@ -26,6 +26,9 @@ class RL3dDataset(Dataset):
     def __init__(self,
                  df,
                  data_path,
+                 approx_gt_path = None,
+                 allow_real_gt=True,
+                 available_gt=None,
                  common_spacing=None,
                  max_window_len=None,
                  use_dataset_fraction=1.0,
@@ -38,6 +41,13 @@ class RL3dDataset(Dataset):
         self.data_path = data_path
         self.df = df
         self.test = test
+
+        self.approx_gt_path = approx_gt_path
+        self.allow_real_gt = allow_real_gt
+        # pass down list of available ground truths
+        self.use_gt = available_gt.fillna(False).to_numpy() if available_gt is not None else \
+            np.asarray([False for _ in range(len(self.df))])
+        print(f"Number of ground truths available: {self.use_gt.sum()}")
 
         self.max_tensor_volume = max_tensor_volume
         self.shape_divisible_by = shape_divisible_by
@@ -66,12 +76,20 @@ class RL3dDataset(Dataset):
         mask = nib.load(self.data_path + '/segmentation/' + sub_path.replace("_0000", "")).get_fdata()
         original_shape = np.asarray(list(img.shape))
 
+        # integrate this into dataset
+        if self.use_gt[idx]:
+            approx_gt_path = self.approx_gt_path + '/approx_gt/' + sub_path
+            approx_gt = nib.load(approx_gt_path).get_fdata()
+        else:
+            approx_gt = np.zeros_like(mask)
+
         # limit size of tensor so it can fit on GPU
         if not self.test:
             if img.shape[0] * img.shape[1] * img.shape[2] > self.max_tensor_volume:
                 time_len = int(self.max_tensor_volume // (img.shape[0] * img.shape[1]))
                 img = img[..., :time_len]
                 mask = mask[..., :time_len]
+                approx_gt = approx_gt[..., :time_len]
 
         # transforms and resampling
         if self.common_spacing is None:
@@ -83,7 +101,8 @@ class RL3dDataset(Dataset):
         resampled_cropped = croporpad(resampled)
         resampled_affine = resampled_cropped.affine
         img = resampled_cropped.tensor
-        mask = croporpad(transform(tio.LabelMap(tensor=np.expand_dims(mask, 0), affine=img_nifti.affine))).tensor
+        mask = croporpad(transform(tio.LabelMap(tensor=np.expand_dims(mask, 0), affine=img_nifti.affine))).tensor.squeeze(0)
+        approx_gt = croporpad(transform(tio.LabelMap(tensor=np.expand_dims(approx_gt, 0), affine=img_nifti.affine))).tensor.squeeze(0)
 
         if not self.test:
             if self.max_window_len:
@@ -94,27 +113,26 @@ class RL3dDataset(Dataset):
                     else self.max_batch_size
                 b_img = []
                 b_mask = []
+                b_approx_gt = []
                 for i in range(dynamic_batch_size):
                     start_idx = np.random.randint(low=0, high=max(img.shape[-1] - self.max_window_len, 1))
                     b_img += [img[..., start_idx:start_idx + self.max_window_len]]
                     b_mask += [mask[..., start_idx:start_idx + self.max_window_len]]
+                    b_approx_gt += [approx_gt[..., start_idx:start_idx + self.max_window_len]]
                 img = torch.stack(b_img)
                 mask = torch.stack(b_mask)
+                approx_gt = torch.stack(b_approx_gt)
             else:
                 # use entire available time window
                 # must unsqueeze to accommodate code in train/val step
                 img = img.unsqueeze(0)
                 mask = mask.unsqueeze(0)
+                approx_gt = approx_gt.unsqueeze(0)
 
-        # integrate this into dataset
-        # if self.use_gt[idx]:
-        #     approx_gt_path = self.approx_gt_path + '/approx_gt/' + sub_path
-        #     approx_gt = nib.load(approx_gt_path).get_fdata()
-        # else:
-        #     approx_gt = np.zeros_like(mask)
-        #
         return {'img': img.type(torch.float32),
-                'gt': mask.type(torch.float32),
+                'gt': mask.type(torch.LongTensor), # if self.allow_real_gt or self.test else torch.zeros_like(torch.tensor(mask)),
+                'approx_gt': approx_gt.type(torch.float32),
+                'use_gt': torch.tensor(self.use_gt[idx]),
                 'image_meta_dict': {'case_identifier': self.df.iloc[idx]['dicom_uuid'],
                                     'original_shape': original_shape,
                                     'original_spacing': img_nifti.header['pixdim'][1:4],
@@ -152,6 +170,10 @@ class RL3dDataModule(pl.LightningDataModule):
             max_tensor_volume: int = 5000000,
             shape_divisible_by: tuple[int, ...] = (32, 32, 4),
             use_dataset_fraction: float = 1.0,
+            approx_gt_dir=None,
+            supervised=False,
+            gt_column=None,
+            gt_frac=None,
             num_workers: int = os.cpu_count() - 1,
             pin_memory: bool = True,
             dataset=RL3dDataset,
@@ -218,6 +240,14 @@ class RL3dDataModule(pl.LightningDataModule):
         else:
             common_spacing = np.asarray(self.hparams.common_spacing)
 
+        if self.hparams.gt_frac:
+            self.hparams.gt_column = 'default_gt'
+            self.df[self.hparams.gt_column] = self.df.get(self.hparams.gt_column, False)
+            use_gt = np.zeros(len(self.df))
+            use_gt[:int(self.hparams.gt_frac * len(self.df))] = 1
+            np.random.shuffle(use_gt)
+            self.df[self.hparams.gt_column] = use_gt.astype(bool)
+
         # Do splits
         if self.hparams.splits_column and self.hparams.splits_column in self.df.columns:
             # splits are already defined in csv file
@@ -250,6 +280,10 @@ class RL3dDataModule(pl.LightningDataModule):
                                                      max_batch_size=self.hparams.max_batch_size,
                                                      max_tensor_volume=self.hparams.max_tensor_volume,
                                                      shape_divisible_by=list(self.hparams.shape_divisible_by),
+                                                     available_gt=self.df.loc[self.train_idx].get(self.hparams.gt_column,
+                                                                                                  None),
+                                                     approx_gt_path=self.hparams.approx_gt_dir,
+                                                     allow_real_gt=self.hparams.supervised,
                                                      *self.args,
                                                      **self.kwargs,
                                                      )
@@ -262,6 +296,7 @@ class RL3dDataModule(pl.LightningDataModule):
                                                    max_batch_size=self.hparams.max_batch_size,
                                                    max_tensor_volume=self.hparams.max_tensor_volume,
                                                    shape_divisible_by=list(self.hparams.shape_divisible_by),
+                                                   available_gt=None,
                                                    *self.args,
                                                    **self.kwargs,
                                                    )
@@ -274,6 +309,7 @@ class RL3dDataModule(pl.LightningDataModule):
                                                     common_spacing=common_spacing,
                                                     shape_divisible_by=list(self.hparams.shape_divisible_by),
                                                     use_dataset_fraction=self.hparams.use_dataset_fraction,
+                                                    available_gt=None,
                                                     *self.args,
                                                     **self.kwargs,
                                                     )

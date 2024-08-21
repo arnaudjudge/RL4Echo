@@ -19,14 +19,8 @@ optimizer_monitor: val/mean_dice
 tta: True
 save_predictions: False
 
-name: patchless_nnunet
+name: supervised_3d_RLmodule
 
 common_spacing: [0.37, 0.37, 1]
 
-net:
-  deep_supervision: False
-  in_channels: 1
-  num_classes: 3
-  patch_size: [352, 288, 20]
-  kernels: [[3, 3, 1], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3]]
-  strides: [[1, 1, 1], [2, 2, 1], [2, 2, 2], [2, 2, 2], [2, 2, 1], [2, 2, 1]]
+sliding_window_len: 4

@@ -1,0 +1,26 @@
+work_dir: ${hydra:runtime.cwd}
+run_name: default
+
+defaults:
+  - logger: tensorboard
+  - model: ppo_3d
+  - datamodule: ???
+  - callbacks: default
+  - _self_
+  - experiment: ppo_cardinal
+
+seed: 1
+
+datamodule:
+#  subset_frac: 0.1
+ gt_column: Gt_0
+
+predict_subset_frac: 1000
+train: False
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  max_epochs: 10
+  log_every_n_steps: 1
+  gpus: 1
+#  num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)

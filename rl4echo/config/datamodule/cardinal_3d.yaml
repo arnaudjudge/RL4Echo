@@ -9,7 +9,7 @@ splits_column: lm_split2 # column for train-test-val split, will be created if d
 seed: ${seed}
 
 common_spacing: [0.37, 0.37, 1] # approx average spacing in dataset
-max_window_len: 32
+max_window_len: 4
 max_batch_size: 1
-max_tensor_volume: 5000000 # alright for 24gb gpu
+max_tensor_volume: 5000000 # alright for 24gb gpu (NOT IN RL USE CASE)
 shape_divisible_by: [32, 32, 4]
