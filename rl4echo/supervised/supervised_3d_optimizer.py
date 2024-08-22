@@ -188,92 +188,94 @@ class SupervisedOptimizer(nnUNetPatchlessLitModule):
         if self.ckpt_path:
             torch.save(self.net.state_dict(), self.ckpt_path)
 
-    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
-        b_img, b_gt, ids, inst = batch['img'], batch['gt'], batch['id'], batch.get('instant', None)
+    # not adapted for supervised 3d yet, may not be needed
 
-        actions = self.forward(b_img)
-        if self.output_shape[0] > 1:
-            actions = actions.argmax(dim=1)
-        else:
-            actions = torch.round(actions)
-
-        corrected, corrected_validity, ae_comp = self.pred_corrector.correct_batch(b_img, actions)
-
-        initial_params = copy.deepcopy(self.net.state_dict())
-        itr = 0
-        df = self.trainer.datamodule.df
-        for i in range(len(b_img)):
-            # f, (ax1, ax2) = plt.subplots(1, 2)
-            # ax1.set_title(f"action")
-            # ax1.imshow(actions[i, ...].cpu().numpy().T)
-            # ax2.set_title(f"Corrected action {ae_comp[i]}")
-            # ax2.imshow(corrected[i, ...].T)
-            # plt.show()
-            self.trainer.datamodule.add_to_train(ids[i], inst[i] if inst else None)
-            if ae_comp[i] > 0.95 and check_segmentation_validity(actions[i].cpu().numpy().T, (1.0, 1.0), [0, 1, 2]):
-
-                # force actions to resemble image?
-                filename = f"{batch_idx}_{itr}_{i}_wrong_{int(round(datetime.now().timestamp()))}.nii.gz"
-                save_to_reward_dataset(self.predict_save_dir,
-                                       filename,
-                                       convert_to_numpy(b_img[i]),
-                                       np.expand_dims(convert_to_numpy(actions[i]), 0),
-                                       np.expand_dims(convert_to_numpy(actions[random.randint(0, len(b_img)-1)]), 0))
-
-                for j, multiplier in enumerate([0.005, 0.01]):
-                    # get random seed based on time to maximise randomness of noise and subsequent predictions
-                    # explore as much space around policy as possible
-                    time_seed = int(round(datetime.now().timestamp())) + i
-                    torch.manual_seed(time_seed)
-
-                    # load initial params so noise is not compounded
-                    self.net.load_state_dict(initial_params, strict=True)
-
-                    # add noise to params
-                    with torch.no_grad():
-                        for param in self.net.parameters():
-                            param.add_(torch.randn(param.size()).cuda() * multiplier)
-
-                    # make prediction
-                    deformed_action = self.forward(b_img[i].unsqueeze(0))
-                    if self.output_shape[0] > 1:
-                        deformed_action = deformed_action.argmax(dim=1)
-                    else:
-                        deformed_action = torch.round(deformed_action)
-
-                    # f, (ax1, ax2) = plt.subplots(1, 2)
-                    # ax1.set_title(f"Good initial action")
-                    # ax1.imshow(actions[i, ...].cpu().numpy().T)
-                    #
-                    # ax2.set_title(f"Deformed network's action")
-                    # ax2.imshow(deformed_action[0, ...].cpu().numpy().T)
-                    # plt.show()
-
-                    filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
-                    save_to_reward_dataset(self.predict_save_dir,
-                                           filename,
-                                           convert_to_numpy(b_img[i]),
-                                           np.expand_dims(convert_to_numpy(b_gt[i]), 0),
-                                           convert_to_numpy(deformed_action))
-            else:
-                if not corrected_validity[i]:
-                    continue
-
-                # f, (ax1, ax2) = plt.subplots(1, 2)
-                # ax1.set_title(f"Bad initial action")
-                # ax1.imshow(actions[i, ...].cpu().numpy().T)
-                #
-                # ax2.set_title(f"Corrected action")
-                # ax2.imshow(corrected[i, ...].T)
-                # plt.show()
-
-                filename = f"{batch_idx}_{itr}_{i}_{int(round(datetime.now().timestamp()))}.nii.gz"
-                save_to_reward_dataset(self.predict_save_dir,
-                                       filename,
-                                       convert_to_numpy(b_img[i]),
-                                       convert_to_numpy(corrected[i]),
-                                       np.expand_dims(convert_to_numpy(actions[i]), 0))
-
-        df.to_csv(self.trainer.datamodule.df_path)
-        # make sure initial params are back at end of step
-        self.net.load_state_dict(initial_params)
+    # def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
+    #     b_img, b_gt, ids, inst = batch['img'], batch['gt'], batch['id'], batch.get('instant', None)
+    #
+    #     actions = self.forward(b_img)
+    #     if self.output_shape[0] > 1:
+    #         actions = actions.argmax(dim=1)
+    #     else:
+    #         actions = torch.round(actions)
+    #
+    #     corrected, corrected_validity, ae_comp = self.pred_corrector.correct_batch(b_img, actions)
+    #
+    #     initial_params = copy.deepcopy(self.net.state_dict())
+    #     itr = 0
+    #     df = self.trainer.datamodule.df
+    #     for i in range(len(b_img)):
+    #         # f, (ax1, ax2) = plt.subplots(1, 2)
+    #         # ax1.set_title(f"action")
+    #         # ax1.imshow(actions[i, ...].cpu().numpy().T)
+    #         # ax2.set_title(f"Corrected action {ae_comp[i]}")
+    #         # ax2.imshow(corrected[i, ...].T)
+    #         # plt.show()
+    #         self.trainer.datamodule.add_to_train(ids[i], inst[i] if inst else None)
+    #         if ae_comp[i] > 0.95 and check_segmentation_validity(actions[i].cpu().numpy().T, (1.0, 1.0), [0, 1, 2]):
+    #
+    #             # force actions to resemble image?
+    #             filename = f"{batch_idx}_{itr}_{i}_wrong_{int(round(datetime.now().timestamp()))}.nii.gz"
+    #             save_to_reward_dataset(self.predict_save_dir,
+    #                                    filename,
+    #                                    convert_to_numpy(b_img[i]),
+    #                                    np.expand_dims(convert_to_numpy(actions[i]), 0),
+    #                                    np.expand_dims(convert_to_numpy(actions[random.randint(0, len(b_img)-1)]), 0))
+    #
+    #             for j, multiplier in enumerate([0.005, 0.01]):
+    #                 # get random seed based on time to maximise randomness of noise and subsequent predictions
+    #                 # explore as much space around policy as possible
+    #                 time_seed = int(round(datetime.now().timestamp())) + i
+    #                 torch.manual_seed(time_seed)
+    #
+    #                 # load initial params so noise is not compounded
+    #                 self.net.load_state_dict(initial_params, strict=True)
+    #
+    #                 # add noise to params
+    #                 with torch.no_grad():
+    #                     for param in self.net.parameters():
+    #                         param.add_(torch.randn(param.size()).cuda() * multiplier)
+    #
+    #                 # make prediction
+    #                 deformed_action = self.forward(b_img[i].unsqueeze(0))
+    #                 if self.output_shape[0] > 1:
+    #                     deformed_action = deformed_action.argmax(dim=1)
+    #                 else:
+    #                     deformed_action = torch.round(deformed_action)
+    #
+    #                 # f, (ax1, ax2) = plt.subplots(1, 2)
+    #                 # ax1.set_title(f"Good initial action")
+    #                 # ax1.imshow(actions[i, ...].cpu().numpy().T)
+    #                 #
+    #                 # ax2.set_title(f"Deformed network's action")
+    #                 # ax2.imshow(deformed_action[0, ...].cpu().numpy().T)
+    #                 # plt.show()
+    #
+    #                 filename = f"{batch_idx}_{itr}_{i}_{time_seed}.nii.gz"
+    #                 save_to_reward_dataset(self.predict_save_dir,
+    #                                        filename,
+    #                                        convert_to_numpy(b_img[i]),
+    #                                        np.expand_dims(convert_to_numpy(b_gt[i]), 0),
+    #                                        convert_to_numpy(deformed_action))
+    #         else:
+    #             if not corrected_validity[i]:
+    #                 continue
+    #
+    #             # f, (ax1, ax2) = plt.subplots(1, 2)
+    #             # ax1.set_title(f"Bad initial action")
+    #             # ax1.imshow(actions[i, ...].cpu().numpy().T)
+    #             #
+    #             # ax2.set_title(f"Corrected action")
+    #             # ax2.imshow(corrected[i, ...].T)
+    #             # plt.show()
+    #
+    #             filename = f"{batch_idx}_{itr}_{i}_{int(round(datetime.now().timestamp()))}.nii.gz"
+    #             save_to_reward_dataset(self.predict_save_dir,
+    #                                    filename,
+    #                                    convert_to_numpy(b_img[i]),
+    #                                    convert_to_numpy(corrected[i]),
+    #                                    np.expand_dims(convert_to_numpy(actions[i]), 0))
+    #
+    #     df.to_csv(self.trainer.datamodule.df_path)
+    #     # make sure initial params are back at end of step
+    #     self.net.load_state_dict(initial_params)

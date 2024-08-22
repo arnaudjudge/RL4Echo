@@ -22,6 +22,7 @@ def get_img_subpath(row):
     """
     return f"{row['study']}/{str(row['view']).lower()}/{row['dicom_uuid']}_0000.nii.gz"
 
+
 class RL3dDataset(Dataset):
     def __init__(self,
                  df,
@@ -59,11 +60,6 @@ class RL3dDataset(Dataset):
                   "if max_batch_size is larger than max calculated length")
         self.common_spacing = common_spacing
 
-        if use_dataset_fraction:
-            if 0 < use_dataset_fraction < 1.0:
-                self.df = self.df.sample(frac=use_dataset_fraction)
-            else:
-                print(f"Invalid dataset fraction: {use_dataset_fraction}, fraction will be ignored!")
 
     def __len__(self):
         return len(self.df.index)
@@ -169,7 +165,7 @@ class RL3dDataModule(pl.LightningDataModule):
             max_batch_size: int = None,
             max_tensor_volume: int = 5000000,
             shape_divisible_by: tuple[int, ...] = (32, 32, 4),
-            use_dataset_fraction: float = 1.0,
+            subset_frac: float = 0.1,
             approx_gt_dir=None,
             supervised=False,
             gt_column=None,
@@ -255,6 +251,7 @@ class RL3dDataModule(pl.LightningDataModule):
             self.train_idx = self.df.index[self.df[self.hparams.splits_column] == 'train'].tolist()
             self.val_idx = self.df.index[self.df[self.hparams.splits_column] == 'val'].tolist()
             self.test_idx = self.df.index[self.df[self.hparams.splits_column] == 'test'].tolist()
+            self.pred_idx = self.df.index[(self.df[self.hparams.splits_column] == 'pred') | (self.df[self.hparams.splits_column] == 'train')].tolist()
         else:
             # create new splits, save if column name is given
             print(f"Creating new splits!")
@@ -264,6 +261,7 @@ class RL3dDataModule(pl.LightningDataModule):
             self.val_idx, self.test_idx = train_test_split(val_and_test_idx,
                                                            test_size=0.5,
                                                            random_state=self.hparams.seed)
+            self.pred_idx = []
             if self.hparams.splits_column:
                 print(f"Saving new split to column: {self.hparams.splits_column}")
                 self.df.loc[self.train_idx, self.hparams.splits_column] = 'train'
@@ -271,12 +269,26 @@ class RL3dDataModule(pl.LightningDataModule):
                 self.df.loc[self.test_idx, self.hparams.splits_column] = 'test'
                 self.df.to_csv(self.data_path + '/' + self.hparams.csv_file_name)
 
+        if self.hparams.subset_frac and type(self.hparams.subset_frac) == float:
+            train_num = int(self.hparams.subset_frac * len(self.train_idx))
+            self.train_idx = self.train_idx[:train_num]
+            val_num = int(self.hparams.subset_frac * len(self.val_idx))
+            self.val_idx = self.val_idx[:val_num]
+            test_num = int(self.hparams.subset_frac * len(self.test_idx))
+            self.test_idx = self.test_idx[:test_num]
+            pred_num = int(self.hparams.subset_frac * len(self.pred_idx))
+            self.pred_idx = self.pred_idx[-pred_num:]
+        elif self.hparams.subset_frac and type(self.hparams.subset_frac) == int:
+            self.train_idx = self.train_idx[:min(self.hparams.subset_frac, len(self.train_idx))]
+            self.val_idx = self.val_idx[:min(self.hparams.subset_frac, len(self.val_idx))]
+            self.test_idx = self.test_idx[:min(self.hparams.subset_frac, len(self.test_idx))]
+            self.pred_idx = self.pred_idx[:min(self.hparams.subset_frac, len(self.pred_idx))]
+
         if stage == "fit" or stage is None:
             self.data_train = self.hparams.dataset(self.df.loc[self.train_idx],
                                                      data_path=self.data_path,
                                                      common_spacing=common_spacing,
                                                      max_window_len=self.hparams.max_window_len,
-                                                     use_dataset_fraction=self.hparams.use_dataset_fraction,
                                                      max_batch_size=self.hparams.max_batch_size,
                                                      max_tensor_volume=self.hparams.max_tensor_volume,
                                                      shape_divisible_by=list(self.hparams.shape_divisible_by),
@@ -292,7 +304,6 @@ class RL3dDataModule(pl.LightningDataModule):
                                                    data_path=self.data_path,
                                                    common_spacing=common_spacing,
                                                    max_window_len=self.hparams.max_window_len,
-                                                   use_dataset_fraction=self.hparams.use_dataset_fraction,
                                                    max_batch_size=self.hparams.max_batch_size,
                                                    max_tensor_volume=self.hparams.max_tensor_volume,
                                                    shape_divisible_by=list(self.hparams.shape_divisible_by),
@@ -308,12 +319,25 @@ class RL3dDataModule(pl.LightningDataModule):
                                                     test=True,
                                                     common_spacing=common_spacing,
                                                     shape_divisible_by=list(self.hparams.shape_divisible_by),
-                                                    use_dataset_fraction=self.hparams.use_dataset_fraction,
                                                     available_gt=None,
                                                     *self.args,
                                                     **self.kwargs,
                                                     )
             print(f"LEN OF TEST SET: {len(self.data_test)}")
+        if stage == "predict":
+            self.data_pred = self.hparams.dataset(self.df.loc[self.pred_idx],
+                                                  data_path=self.data_path,
+                                                  common_spacing=common_spacing,
+                                                  shape_divisible_by=list(self.hparams.shape_divisible_by),
+                                                  max_window_len=self.hparams.max_window_len,
+                                                  max_batch_size=self.hparams.max_batch_size,
+                                                  max_tensor_volume=self.hparams.max_tensor_volume,
+                                                  available_gt=None,
+                                                  *self.args,
+                                                  **self.kwargs,
+                                                  )
+
+            print(f"LEN OF PRED SET: {len(self.data_pred)}")
 
     def train_dataloader(self) -> DataLoader:  # noqa: D102
         return DataLoader(
@@ -344,6 +368,15 @@ class RL3dDataModule(pl.LightningDataModule):
             shuffle=False,
         )
 
+    def predict_dataloader(self) -> DataLoader:  # noqa: D102
+        return DataLoader(
+            dataset=self.data_pred,
+            batch_size=1,
+            num_workers=self.hparams.num_workers,
+            pin_memory=self.hparams.pin_memory,
+            shuffle=False,
+        )
+
     def calculate_common_spacing(self, num_samples=100):
         spacings = np.zeros(3)
         idx = self.df.reset_index().index.to_list()
@@ -356,6 +389,18 @@ class RL3dDataModule(pl.LightningDataModule):
             spacings += img_nifti.header['pixdim'][1:4]
 
         return spacings / len(idx)
+
+    def add_to_train(self, id):
+        self.df.loc[(self.df['dicom_uuid'] == id), self.trainer.datamodule.hparams.splits_column] = 'train'
+
+    def add_to_gt(self, id):
+        self.df.loc[(self.df['dicom_uuid'] == id), self.trainer.datamodule.hparams.gt_column] = True
+
+    def update_dataframe(self):
+        self.df.to_csv(self.data_path + '/' + self.hparams.csv_file_name)
+
+    def get_approx_gt_subpath(self, id):
+        return get_img_subpath(self.df.loc[self.df['dicom_uuid'] == id].iloc[0])
 
 
 if __name__ == "__main__":

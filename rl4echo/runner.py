@@ -46,7 +46,7 @@ def main(cfg):
     if getattr(cfg.model, "predict_save_dir", None):
         datamodule.hparams.subset_frac = cfg.predict_subset_frac
         datamodule.setup(stage="predict")
-        trainer.predict(model=model, dataloaders=datamodule.predict_dataloader(), ckpt_path=ckpt_path)
+        trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
 
 if __name__ == "__main__":
