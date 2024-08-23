@@ -188,7 +188,7 @@ class RLmodule3D(pl.LightningModule):
         # this would not work with a neural net (no sliding window)
         # should there be a test method in the reward class (which, in the case of 3d rewards
         # would have a different method, otherwise, only redirect to __call__())
-        prev_rewards = self.reward_func(prev_actions, b_img, b_gt)
+        prev_rewards = self.reward_func(prev_actions[..., :4], b_img[..., :4], b_gt[..., :4])
 
         # without sliding window
         # b_img = b_img[..., :4]
@@ -252,7 +252,7 @@ class RLmodule3D(pl.LightningModule):
             if v.shape == prev_actions[..., :4].shape:
                 log_sequence(self.logger, img=v[i].unsqueeze(0), title='test_v_function', number=batch_idx * (i + 1),
                           img_text=v[i].mean())
-            if prev_rewards.shape == prev_actions.shape:
+            if prev_rewards.shape[:-1] == prev_actions.shape[:-1]:
                 log_sequence(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap', number=batch_idx * (i + 1),
                           img_text=prev_rewards[i].mean())
 
@@ -396,7 +396,7 @@ class RLmodule3D(pl.LightningModule):
             approx_gt_path = self.trainer.datamodule.hparams.approx_gt_dir + '/approx_gt/' + path
             Path(approx_gt_path).parent.mkdir(parents=True, exist_ok=True)
             hdr = nib.Nifti1Header()
-            nifti = nib.Nifti1Image(convert_to_numpy(torch.round(actions_unsampled)),
+            nifti = nib.Nifti1Image(convert_to_numpy(torch.round(actions_unsampled).squeeze(0)),
                                     np.diag(np.asarray([-1, -1, 1, 0])), hdr)
             nifti.to_filename(approx_gt_path)
 

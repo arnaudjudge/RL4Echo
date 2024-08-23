@@ -2,7 +2,7 @@ defaults:
   - /reward: pixelwise_accuracy
   - /corrector: ae
 
-actor_save_path: null
-critic_save_path: null
+actor_save_path: actor_3d.ckpt
+critic_save_path: critic_3d.ckpt
 
-predict_save_dir: null
+predict_save_dir: /data/rl_logs/3dlooptest

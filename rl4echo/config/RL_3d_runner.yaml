@@ -12,8 +12,8 @@ defaults:
 seed: 1
 
 datamodule:
-#  subset_frac: 0.1
- gt_column: Gt_0
+  subset_frac: 0.1
+  gt_column: Gt_0
 
 predict_subset_frac: 1000
 train: False

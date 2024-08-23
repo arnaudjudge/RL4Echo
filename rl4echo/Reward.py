@@ -36,6 +36,20 @@ class RewardUnet(Reward):
         return torch.sigmoid(self.net(stack)/self.temp_factor).squeeze(1)
 
 
+class RewardUnet3D(Reward):
+    def __init__(self, net, state_dict_path, temp_factor=1):
+        self.net = net
+        self.net.load_state_dict(torch.load(state_dict_path))
+        self.temp_factor = temp_factor
+        if torch.cuda.is_available():
+            self.net.cuda()
+
+    @torch.no_grad()
+    def __call__(self, pred, imgs, gt):
+        stack = torch.stack((imgs.squeeze(1), pred), dim=1)
+        return torch.sigmoid(self.net(stack)/self.temp_factor).squeeze(1)
+
+
 class RewardUnetSigma(Reward):
     def __init__(self, state_dict_path):
         self.net = UNet_multihead(input_shape=(2, 256, 256), output_shape=(1, 256, 256),  sigma_out=True)
