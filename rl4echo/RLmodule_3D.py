@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Union
 
+import matplotlib.pyplot as plt
 import h5py
 import nibabel as nib
 import numpy as np
@@ -403,7 +404,7 @@ class RLmodule3D(pl.LightningModule):
                 for j, multiplier in enumerate([0.1, 0.15, 0.2, 0.25]):  # have been adapted from 2d
                     # get random seed based on time to maximise randomness of noise and subsequent predictions
                     # explore as much space around policy as possible
-                    time_seed = int(round(datetime.now().timestamp()))
+                    time_seed = int(round(datetime.now().timestamp())) + j
                     torch.manual_seed(time_seed)
 
                     # load initial params so noise is not compounded
@@ -435,12 +436,12 @@ class RLmodule3D(pl.LightningModule):
                     filename = f"{batch_idx}_{itr}_{time_seed}_weights.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
-                                           convert_to_numpy(b_img),
+                                           convert_to_numpy(b_img.squeeze(0)),
                                            convert_to_numpy(actions_unsampled),
                                            convert_to_numpy(deformed_action))
-
+                self.actor.actor.net.load_state_dict(initial_params)
             if self.predict_do_img_perturb:
-                contrast_factors = [0.8, 0.05]  # check this !!!
+                contrast_factors = [0.4, 0.05]  # check this !!!
                 for factor in contrast_factors:
                     in_img = copy.deepcopy(b_img)
                     in_img = adjust_contrast(in_img.permute((4, 0, 1, 2, 3)), factor).permute((1, 2, 3, 4, 0))
@@ -499,11 +500,11 @@ class RLmodule3D(pl.LightningModule):
                     filename = f"{batch_idx}_{itr}_{time_seed}_contrast.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
-                                           convert_to_numpy(b_img),
+                                           convert_to_numpy(b_img.squeeze(0)),
                                            convert_to_numpy(actions_unsampled),
                                            convert_to_numpy(contr_action))
 
-                gaussian_blurs = [0.05, 0.1]
+                gaussian_blurs = [0.3, 0.6]
                 for blur in gaussian_blurs:
                     in_img = b_img.clone()
                     in_img += torch.randn(in_img.size()).to(next(self.actor.actor.net.parameters()).device) * blur
@@ -515,13 +516,19 @@ class RLmodule3D(pl.LightningModule):
                         blurred_action = blurred_action.argmax(dim=1)
                     else:
                         blurred_action = torch.round(blurred_action)
+
+                    # f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4)
+                    # ax1.set_title(f"Img")
+                    # ax1.imshow(b_img[0, ..., 0].cpu().numpy().T)
                     #
-                    # f, (ax1, ax2) = plt.subplots(1, 2)
-                    # ax1.set_title(f"Good action")
-                    # ax1.imshow(actions_unsampled[..., 0].cpu().numpy().T)
+                    # ax2.set_title(f"Blurred Img")
+                    # ax2.imshow(in_img[0, ..., 0].cpu().numpy().T, vmin=0, vmax=1)
                     #
-                    # ax2.set_title(f"blurred action")
-                    # ax2.imshow(blurred_action[..., 0].cpu().numpy().T)
+                    # ax3.set_title(f"Good action")
+                    # ax3.imshow(actions_unsampled[..., 0].cpu().numpy().T)
+                    #
+                    # ax4.set_title(f"Blurred action")
+                    # ax4.imshow(blurred_action[..., 0].cpu().numpy().T)
                     # plt.show()
 
                     if blurred_action.sum() == 0:
@@ -531,7 +538,7 @@ class RLmodule3D(pl.LightningModule):
                     filename = f"{batch_idx}_{itr}_{time_seed}_blur.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
-                                           convert_to_numpy(b_img),
+                                           convert_to_numpy(b_img.squeeze(0)),
                                            convert_to_numpy(actions_unsampled),
                                            convert_to_numpy(blurred_action))
 
@@ -549,7 +556,7 @@ class RLmodule3D(pl.LightningModule):
                     filename = f"{batch_idx}_{itr}_{int(round(datetime.now().timestamp()))}_correction.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
-                                           convert_to_numpy(b_img),
+                                           convert_to_numpy(b_img.squeeze(0)),
                                            convert_to_numpy(corrected),
                                            convert_to_numpy(actions))
 

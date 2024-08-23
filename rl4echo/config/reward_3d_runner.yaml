@@ -3,8 +3,8 @@ run_name: test
 
 defaults:
   - logger: tensorboard
-  - model: rewardnet
-  - datamodule: rewardnet_diff
+  - model: rewardnet_3d
+  - datamodule: rewardnet_diff_3d
   - callbacks: default
 
   - _self_
@@ -25,7 +25,8 @@ train: True
 
 trainer:
   _target_: pytorch_lightning.Trainer
-  max_epochs: 100
+  max_epochs: 50
   log_every_n_steps: 1
   gpus: 1
+  accumulate_grad_batches: 8
   #num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)

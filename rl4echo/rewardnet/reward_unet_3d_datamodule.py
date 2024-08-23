@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 from torch.utils.data import random_split, DataLoader
 
 
-class RewardNetAutoDataset(Dataset):
+class RewardNet3DDataset(Dataset):
     """ Works with the output of 'utils.file_utils.save_batch_to_dataset """
     def __init__(self, data_path, test_frac=0.1, test=False):
         super().__init__()
@@ -46,7 +46,7 @@ class RewardNetAutoDataset(Dataset):
         return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
 
 
-class RewardNetDataModule(pl.LightningDataModule):
+class RewardNet3DDataModule(pl.LightningDataModule):
     """
     DataModule used for semantic segmentation in geometric generalization project
     """
@@ -75,30 +75,30 @@ class RewardNetDataModule(pl.LightningDataModule):
         # the stage is used in the Pytorch Lightning trainer method, which you can call as fit (training, evaluation) or test, also you can use it for predict, not implemented here
 
         if stage == "fit" or stage is None:
-            train_set_full = RewardNetAutoDataset(self.data_path)
+            train_set_full = RewardNet3DDataset(self.data_path)
             train_set_size = int(len(train_set_full) * 0.9)
             valid_set_size = len(train_set_full) - train_set_size
             self.train, self.validate = random_split(train_set_full, [train_set_size, valid_set_size])
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
-            self.test = RewardNetAutoDataset(self.data_path, test=True)
+            self.test = RewardNet3DDataset(self.data_path, test=True)
 
     # define your dataloaders
     # again, here defined for train, validate and test, not for predict as the project is not there yet.
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=64, num_workers=16)
+        return DataLoader(self.train, batch_size=1, num_workers=16)
 
     def val_dataloader(self):
-        return DataLoader(self.validate, batch_size=32, num_workers=8)
+        return DataLoader(self.validate, batch_size=1, num_workers=8)
 
     def test_dataloader(self):
-        return DataLoader(self.test, batch_size=8, num_workers=8)
+        return DataLoader(self.test, batch_size=1, num_workers=8)
 
 
 if __name__ == "__main__":
 
-    dl = RewardNetDataModule('/data/rl_logs/run_1/')
+    dl = RewardNet3DDataModule('/data/rl_logs/3dlooptest/')
     dl.setup()
     for i in range(1):
        batch = next(iter(dl.train_dataloader()))
@@ -107,12 +107,12 @@ if __name__ == "__main__":
 
        from matplotlib import pyplot as plt
        plt.figure()
-       plt.imshow(batch[0][0, 0, :, :].cpu().numpy().T)
+       plt.imshow(batch[0][0, 0, :, :, 0].cpu().numpy().T)
 
        plt.figure()
-       plt.imshow(batch[0][0, 1, :, :].cpu().numpy().T)
+       plt.imshow(batch[0][0, 1, :, :, 0].cpu().numpy().T)
 
        plt.figure()
-       plt.imshow(batch[1][0, :, :].cpu().numpy().T)
+       plt.imshow(batch[1][0, :, :, 0].cpu().numpy().T)
        plt.show()
 
