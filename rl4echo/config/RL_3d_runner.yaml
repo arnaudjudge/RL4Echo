@@ -1,6 +1,8 @@
 work_dir: ${hydra:runtime.cwd}
 run_name: default
 
+logger_run_name: '${get_class_name: ${model._target_}}_${get_class_name: ${model.reward._target_}}_${run_name}'
+
 defaults:
   - logger: tensorboard
   - model: ppo_3d
@@ -12,11 +14,11 @@ defaults:
 seed: 1
 
 datamodule:
-#  subset_frac: 0.001
+  subset_frac: 0.001
   gt_column: Gt_0
 
-predict_subset_frac: 1000
-train: True
+predict_subset_frac: 0
+train: False
 
 trainer:
   _target_: pytorch_lightning.Trainer

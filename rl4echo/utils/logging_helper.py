@@ -27,6 +27,7 @@ def log_image(logger, img, title, number=0, img_text=None, epoch=0):
         logger.experiment.log_figure("{}_{}".format(title, number), fig, step=epoch)
         plt.close()
 
+
 def log_sequence(logger, img, title, number=0, img_text=None):
     img = img.cpu().numpy()
 
@@ -37,6 +38,6 @@ def log_sequence(logger, img, title, number=0, img_text=None):
         return
     img = (img.copy() * (255 / max(img.max(), 1))).astype(np.uint8)
     if img_text:
-        img = torch.tensor(put_text_to_image(img, img_text)).unsqueeze(0)
+        img = torch.tensor(put_text_to_image(img, img_text))
     logger.experiment.add_image(title, img, number)
     
