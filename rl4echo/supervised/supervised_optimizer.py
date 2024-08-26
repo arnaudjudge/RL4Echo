@@ -93,10 +93,19 @@ class SupervisedOptimizer(pl.LightningModule):
 
         # log images
         idx = random.randint(0, len(b_img) - 1)  # which image to log
-        log_image(self.logger, img=b_img[idx].permute((0, 2, 1)), title='Image', number=batch_idx)
-        log_image(self.logger, img=b_gt[idx].unsqueeze(0).permute((0, 2, 1)), title='GroundTruth', number=batch_idx)
-        log_image(self.logger, img=y_pred[idx].unsqueeze(0).permute((0, 2, 1)), title='Prediction', number=batch_idx,
-                  img_text=acc[idx].mean())
+        log_image(self.logger, img=b_img[idx].permute((0, 2, 1)),
+                  title='Image',
+                  number=batch_idx,
+                  epoch=self.current_epoch)
+        log_image(self.logger, img=b_gt[idx].unsqueeze(0).permute((0, 2, 1)),
+                  title='GroundTruth',
+                  number=batch_idx,
+                  epoch=self.current_epoch)
+        log_image(self.logger, img=y_pred[idx].unsqueeze(0).permute((0, 2, 1)),
+                  title='Prediction',
+                  number=batch_idx,
+                  img_text=acc[idx].mean(),
+                  epoch=self.current_epoch)
 
         self.log_dict(logs)
         return logs
@@ -139,10 +148,19 @@ class SupervisedOptimizer(pl.LightningModule):
         logs.update(test_hd)
 
         for i in range(len(b_img)):
-            log_image(self.logger, img=b_img[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
-            log_image(self.logger, img=b_gt[i].unsqueeze(0).permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
-            log_image(self.logger, img=y_pred[i].unsqueeze(0).permute((0, 2, 1)), title='test_Prediction', number=batch_idx * (i + 1),
-                      img_text=simple_dice[i].mean())
+            log_image(self.logger, img=b_img[i].permute((0, 2, 1)),
+                      title='test_Image',
+                      number=batch_idx * (i + 1),
+                      epoch=self.current_epoch)
+            log_image(self.logger, img=b_gt[i].unsqueeze(0).permute((0, 2, 1)),
+                      title='test_GroundTruth',
+                      number=batch_idx * (i + 1),
+                      epoch=self.current_epoch)
+            log_image(self.logger, img=y_pred[i].unsqueeze(0).permute((0, 2, 1)),
+                      title='test_Prediction',
+                      number=batch_idx * (i + 1),
+                      img_text=simple_dice[i].mean(),
+                      epoch=self.current_epoch)
 
         self.log_dict(logs)
 
@@ -155,6 +173,7 @@ class SupervisedOptimizer(pl.LightningModule):
         if self.ckpt_path:
             torch.save(self.net.state_dict(), self.ckpt_path)
 
+    # TODO: KEEP THIS?
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         b_img, b_gt, ids, inst = batch['img'], batch['gt'], batch['id'], batch.get('instant', None)
 

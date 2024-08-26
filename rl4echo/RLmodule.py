@@ -149,12 +149,24 @@ class RLmodule(pl.LightningModule):
 
         # log images
         idx = random.randint(0, len(b_img) - 1)  # which image to log
-        log_image(self.logger, img=b_img[idx].permute((0, 2, 1)), title='Image', number=batch_idx)
-        log_image(self.logger, img=b_gt[idx].unsqueeze(0).permute((0, 2, 1)), title='GroundTruth', number=batch_idx)
-        log_image(self.logger, img=prev_actions[idx].unsqueeze(0).permute((0, 2, 1)), title='Prediction', number=batch_idx,
-                  img_text=prev_rewards[idx].mean())
+        log_image(self.logger, img=b_img[idx].permute((0, 2, 1)),
+                  title='Image',
+                  number=batch_idx,
+                  epoch=self.current_epoch)
+        log_image(self.logger, img=b_gt[idx].unsqueeze(0).permute((0, 2, 1)),
+                  title='GroundTruth',
+                  number=batch_idx,
+                  epoch=self.current_epoch)
+        log_image(self.logger, img=prev_actions[idx].unsqueeze(0).permute((0, 2, 1)),
+                  title='Prediction',
+                  number=batch_idx,
+                  img_text=prev_rewards[idx].mean(),
+                  epoch=self.current_epoch)
         if prev_rewards.shape == prev_actions.shape:
-            log_image(self.logger, img=prev_rewards[idx].unsqueeze(0).permute((0, 2, 1)), title='RewardMap', number=batch_idx)
+            log_image(self.logger, img=prev_rewards[idx].unsqueeze(0).permute((0, 2, 1)),
+                      title='RewardMap',
+                      number=batch_idx,
+                      epoch=self.current_epoch)
 
         self.log_dict(logs)
         return logs
@@ -217,16 +229,31 @@ class RLmodule(pl.LightningModule):
         _, _, _, _, v, _ = self.actor.evaluate(b_img, prev_actions)
 
         for i in range(len(b_img)):
-            log_image(self.logger, img=b_img[i].permute((0, 2, 1)), title='test_Image', number=batch_idx * (i + 1))
-            log_image(self.logger, img=b_gt[i].unsqueeze(0).permute((0, 2, 1)), title='test_GroundTruth', number=batch_idx * (i + 1))
-            log_image(self.logger, img=prev_actions[i].unsqueeze(0).permute((0, 2, 1)), title='test_Prediction', number=batch_idx * (i + 1),
-                      img_text=simple_dice[i].mean())
+            log_image(self.logger, img=b_img[i].permute((0, 2, 1)),
+                      title='test_Image',
+                      number=batch_idx * (i + 1),
+                      epoch=self.current_epoch)
+            log_image(self.logger, img=b_gt[i].unsqueeze(0).permute((0, 2, 1)),
+                      title='test_GroundTruth',
+                      number=batch_idx * (i + 1),
+                      epoch=self.current_epoch)
+            log_image(self.logger, img=prev_actions[i].unsqueeze(0).permute((0, 2, 1)),
+                      title='test_Prediction',
+                      number=batch_idx * (i + 1),
+                      img_text=simple_dice[i].mean(),
+                      epoch=self.current_epoch)
             if v.shape == prev_actions.shape:
-                log_image(self.logger, img=v[i].unsqueeze(0).permute((0, 2, 1)), title='test_v_function', number=batch_idx * (i + 1),
-                          img_text=v[i].mean())
+                log_image(self.logger, img=v[i].unsqueeze(0).permute((0, 2, 1)),
+                          title='test_v_function',
+                          number=batch_idx * (i + 1),
+                          img_text=v[i].mean(),
+                          epoch=self.current_epoch)
             if prev_rewards.shape == prev_actions.shape:
-                log_image(self.logger, img=prev_rewards[i].unsqueeze(0).permute((0, 2, 1)), title='test_RewardMap', number=batch_idx * (i + 1),
-                          img_text=prev_rewards[i].mean())
+                log_image(self.logger, img=prev_rewards[i].unsqueeze(0).permute((0, 2, 1)),
+                          title='test_RewardMap',
+                          number=batch_idx * (i + 1),
+                          img_text=prev_rewards[i].mean(),
+                          epoch=self.current_epoch)
 
         self.log_dict(logs)
 

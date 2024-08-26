@@ -1,8 +1,10 @@
 work_dir: ${hydra:runtime.cwd}
 run_name: default
 
+logger_run_name: '${get_class_name: ${model._target_}}_${get_class_name: ${model.reward._target_}}_${run_name}'
+
 defaults:
-  - logger: tensorboard
+  - logger: comet
   - model: ppo
   - datamodule: ???
   - callbacks: default

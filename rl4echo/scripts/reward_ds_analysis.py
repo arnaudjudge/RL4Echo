@@ -35,10 +35,9 @@ if __name__ == "__main__":
     print(dices.mean())
 
 
-
-
-
-
     plt.figure()
     plt.hist(dices, bins=100)
+    plt.xlabel("Dice")
+    plt.ylabel("Number of examples")
+    plt.title("Dice histogram between valid/invalid masks")
     plt.show()
