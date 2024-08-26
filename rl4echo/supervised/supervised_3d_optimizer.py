@@ -7,7 +7,7 @@ from typing import Dict, Any
 import lightning
 import numpy as np
 from scipy import ndimage
-import pytorch_lightning as pl
+# import pytorch_lightning as pl
 import torch
 from torch import nn, Tensor
 from torchmetrics.classification import Dice
@@ -35,7 +35,7 @@ class DiceLoss(nn.Module):
         return 1 - ((2. * intersection) / (torch.sum(target) + torch.sum(output)))
 
 
-class SupervisedOptimizer(nnUNetPatchlessLitModule):
+class Supervised3DOptimizer(nnUNetPatchlessLitModule):
     def __init__(self, ckpt_path=None, corrector=None, predict_save_dir=None, **kwargs):
         super().__init__(**kwargs)
 

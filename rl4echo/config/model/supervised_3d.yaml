@@ -5,7 +5,7 @@ defaults:
   - loss: ce
   - /corrector: ae
 
-_target_: supervised.supervised_3d_optimizer.SupervisedOptimizer
+_target_: supervised.supervised_3d_optimizer.Supervised3DOptimizer
 
 
 ckpt_path: null
