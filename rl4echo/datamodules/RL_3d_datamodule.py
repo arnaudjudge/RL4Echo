@@ -156,7 +156,7 @@ class RL3dDataModule(pl.LightningDataModule):
             self,
             data_dir: str = "data/",
             dataset_name: str = "",
-            csv_file_name: str = "subset.csv",
+            csv_file: str = "subset.csv",
             splits_column: str = None,
             batch_size: int = 1,
             seed: int = 0,
@@ -165,7 +165,7 @@ class RL3dDataModule(pl.LightningDataModule):
             max_batch_size: int = None,
             max_tensor_volume: int = 5000000,
             shape_divisible_by: tuple[int, ...] = (32, 32, 4),
-            subset_frac: float = 0.1,
+            subset_frac: float = 1.0,
             approx_gt_dir=None,
             supervised=False,
             gt_column=None,
@@ -197,7 +197,7 @@ class RL3dDataModule(pl.LightningDataModule):
 
         self.data_path = self.hparams.data_dir + '/' + self.hparams.dataset_name
         # open dataframe for dataset
-        self.df = pd.read_csv(self.data_path + '/' + self.hparams.csv_file_name, index_col=0)
+        self.df = pd.read_csv(self.data_path + '/' + self.hparams.csv_file, index_col=0)
 
         self.data_train: Optional[torch.utils.Dataset] = None
         self.data_val: Optional[torch.utils.Dataset] = None
@@ -267,7 +267,7 @@ class RL3dDataModule(pl.LightningDataModule):
                 self.df.loc[self.train_idx, self.hparams.splits_column] = 'train'
                 self.df.loc[self.val_idx, self.hparams.splits_column] = 'val'
                 self.df.loc[self.test_idx, self.hparams.splits_column] = 'test'
-                self.df.to_csv(self.data_path + '/' + self.hparams.csv_file_name)
+                self.df.to_csv(self.data_path + '/' + self.hparams.csv_file)
 
         if self.hparams.subset_frac and type(self.hparams.subset_frac) == float:
             train_num = int(self.hparams.subset_frac * len(self.train_idx))
@@ -397,7 +397,7 @@ class RL3dDataModule(pl.LightningDataModule):
         self.df.loc[(self.df['dicom_uuid'] == id), self.trainer.datamodule.hparams.gt_column] = True
 
     def update_dataframe(self):
-        self.df.to_csv(self.data_path + '/' + self.hparams.csv_file_name)
+        self.df.to_csv(self.data_path + '/' + self.hparams.csv_file)
 
     def get_approx_gt_subpath(self, id):
         return get_img_subpath(self.df.loc[self.df['dicom_uuid'] == id].iloc[0])
@@ -417,7 +417,7 @@ if __name__ == "__main__":
                                    max_batch_size=None,
                                    dataset_name='',
                                    splits_column='lm_split',
-                                   csv_file_name='cardinal.csv',
+                                   csv_file='cardinal.csv',
                                    num_workers=1,
                                    batch_size=1,
                                    use_dataset_fraction=0.1,
