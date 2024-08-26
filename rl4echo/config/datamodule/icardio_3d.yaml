@@ -4,7 +4,7 @@ num_workers: 12
 pin_memory: True
 batch_size: 1 # must be 1
 dataset_name: ""
-csv_file_name: finalsubsets_for_rl.csv
+csv_file: finalsubsets_for_rl.csv
 splits_column: split_0_rl # column for train-test-val split, will be created if doesn't yet exist
 seed: ${seed}
 

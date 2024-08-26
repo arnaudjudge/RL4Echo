@@ -4,7 +4,7 @@ num_workers: 12
 pin_memory: True
 batch_size: 1 # must be 1
 dataset_name: ""
-csv_file_name: cardinal.csv
+csv_file: cardinal.csv
 splits_column: lm_split2 # column for train-test-val split, will be created if doesn't yet exist
 seed: ${seed}
 
