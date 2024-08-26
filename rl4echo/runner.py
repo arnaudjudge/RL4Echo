@@ -43,7 +43,7 @@ def main(cfg):
     datamodule.hparams.subset_frac = 1.0
     trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
-    if getattr(cfg.model, "predict_save_dir", None):
+    if getattr(cfg.model, "predict_save_dir", None) and cfg.predict_subset_frac > 0:
         datamodule.hparams.subset_frac = cfg.predict_subset_frac
         datamodule.setup(stage="predict")
         trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
