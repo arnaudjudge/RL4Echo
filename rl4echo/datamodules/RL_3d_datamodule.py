@@ -251,7 +251,7 @@ class RL3dDataModule(pl.LightningDataModule):
             self.train_idx = self.df.index[self.df[self.hparams.splits_column] == 'train'].tolist()
             self.val_idx = self.df.index[self.df[self.hparams.splits_column] == 'val'].tolist()
             self.test_idx = self.df.index[self.df[self.hparams.splits_column] == 'test'].tolist()
-            self.pred_idx = self.df.index[(self.df[self.hparams.splits_column] == 'pred') | (self.df[self.hparams.splits_column] == 'train')].tolist()
+            self.pred_idx = self.df.index[(self.df[self.hparams.splits_column] == 'pred')].tolist()
         else:
             # create new splits, save if column name is given
             print(f"Creating new splits!")

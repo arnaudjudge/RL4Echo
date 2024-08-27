@@ -5,7 +5,7 @@ from hydra.utils import instantiate
 from omegaconf import OmegaConf
 from pytorch_lightning import Trainer, seed_everything
 
-from utils.instantiators import instantiate_callbacks
+from rl4echo.utils.instantiators import instantiate_callbacks
 
 OmegaConf.register_new_resolver(
     "get_class_name", lambda name: name.split('.')[-1]
