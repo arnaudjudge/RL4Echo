@@ -4,4 +4,4 @@ defaults:
   - override critic: unet_critic
   - _self_
 
-_target_: actors.ActorCritic_Unet.ActorCriticUnetCritic
+_target_: rl4echo.actors.ActorCritic_Unet.ActorCriticUnetCritic

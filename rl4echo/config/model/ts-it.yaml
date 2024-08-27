@@ -1,4 +1,4 @@
-_target_: supervised.ts-it_optimizer.TSITOptimizer
+_target_: rl4echo.supervised.ts-it_optimizer.TSITOptimizer
 
 input_shape: [1, 256, 256]
 output_shape: [1, 256, 256]

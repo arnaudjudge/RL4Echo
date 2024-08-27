@@ -1,4 +1,4 @@
-_target_: rewardnet.reward_unet.RewardOptimizer
+_target_: rl4echo.rewardnet.reward_unet.RewardOptimizer
 
 save_model_path: ./reward_net.ckpt
 

@@ -1,4 +1,4 @@
-_target_: datamodules.camus_RL_datamodule.CamusDataModule
+_target_: rl4echo.datamodules.camus_RL_datamodule.CamusDataModule
 
 data_dir: ${oc.env:DATA_PATH}/camus/RLcamus_affine/
 csv_file: 'camus_split_5.csv'

@@ -1,4 +1,4 @@
-_target_: datamodules.RL_3d_datamodule.RL3dDataModule
+_target_: rl4echo.datamodules.RL_3d_datamodule.RL3dDataModule
 data_dir: "/data/cardinal_landmarks/"
 num_workers: 12
 pin_memory: True

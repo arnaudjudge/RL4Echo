@@ -1,1 +1,1 @@
-_target_: Reward.PixelWiseAccuracy
+_target_: rl4echo.Reward.PixelWiseAccuracy

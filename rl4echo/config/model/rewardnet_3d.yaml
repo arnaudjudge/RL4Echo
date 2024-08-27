@@ -1,7 +1,7 @@
 defaults:
   - net: unet
 
-_target_: rewardnet.reward_unet_3d.Reward3DOptimizer
+_target_: rl4echo.rewardnet.reward_unet_3d.Reward3DOptimizer
 
 save_model_path: ./reward_net_3d.ckpt
 

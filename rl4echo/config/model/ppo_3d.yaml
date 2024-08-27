@@ -2,7 +2,7 @@ defaults:
   - RLModule_3d
   - /actor: 3d_ac_unet
 
-_target_: PPO_3d.PPO3D
+_target_: rl4echo.PPO_3d.PPO3D
 
 clip_value: 0.2
 k_steps_per_batch: 5

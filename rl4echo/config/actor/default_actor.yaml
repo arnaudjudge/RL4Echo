@@ -2,7 +2,7 @@ defaults:
   - actor: binary_unet_actor
   - critic: none_critic
 
-_target_: actors.Actors.Actor
+_target_: rl4echo.actors.Actors.Actor
 
 eps_greedy_term: 0.0
 actor_lr: 0.0005

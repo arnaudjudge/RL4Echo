@@ -1,4 +1,4 @@
-_target_: rewardnet.reward_unet_datamodule.RewardNetDataModule
+_target_: rl4echo.rewardnet.reward_unet_datamodule.RewardNetDataModule
 
 data_path: ./CGPT_Loop/
 test_fra: 0.1
