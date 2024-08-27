@@ -20,6 +20,8 @@ callbacks:
 
 predict_subset_frac: 1000
 
+ckpt_path: null
+
 datamodule:
   gt_column: Gt_0
 
@@ -29,3 +31,8 @@ trainer:
   log_every_n_steps: 1
   gpus: 1
   #num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)
+
+# Prefer old Hydra default of changing directory for each job from version<=1.1
+hydra:
+  job:
+    chdir: True

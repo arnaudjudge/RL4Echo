@@ -19,7 +19,7 @@ from uncertainty.uncertainty import SegmentationUncertainty
 from uncertainty.unet import UNet
 
 
-class AleatoricUncertainty(SegmentationUncertainty):
+class MCDOUncertainty(SegmentationUncertainty):
     """Aleatoric uncertainty system.
 
     Args:
@@ -29,47 +29,27 @@ class AleatoricUncertainty(SegmentationUncertainty):
     def __init__(self, iterations: int = 10, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.iterations = iterations
+        self.model = self.configure_model()
         self.model = patch_module(self.model)
 
 
     def configure_model(self):
-        return UNet(input_shape=self.input_shape, output_shape=self.output_shape, dropout=0.25)
+        net = UNet(input_shape=self.input_shape, output_shape=self.output_shape, dropout=0.25)
+        net.load_state_dict(torch.load("/data/rl_logs/run_1/0/actor.ckpt"))
+        return net
 
     def test_step(self, batch, batch_idx):
         x, y = batch[Tags.img], batch[Tags.gt]
 
         print(batch['id'])
 
-        # Forward
-        logits, sigma = self(x)  # (N, C, H, W), (N, C, H, W)
-        sigma = F.softplus(sigma)
-
-        if self.is_log_sigma:
-            distribution = distributions.Normal(logits, torch.exp(sigma))
-        else:
-            distribution = distributions.Normal(logits, sigma + 1e-8)
-
-        samples = distribution.rsample((25,))
+        samples = np.asarray([self(x).cpu().numpy() for _ in range(self.iterations)])
 
         print(samples.shape)
 
-        if logits.shape[1] == 1:
-            y_hat = torch.sigmoid(logits)
-            # mc_expectation = torch.sigmoid(samples).mean(dim=0)
-            samples = torch.sigmoid(samples)
-            sigma = sigma.squeeze(1)
-            pred = y_hat.round()
-        else:
-            y_hat = F.softmax(logits, dim=1)
-            prediction_onehot = to_onehot(y_hat.argmax(1), num_classes=samples.shape[2]).type(torch.bool)
-            sigma = torch.where(prediction_onehot, sigma, sigma * 0).sum(dim=1)
-            # mc_expectation = F.softmax(samples, dim=2).mean(dim=0)
-            samples = F.softmax(samples, dim=2)
-            pred = y_hat.argmax(1)
-
-        entropy = self.sample_entropy(samples, apply_activation=False)
-
-        print(y_hat.shape)
+        entropy = self.sample_entropy(samples, apply_activation=True)
+        pred = samples.mean(axis=0).argmax(axis=1)
+        print(pred.shape)
         print(entropy.shape)
 
         print(samples.shape)
@@ -96,11 +76,12 @@ class AleatoricUncertainty(SegmentationUncertainty):
 
         with h5py.File(self.output_file, 'a') as f:
             for i in range(x.shape[0]):
-                dicom = batch['id'][i].replace('/', '_')
+                dicom = batch['id'][i].replace('/', '_')+ "_" + batch['instant'][i]
                 print(dicom)
                 f.create_group(dicom)
                 f[dicom]['img'] = x[i].cpu().numpy()
                 f[dicom]['gt'] = y[i].cpu().numpy()
-                f[dicom]['pred'] = pred[i].cpu().numpy()
-                f[dicom]['reward_map'] = entropy[i]
-                f[dicom]['accuracy_map'] = (pred[i].cpu().numpy() != y[i].cpu().numpy()).astype(np.uint8)
+                f[dicom]['pred'] = pred[i]#.cpu().numpy()
+                f[dicom]['reward_map'] = entropy[i]#.cpu().numpy()
+                f[dicom]['accuracy_map'] = (pred[i] != y[i].cpu().numpy()).astype(np.uint8)
+        print(self.output_file)

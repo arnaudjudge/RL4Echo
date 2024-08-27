@@ -22,7 +22,8 @@ trainer:
   _target_: pytorch_lightning.Trainer
   devices: 'auto'
   accelerator: 'auto'
-#  num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)
+  max_epochs: 250
+  num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)
 
 callbacks:
   model_checkpoint:
@@ -30,6 +31,7 @@ callbacks:
     mode: min
     save_last: True
 
+ckpt_path: null
 
 # Prefer old Hydra default of changing directory for each job from version<=1.1
 hydra:

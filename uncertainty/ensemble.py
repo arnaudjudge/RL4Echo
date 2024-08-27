@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Dict, Tuple
 
 import hydra
@@ -17,33 +18,28 @@ import h5py
 from uncertainty.mcdropout_utils import patch_module
 from uncertainty.uncertainty import SegmentationUncertainty
 from uncertainty.unet import UNet
-from uncertainty.augmentations.affine import RandomRotation, RandomTranslation
-from uncertainty.augmentations.augmentation import Compose
-from uncertainty.augmentations.brightnesscontrast import RandomBrightnessContrast
-from uncertainty.augmentations.gamma import RandomGamma
 
 
-class TTAUncertainty(SegmentationUncertainty):
-    """Aleatoric uncertainty system.
+class EnsembleUncertainty(SegmentationUncertainty):
+    """Ensemble uncertainty system.
 
     Args:
         iterations: number of mc dropout iterations.
     """
 
-    def __init__(self, iterations: int = 10, *args, **kwargs):
+    def __init__(self, models_path="./", *args, **kwargs):
+        self.models_path = models_path
         super().__init__(*args, **kwargs)
-        self.iterations = iterations
-        self.model = self.configure_model()
-        self.model = patch_module(self.model)
-
-        self.tta_transforms = Compose([RandomRotation(3),
-                                       RandomBrightnessContrast(0.2, 0.2),
-                                       RandomGamma((0.8, 1.2)),
-                                       RandomTranslation(5, 5)])
+        # self.models = self.configure_model()
+        self.models = []
+        for p in Path(self.models_path).rglob("*sup_seed.ckpt"):
+            net = UNet(input_shape=self.input_shape, output_shape=self.output_shape)
+            net.load_state_dict(torch.load(p))
+            self.models += [net.cuda()]
 
     def configure_model(self):
         net = UNet(input_shape=self.input_shape, output_shape=self.output_shape, dropout=0.25)
-        net.load_state_dict(torch.load("/data/rl_logs/run_1/0/actor.ckpt"))
+        #net.load_state_dict(torch.load("/data/rl_logs/run_1/0/actor.ckpt"))
         return net
 
     def test_step(self, batch, batch_idx):
@@ -51,18 +47,11 @@ class TTAUncertainty(SegmentationUncertainty):
 
         print(batch['id'])
         samples = []
-
-        for _ in range(self.iterations):
-            params = self.tta_transforms.get_params()
-            items = self.tta_transforms.apply({'image': x}, params=params)
-
-            pred = self.model(items['image'])
-            items = self.tta_transforms.un_apply({'mask': pred}, params=params)
-
-            samples.append(items['mask'])
-
+        for n in self.models:
+            samples += [n(x)]
 
         samples = np.asarray([s.cpu().numpy() for s in samples])
+
         print(samples.shape)
 
         entropy = self.sample_entropy(samples, apply_activation=True)
@@ -81,12 +70,6 @@ class TTAUncertainty(SegmentationUncertainty):
         # ax4.imshow(entropy[0].squeeze())
         #
         # plt.show()
-
-        pad = 10
-        entropy[:, 0:pad] = 0
-        entropy[:, -pad:] = 0
-        entropy[:, :, 0:pad] = 0
-        entropy[:, :, -pad:] = 0
 
         # with h5py.File('jsrt_contour.h5', "w") as dataset:
         #

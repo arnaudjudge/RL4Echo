@@ -1,3 +1,4 @@
+import random
 from typing import Optional
 
 import nibabel as nib
@@ -159,6 +160,9 @@ class CamusDataModule(pl.LightningDataModule):
             self.val_idx = self.val_idx[:min(self.hparams.subset_frac, len(self.val_idx))]
             self.test_idx = self.test_idx[:min(self.hparams.subset_frac, len(self.test_idx))]
             self.pred_idx = self.pred_idx[:min(self.hparams.subset_frac, len(self.pred_idx))]
+
+        self.train_idx = random.sample(self.train_idx, int(0.9*len(self.train_idx)))
+        print(self.train_idx)
 
         if stage == "fit" or stage is None:
             self.train = CamusDataset(self.df.loc[self.train_idx],

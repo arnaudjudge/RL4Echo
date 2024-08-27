@@ -2,6 +2,7 @@ import math
 from typing import Dict, Tuple
 
 import SimpleITK as sitk
+import h5py
 import hydra
 import matplotlib.pyplot as plt
 import scipy
@@ -140,13 +141,14 @@ class StochasticSegmentationNetwork(SegmentationUncertainty):
                  mc_samples: int = 20,
                  epsilon=1e-5,
                  diagonal=False,
+                 t_a = 10,
                  *args, **kwargs):
         self.rank = rank
         self.save_hyperparameters()
         super().__init__(*args, **kwargs)
         self.mc_samples = mc_samples
 
-        self._dice = DifferentiableDiceCoefficient(include_background=False, reduction="none", apply_activation=True)
+        self._dice = DifferentiableDiceCoefficient(include_background=False, reduction="none") #, apply_activation=True)
 
         self.loss = StochasticSegmentationNetworkLossMCIntegral(mc_samples)
 
@@ -247,7 +249,7 @@ class StochasticSegmentationNetwork(SegmentationUncertainty):
         if num_classes == 1:
             pred = torch.sigmoid(logit_mean)
 
-        samples = []
+        samples_ = []
 
         for i in range(batch_size):
             sampler = LowRankMultivariateNormalRandomSampler(output_dict['logit_mean'][i],
@@ -264,16 +266,16 @@ class StochasticSegmentationNetwork(SegmentationUncertainty):
             #     ax[j].imshow(prob_maps[j].detach().cpu().numpy().squeeze())
             # plt.show()
             if num_classes != 1:
-                samples = to_onehot(samples, num_classes=len(self.hparams.data_params.labels))
-            samples.append(samples.unsqueeze(1))
+                samples = to_onehot(samples, num_classes=3)
+            samples_.append(samples.unsqueeze(1))
 
-        samples = torch.cat(samples, dim=1).float()
+        samples = torch.cat(samples_, dim=1).float()
 
 
 
         uncertainty_map = np.ones((2, 256, 256))
 
-        pred = logit_mean
+        pred = logit_mean.argmax(dim=1)
 
         entropy = self.sample_entropy(samples, apply_activation=False)
 
@@ -304,7 +306,7 @@ class StochasticSegmentationNetwork(SegmentationUncertainty):
 
         with h5py.File(self.output_file, 'a') as f:
             for i in range(x.shape[0]):
-                dicom = batch['id'][i].replace('/', '_')
+                dicom = batch['id'][i].replace('/', '_') + "_" + batch['instant'][i]
                 print(dicom)
                 f.create_group(dicom)
                 f[dicom]['img'] = x[i].cpu().numpy()

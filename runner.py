@@ -13,7 +13,7 @@ OmegaConf.register_new_resolver(
 )
 
 
-@hydra.main(version_base=None, config_path="config", config_name="RL_runner")
+@hydra.main(version_base=None, config_path="config", config_name="supervised_runner")
 def main(cfg):
     # Load any available `.env` file
     load_dotenv()
@@ -32,16 +32,23 @@ def main(cfg):
 
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=True)
 
-    if cfg.get("train", True):
-        trainer.fit(train_dataloaders=datamodule, model=model)
+    # if cfg.get("train", True):
+    #     trainer.fit(train_dataloaders=datamodule, model=model)
 
-    if cfg.ckpt_path is None:
+    if cfg.get("ckpt_path", None):
         if cfg.trainer.max_epochs > 0:
             ckpt_path = 'best'
         else:
             ckpt_path = None
     else:
         ckpt_path = cfg.ckpt_path
+    # ckpt_path = '/home/local/USHERBROOKE/juda2901/dev/TEMP/RL4Echo/outputs/2024-02-28/07-01-50/lightning_logs/version_0/checkpoints/epoch=17-step=900.ckpt'
+    # ckpt_path = '/home/local/USHERBROOKE/juda2901/dev/TEMP/RL4Echo/outputs/2024-02-28/07-01-50/lightning_logs/version_0/checkpoints/last.ckpt'
+
+    # ckpt_path = '/home/local/USHERBROOKE/juda2901/dev/TEMP/RL4Echo/outputs/2024-03-01/07-39-51/lightning_logs/version_0/checkpoints/epoch=30-step=1550.ckpt'
+    #ckpt_path = '/home/local/USHERBROOKE/juda2901/dev/TEMP/RL4Echo/outputs/2024-03-01/07-39-51/lightning_logs/version_0/checkpoints/last.ckpt'
+
+    ckpt_path = "/home/local/USHERBROOKE/juda2901/Téléchargements/last.ckpt"
 
     # test with everything
     datamodule.hparams.subset_frac = 1.0

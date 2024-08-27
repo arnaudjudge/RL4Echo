@@ -29,7 +29,7 @@ class AleatoricUncertainty(SegmentationUncertainty):
         self.save_hyperparameters("iterations", "is_log_sigma")
         self.iterations = iterations
         self.is_log_sigma = is_log_sigma
-        self._dice = DifferentiableDiceCoefficient(include_background=False, reduction="none", apply_activation=False)
+        self._dice = DifferentiableDiceCoefficient(include_background=False, reduction="none")#.env, apply_activation=False)
 
         assert not (is_log_sigma and len(self.hparams.data_params.labels) > 1), "Does not work with >1 labels"
 
@@ -150,6 +150,10 @@ class AleatoricUncertainty(SegmentationUncertainty):
 
         print(samples.shape)
 
+        # dice_values = self._dice(pred, y)
+        # dices = {f"dice/{label}": dice for label, dice in zip([Label.LV, Label.MYO], dice_values)}
+        # mean_dice = dice_values.mean()
+
         # from matplotlib import pyplot as plt
         #
         # f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4)
@@ -172,7 +176,7 @@ class AleatoricUncertainty(SegmentationUncertainty):
 
         with h5py.File(self.output_file, 'a') as f:
             for i in range(x.shape[0]):
-                dicom = batch['id'][i].replace('/', '_')
+                dicom = batch['id'][i].replace('/', '_') + "_" + batch['instant'][i]
                 print(dicom)
                 f.create_group(dicom)
                 f[dicom]['img'] = x[i].cpu().numpy()
@@ -180,3 +184,5 @@ class AleatoricUncertainty(SegmentationUncertainty):
                 f[dicom]['pred'] = pred[i].cpu().numpy()
                 f[dicom]['reward_map'] = entropy[i]
                 f[dicom]['accuracy_map'] = (pred[i].cpu().numpy() != y[i].cpu().numpy()).astype(np.uint8)
+
+        # return {"dice": mean_dice, **dices}

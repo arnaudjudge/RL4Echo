@@ -11,9 +11,9 @@ from statsmodels.formula.api import ols
 from statsmodels.stats.outliers_influence import OLSInfluence
 
 # path = 'reward_eval_uncertainty_tempscaled_fulltrain.h5'
-path = '/home/judge/dev/RL4Echo/outputs/2024-02-23/15-31-28/RESULTS.h5'
+path = '/home/local/USHERBROOKE/juda2901/dev/TEMP/RL4Echo/outputs/2024-03-07/04-37-53/RESULTS.h5'
 
-output = Path('reward_uncertainty_test')
+output = Path('results_stoch')
 
 output.mkdir(exist_ok=True)
 
@@ -143,7 +143,7 @@ def ece(confidences, accuracies, nb_bins=20):
 
     bins_avg_conf = np.array(bins_avg_conf)
     bins_avg_acc = np.array(bins_avg_acc)
-
+    np.save(f"{output}/bins_conf.npy", np.stack((bins_avg_conf, bins_avg_acc)))
     mce = np.max(np.abs(bins_avg_conf - bins_avg_acc))
 
     f, ax = plt.subplots(1, 1)
@@ -227,6 +227,9 @@ mis, norm_mis = [], []
 
 ids = []
 
+print(path)
+print(output)
+
 with h5py.File(path, "r") as h5:
     print(len(h5.keys()))
 
@@ -240,6 +243,9 @@ with h5py.File(path, "r") as h5:
         uncertainty_map = 1 - reward_map
         accuracy = np.array(h5[key]['accuracy_map']).T
         error = 1 - accuracy
+
+        np.save(f"{output}/{key}_error.npy", error)
+        np.save(f"{output}/{key}_unc.npy", uncertainty_map)
 
         f, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(1, 5, figsize=(24, 6))
         ax1.imshow(img.squeeze(), cmap='gray')
