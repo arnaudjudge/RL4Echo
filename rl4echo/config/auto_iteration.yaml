@@ -1,13 +1,13 @@
 
 num_iter: 4
-run_name: camus_2rewards
+run_name: LM_full4
 output_path: ${oc.env:LOG_PATH}/${run_name}/
 
-pretrain_path: /data/rl_logs/lm_camus_test/pretrained_norand_moredata.ckpt
+pretrain_path: /data/rl_logs/run_1/0/actor.ckpt
 
 var_file: ${output_path}/variables.pkl
 
-target: camus
+target: es_ed
 source: camus
 
 #
@@ -22,7 +22,7 @@ sup_loss_label_smoothing: 0.0
 # RL params
 #
 rl_num_epochs: 5
-rl_num_predict: 10000
+rl_num_predict: 2500
 rl_overrides: []
 
 #

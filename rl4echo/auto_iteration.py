@@ -78,8 +78,8 @@ def main(cfg):
         # train reward net
         overrides = main_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
                                       f"datamodule.data_path={output_path}/",
-                                      f"model.save_model_path={output_path}/{i - 1}/rewardnet.ckpt",
-                                      f"+model.var_file={cfg.var_file}"]
+                                      f"model.save_model_path={output_path}/{i - 1}/rewardnet.ckpt",]
+                                      # f"+model.var_file={cfg.var_file}"]
         sub_cfg = compose(config_name=f"reward_runner.yaml", overrides=overrides)
         print(OmegaConf.to_yaml(sub_cfg))
         runner_main(sub_cfg)
@@ -89,14 +89,14 @@ def main(cfg):
 
         # TODO: MAYBE RETHINK THIS WAY OF PASSING THE VARIABLE(S)
         # load temporary variable file
-        saved_vars = pickle.load(open(cfg.var_file, "rb"))
+        # saved_vars = pickle.load(open(cfg.var_file, "rb"))
 
         # train PPO model with fresh reward net
         overrides = main_overrides + cfg.rl_overrides + \
                     [f"trainer.max_epochs={cfg.rl_num_epochs}",
                      f"predict_subset_frac={cfg.rl_num_predict}",
                      f"datamodule.splits_column={experiment_split_column}",
-                     f"datamodule.gt_column={experiment_gt_column}",
+                     f"datamodule.gt_column=null", #{experiment_gt_column}",
                      f"+datamodule.train_batch_size={8 * i}",
                      f"model.actor.actor.pretrain_ckpt={output_path}/{i - 1}/actor.ckpt",
                      f"model.actor.actor.ref_ckpt={output_path}/{0}/actor.ckpt",  # always supervised

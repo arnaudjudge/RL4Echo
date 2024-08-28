@@ -98,7 +98,7 @@ class RLmodule(pl.LightningModule):
             from rl4echo.Reward import LandmarkWGTReward
             lm_rewards = LandmarkWGTReward()(actions, imgs, gt, actions_uns)
 
-            rewards = torch.cat((2*lm_rewards, rewards), dim=0)
+            rewards = torch.cat((lm_rewards, rewards), dim=0)
             # imgs = imgs.repeat(2, 1, 1, 1)
             actions = actions.repeat(2, 1, 1)
             log_probs = log_probs.repeat(2, 1, 1)
