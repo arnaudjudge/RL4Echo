@@ -9,7 +9,7 @@ from hydra import initialize, compose
 from hydra.core.global_hydra import GlobalHydra
 from omegaconf import OmegaConf
 
-from runner import main as runner_main
+from rl4echo.runner import main as runner_main
 
 import warnings
 

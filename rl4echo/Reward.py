@@ -9,7 +9,7 @@ from torch import distributions
 from torchmetrics.functional import dice
 from vital.models.segmentation.unet import UNet
 
-from rewardnet.unet_heads import UNet_multihead
+from rl4echo.rewardnet.unet_heads import UNet_multihead
 
 """
 Reward functions must each have pred, img, gt as input parameters

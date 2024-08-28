@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from RLmodule_3D import RLmodule3D
+from rl4echo.RLmodule_3D import RLmodule3D
 
 
 class PPO3D(RLmodule3D):

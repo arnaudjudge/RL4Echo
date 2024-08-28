@@ -32,7 +32,7 @@ def main(cfg):
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
 
     if cfg.train:
-        trainer.fit(train_dataloaders=datamodule, model=model, ckpt_path='/home/local/USHERBROOKE/juda2901/dev/RL4Echo/rl4echo/test_logs/SupervisedOptimizer_supervised_default/version_63/checkpoints/epoch=8-step=4167.ckpt')
+        trainer.fit(train_dataloaders=datamodule, model=model)
 
     if cfg.trainer.max_epochs > 0 and cfg.train:
         ckpt_path = 'best'
