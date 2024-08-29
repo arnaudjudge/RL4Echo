@@ -19,6 +19,7 @@ class RewardNet3DDataset(Dataset):
 
         # only use /images/ folders to get number of individual entries
         for im_file in Path(f"{self.data_path}").rglob("**/images/*.nii.gz"):
+            print(im_file)
             self.img_list += [im_file.as_posix()]
 
         random.shuffle(self.img_list)
