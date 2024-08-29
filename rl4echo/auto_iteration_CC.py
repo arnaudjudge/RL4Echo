@@ -78,15 +78,15 @@ def main(cfg):
 
     for i in range(1, iterations + 1):
         # set OS data path for copy of data to happen
-        # os.environ["DATA_PATH"] = f'{output_path}/rewardDS/'
+        # copy data to compute node, next to RL data
         subprocess.call(["rsync", "-a", f"{output_path}/rewardDS/", f"{os.environ['DATA_PATH']}/rewardDS/"])
-        print(subprocess.call(["ls", f"{output_path}/rewardDS/"]))
-        print(f"{os.environ['DATA_PATH']}/")
-        print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/"]))
-        print(f"{os.environ['DATA_PATH']}/rewardDS/")
-        print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/rewardDS/"]))
-        print(f"{os.environ['DATA_PATH']}/rewardDS/images")
-        print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/rewardDS/images/"]))
+        # print(subprocess.call(["ls", f"{output_path}/rewardDS/"]))
+        # print(f"{os.environ['DATA_PATH']}/")
+        # print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/"]))
+        # print(f"{os.environ['DATA_PATH']}/rewardDS/")
+        # print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/rewardDS/"]))
+        # print(f"{os.environ['DATA_PATH']}/rewardDS/images")
+        # print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/rewardDS/images/"]))
 
         # train reward net
         overrides = main_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",

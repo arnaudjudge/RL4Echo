@@ -1,5 +1,5 @@
 defaults:
-  - /reward: pixelwise_accuracy
+  - /reward: rewardunet3d
   - /corrector: ae
 
 actor_save_path: actor_3d.ckpt
