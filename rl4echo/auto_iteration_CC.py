@@ -83,6 +83,8 @@ def main(cfg):
         print(subprocess.call(["ls", f"{output_path}/rewardDS/"]))
         print(f"{os.environ['DATA_PATH']}/")
         print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/"]))
+        print(f"{os.environ['DATA_PATH']}/rewardDS/")
+        print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/rewardDS/"]))
 
         # train reward net
         overrides = main_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
