@@ -80,8 +80,9 @@ def main(cfg):
         # set OS data path for copy of data to happen
         # os.environ["DATA_PATH"] = f'{output_path}/rewardDS/'
         subprocess.call(["rsync", "-a", f"{output_path}/rewardDS/", f"{os.environ['DATA_PATH']}/rewardDS/"])
-        print(subprocess.call(subprocess.call(["ls", f"{output_path}/rewardDS/"])))
-        print(subprocess.call(subprocess.call(["ls", f"{output_path}/"])))
+        print(subprocess.call(["ls", f"{output_path}/rewardDS/"]))
+        print(f"{os.environ['DATA_PATH']}/")
+        print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/"]))
 
         # train reward net
         overrides = main_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
