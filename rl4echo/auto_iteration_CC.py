@@ -79,7 +79,7 @@ def main(cfg):
     for i in range(1, iterations + 1):
         # set OS data path for copy of data to happen
         # os.environ["DATA_PATH"] = f'{output_path}/rewardDS/'
-        subprocess.call(["rsync", "-a", f"{output_path}/rewardDS/", "$SLURM_TMPDIR/RL4ECHO/data/"])
+        subprocess.call(["rsync", "-a", f"{output_path}/rewardDS/", f"{os.environ['DATA_PATH']}/rewardDS/"])
         print(subprocess.call(subprocess.call(["ls", f"{output_path}/rewardDS/"])))
         print(subprocess.call(subprocess.call(["ls", f"{output_path}/"])))
 
