@@ -80,6 +80,8 @@ def main(cfg):
         # set OS data path for copy of data to happen
         # os.environ["DATA_PATH"] = f'{output_path}/rewardDS/'
         subprocess.call(f"rsync -a '{output_path}/rewardDS/'/ $SLURM_TMPDIR/RL4ECHO/data/".split())
+        print(subprocess.call(subprocess.call(["ls", f"{output_path}/rewardDS/"])))
+        print(subprocess.call(subprocess.call(["ls", f"{output_path}/"])))
 
         # train reward net
         overrides = main_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",

@@ -1,3 +1,5 @@
+defaults:
+  - _self_
 
 num_iter: 4
 run_name: 3d_test
