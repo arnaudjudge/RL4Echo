@@ -1,4 +1,5 @@
 import pickle
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -53,10 +54,8 @@ def main(cfg):
         sub_cfg.datamodule.gt_column = experiment_gt_column
         runner_main(sub_cfg)
 
-    cc_overrides = ["+launcher=narval", "hydra.launcher.timeout_min=15"]
-
     # Predict and test (baseline) on target domain
-    overrides = main_overrides + cfg.rl_overrides + cc_overrides + [f"trainer.max_epochs=0",
+    overrides = main_overrides + cfg.rl_overrides + [f"trainer.max_epochs=0",
                                                      f"predict_subset_frac={cfg.rl_num_predict}",
                                                      f"model.actor.actor.pretrain_ckpt={f'{output_path}/{0}/actor.ckpt' if pretrain_path is None else pretrain_path}",
                                                      f"model.actor.actor.ref_ckpt={f'{output_path}/{0}/actor.ckpt' if pretrain_path is None else pretrain_path}",
@@ -79,10 +78,12 @@ def main(cfg):
 
     for i in range(1, iterations + 1):
         # set OS data path for copy of data to happen
-        os.environ["DATA_PATH"] = f'{output_path}/rewardDS/'
+        # os.environ["DATA_PATH"] = f'{output_path}/rewardDS/'
+        subprocess.call(f"rsync -a '{output_path}/rewardDS/'/ $SLURM_TMPDIR/RL4ECHO/data/".split())
+
         # train reward net
-        overrides = main_overrides + cc_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
-                                      f"datamodule.data_path={output_path}/rewardDS/",
+        overrides = main_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
+                                      f"datamodule.data_path={os.environ['DATA_PATH']}/rewardDS/",
                                       f"model.save_model_path={output_path}/{i - 1}/rewardnet.ckpt",
                                       ]
                                       # f"+model.var_file={cfg.var_file}"]
@@ -99,7 +100,7 @@ def main(cfg):
 
         load_dotenv()
         # train PPO model with fresh reward net
-        overrides = main_overrides + cfg.rl_overrides + cc_overrides + \
+        overrides = main_overrides + cfg.rl_overrides + \
                     [f"trainer.max_epochs={cfg.rl_num_epochs}",
                      f"predict_subset_frac={cfg.rl_num_predict}",
                      f"datamodule.splits_column={experiment_split_column}",
