@@ -10,7 +10,7 @@ from vital.models.segmentation.unet import UNet
 
 from rl4echo.rewardnet.unet_heads import UNet_multihead
 from rl4echo.utils.Metrics import accuracy
-from rl4echo.utils.logging_helper import log_image, log_sequence
+from rl4echo.utils.logging_helper import log_sequence
 
 import torch.distributions as distributions
 
@@ -63,10 +63,10 @@ class Reward3DOptimizer(pl.LightningModule):
 
         # log images
         idx = random.randint(0, len(x) - 1)  # which image to log
-        log_sequence(self.logger, img=x[idx], title='Image', number=batch_idx)
-        log_sequence(self.logger, img=y[idx], title='GroundTruth', number=batch_idx)
+        log_sequence(self.logger, img=x[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
+        log_sequence(self.logger, img=y[idx], title='GroundTruth', number=batch_idx, epoch=self.current_epoch)
         log_sequence(self.logger, img=y_pred[idx], title='Prediction', number=batch_idx,
-                  img_text=acc[idx].mean())
+                  img_text=acc[idx].mean(), epoch=self.current_epoch)
 
         return {'loss': loss}
 
@@ -82,10 +82,10 @@ class Reward3DOptimizer(pl.LightningModule):
                        "test_acc": acc.mean()})
 
         for i in range(len(x)):
-            log_sequence(self.logger, img=x[i], title='test_Image', number=batch_idx * (i + 1))
-            log_sequence(self.logger, img=y[i], title='test_GroundTruth', number=batch_idx * (i + 1))
+            log_sequence(self.logger, img=x[i], title='test_Image', number=batch_idx * (i + 1), epoch=self.current_epoch)
+            log_sequence(self.logger, img=y[i], title='test_GroundTruth', number=batch_idx * (i + 1), epoch=self.current_epoch)
             log_sequence(self.logger, img=y_pred[i], title='test_Prediction', number=batch_idx * (i + 1),
-                      img_text=acc[i].mean())
+                      img_text=acc[i].mean(), epoch=self.current_epoch)
 
         return {'loss': loss}
 

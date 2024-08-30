@@ -12,7 +12,7 @@ OmegaConf.register_new_resolver(
 )
 
 
-@hydra.main(version_base=None, config_path="config", config_name="supervised_3d_runner")
+@hydra.main(version_base=None, config_path="config", config_name="RL_3d_runner")
 def main(cfg):
     # Load any available `.env` file
     load_dotenv()
@@ -40,7 +40,7 @@ def main(cfg):
         ckpt_path = None
 
     # test with everything
-    datamodule.hparams.subset_frac = 1.0
+    datamodule.hparams.subset_frac = 0.005
     trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
     if getattr(cfg.model, "predict_save_dir", None) and cfg.predict_subset_frac > 0:
