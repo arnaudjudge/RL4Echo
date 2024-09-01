@@ -26,7 +26,7 @@ def log_image(logger, img, title, number=0, img_text=None, epoch=0):
         logger.experiment.add_image(title, img[None,], global_step=number)
     if isinstance(logger, CometLogger):
         fig = plt.figure()
-        plt.imshow(img, cmap='grey')
+        plt.imshow(img, cmap='gray')
         plt.axis("off")
         # logger.experiment.log_image(title, img, number)
         logger.experiment.log_figure("{}_{}".format(title, number), fig, step=epoch)
@@ -49,7 +49,7 @@ def log_sequence(logger, img, title, number=0, img_text=None, epoch=0):
         logger.experiment.add_image(title, img, global_step=number)
     if isinstance(logger, CometLogger):
         fig = plt.figure()
-        plt.imshow(img.squeeze(0), cmap='grey')
+        plt.imshow(img.squeeze(0), cmap='gray')
         plt.axis("off")
         logger.experiment.log_figure("{}_{}".format(title, number), fig, step=epoch)
         plt.close()
@@ -75,7 +75,7 @@ def log_video(logger, img, title, number=0, img_text=None, epoch=0):
     if isinstance(logger, CometLogger):
         img = img.squeeze(0)
         fig, ax = plt.subplots()
-        im = ax.imshow(img[..., 0], animated=True, cmap='grey')
+        im = ax.imshow(img[..., 0], animated=True, cmap='gray')
         ax.axis("off")
         def update(i):
             im.set_array(img[..., i])
