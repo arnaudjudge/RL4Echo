@@ -4,7 +4,7 @@ run_name: test
 logger_run_name: '${get_class_name: ${model._target_}}_${run_name}'
 
 defaults:
-  - logger: tensorboard
+  - logger: comet
   - model: rewardnet_3d
   - datamodule: rewardnet_diff_3d
   - callbacks: default

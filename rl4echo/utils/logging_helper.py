@@ -49,7 +49,11 @@ def log_sequence(logger, img, title, number=0, img_text=None, epoch=0):
         logger.experiment.add_image(title, img, global_step=number)
     if isinstance(logger, CometLogger):
         fig = plt.figure()
-        plt.imshow(img.squeeze(0), cmap='gray')
+        if img.shape[0] == 1:
+            img = img.squeeze(0)
+        else:
+            img = img[1]
+        plt.imshow(img, cmap='gray')
         plt.axis("off")
         logger.experiment.log_figure("{}_{}".format(title, number), fig, step=epoch)
         plt.close()
