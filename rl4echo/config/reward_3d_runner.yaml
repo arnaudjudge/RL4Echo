@@ -1,6 +1,8 @@
 work_dir: ${hydra:runtime.cwd}
 run_name: test
 
+logger_run_name: '${get_class_name: ${model._target_}}_${run_name}'
+
 defaults:
   - logger: tensorboard
   - model: rewardnet_3d
@@ -10,9 +12,6 @@ defaults:
   - _self_
 
 seed: 1
-
-logger:
-  name: '${get_class_name: ${model._target_}}_${run_name}'
 
 callbacks:
   model_checkpoint:
