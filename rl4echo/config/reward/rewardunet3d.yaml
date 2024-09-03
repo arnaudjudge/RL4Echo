@@ -1,0 +1,11 @@
+defaults:
+  - /model/net@net: unet
+
+_target_: rl4echo.Reward.RewardUnet3D
+
+state_dict_path: ./reward_net_3d_first.ckpt
+temp_factor: 1
+
+net:
+  in_channels: 2
+  num_classes: 1

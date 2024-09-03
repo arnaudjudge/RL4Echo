@@ -1,0 +1,17 @@
+# @package _global_
+
+defaults:
+  - alliancecan
+  - override /hydra/launcher: beluga
+
+hydra:
+  launcher:
+    gpus_per_node: 4
+    tasks_per_node: 4
+
+trainer:
+  strategy: ddp
+  devices: 4
+
+datamodule:
+  num_workers: 9

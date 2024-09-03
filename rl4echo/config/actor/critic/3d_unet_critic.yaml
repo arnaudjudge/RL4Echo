@@ -1,0 +1,5 @@
+defaults:
+  - net: unet3d.yaml
+
+_target_: rl4echo.actors.Actors_3d.Unet3DCritic
+pretrain_ckpt: null

@@ -4,4 +4,4 @@ defaults:
   - override critic: resnet_critic
   - _self_
 
-_target_: actors.ActorCritic.ActorCritic
+_target_: rl4echo.actors.ActorCritic.ActorCritic

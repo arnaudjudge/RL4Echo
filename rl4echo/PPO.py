@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from RLmodule import RLmodule
+from rl4echo.RLmodule import RLmodule
 
 
 class PPO(RLmodule):

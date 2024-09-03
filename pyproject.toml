@@ -42,7 +42,7 @@ rich = "*"
 sh = { version = "*", markers = "sys_platform == 'win32'" }
 torchinfo = "*"
 SimpleITK = "*"
-scikit-image==0.19.3
+scikit-image = "==0.19.3"
 scikit-learn = "*"
 nibabel = "*"
 monai= "==1.2.0"
@@ -55,7 +55,8 @@ medpy = "*"
 matplotlib = "*"
 holoviews = "*"
 seaborn = "*"
-comet-ml='>=3.31.0'
+comet-ml = '>=3.31.0'
+moviepy = "*"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^2.20.0"

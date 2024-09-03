@@ -1,2 +1,2 @@
-_target_: actors.Actors.UnetCritic
+_target_: rl4echo.actors.Actors.UnetCritic
 pretrain_ckpt: null

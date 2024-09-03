@@ -15,11 +15,11 @@ from torch import Tensor
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 from vital.data.camus.config import Label
 
-from utils.Metrics import accuracy, dice_score, is_anatomically_valid
-from utils.file_utils import get_img_subpath, save_to_reward_dataset
-from utils.logging_helper import log_image
-from utils.tensor_utils import convert_to_numpy
-from utils.test_metrics import dice, hausdorff
+from rl4echo.utils.Metrics import accuracy, dice_score, is_anatomically_valid
+from rl4echo.utils.file_utils import get_img_subpath, save_to_reward_dataset
+from rl4echo.utils.logging_helper import log_image
+from rl4echo.utils.tensor_utils import convert_to_numpy
+from rl4echo.utils.test_metrics import dice, hausdorff
 
 
 def shrink_perturb(model, lamda=0.5, sigma=0.01):

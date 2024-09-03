@@ -11,12 +11,6 @@ defaults:
 
   - _self_
 
-datamodule:
-  data_path: ./logs/run_7_CB_gc/
-
-model:
-  save_model_path: #./logs/reward_CB.ckpt
-
 seed: 1
 
 callbacks:

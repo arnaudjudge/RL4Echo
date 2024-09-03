@@ -8,7 +8,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch import Tensor
 
-from RLmodule import RLmodule
+from rl4echo.RLmodule import RLmodule
 
 
 class PolicyGradient(RLmodule):

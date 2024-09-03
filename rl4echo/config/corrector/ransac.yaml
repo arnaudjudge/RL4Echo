@@ -1,1 +1,1 @@
-_target_: utils.correctors.RansacCorrector
+_target_: rl4echo.utils.correctors.RansacCorrector

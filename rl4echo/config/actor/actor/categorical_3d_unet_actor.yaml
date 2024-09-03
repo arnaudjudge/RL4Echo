@@ -1,0 +1,6 @@
+defaults:
+  - net: unet3d.yaml
+
+_target_: rl4echo.actors.Actors_3d.Unet3DActorCategorical
+pretrain_ckpt: ./actor_3d_first.ckpt
+ref_ckpt: ./actor_3d_first.ckpt

@@ -9,7 +9,7 @@ from torch import distributions
 from torchmetrics.functional import dice
 from vital.models.segmentation.unet import UNet
 
-from rewardnet.unet_heads import UNet_multihead
+from rl4echo.rewardnet.unet_heads import UNet_multihead
 
 """
 Reward functions must each have pred, img, gt as input parameters
@@ -25,6 +25,20 @@ class Reward:
 class RewardUnet(Reward):
     def __init__(self, state_dict_path, temp_factor=1):
         self.net = UNet(input_shape=(2, 256, 256), output_shape=(1, 256, 256))
+        self.net.load_state_dict(torch.load(state_dict_path))
+        self.temp_factor = temp_factor
+        if torch.cuda.is_available():
+            self.net.cuda()
+
+    @torch.no_grad()
+    def __call__(self, pred, imgs, gt):
+        stack = torch.stack((imgs.squeeze(1), pred), dim=1)
+        return torch.sigmoid(self.net(stack)/self.temp_factor).squeeze(1)
+
+
+class RewardUnet3D(Reward):
+    def __init__(self, net, state_dict_path, temp_factor=1):
+        self.net = net
         self.net.load_state_dict(torch.load(state_dict_path))
         self.temp_factor = temp_factor
         if torch.cuda.is_available():

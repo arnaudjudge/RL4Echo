@@ -2,4 +2,4 @@ defaults:
   - RLModule
   - /actor: default_actor
 
-_target_: PolicyGradient.PolicyGradient
+_target_: rl4echo.PolicyGradient.PolicyGradient

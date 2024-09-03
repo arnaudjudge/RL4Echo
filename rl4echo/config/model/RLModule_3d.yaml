@@ -1,0 +1,8 @@
+defaults:
+  - /reward: rewardunet3d
+  - /corrector: ae
+
+actor_save_path: actor_3d.ckpt
+critic_save_path: critic_3d.ckpt
+
+predict_save_dir: /data/rl_logs/3dlooptest

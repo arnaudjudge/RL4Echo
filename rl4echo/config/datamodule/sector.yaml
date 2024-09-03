@@ -1,4 +1,4 @@
-_target_: datamodules.SectorDataModule.SectorDataModule
+_target_: rl4echo.datamodules.SectorDataModule.SectorDataModule
 
 data_dir: ${oc.env:DATA_PATH}/icardio/train_subset_10k/
 csv_file: 'subset_w_split_0_pred.csv'

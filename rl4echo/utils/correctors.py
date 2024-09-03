@@ -1,10 +1,12 @@
 import numpy as np
-from utils.corrector_utils import MorphologicalAndTemporalCorrectionAEApplicator
+from rl4echo.utils.corrector_utils import MorphologicalAndTemporalCorrectionAEApplicator
 # from bdicardio.utils.ransac_utils import ransac_sector_extraction
-from utils.corrector_utils import compare_segmentation_with_ae
+from rl4echo.utils.corrector_utils import compare_segmentation_with_ae
 from scipy import ndimage
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 
+import warnings
+warnings.filterwarnings("ignore")
 
 class Corrector:
     def correct_batch(self, b_img, b_act):

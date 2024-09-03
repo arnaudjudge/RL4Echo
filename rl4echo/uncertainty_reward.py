@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 from scipy.stats import pearsonr
 import seaborn as sns
-from utils.test_metrics import dice
+from rl4echo.utils.test_metrics import dice
 from vital.data.camus.config import Label
 from statsmodels.formula.api import ols
 from statsmodels.stats.outliers_influence import OLSInfluence

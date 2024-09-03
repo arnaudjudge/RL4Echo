@@ -98,7 +98,7 @@ class RewardNetDataModule(pl.LightningDataModule):
 
 if __name__ == "__main__":
 
-    dl = RewardNetDataModule('../CGPT_Loop/')
+    dl = RewardNetDataModule('/data/rl_logs/run_1/')
     dl.setup()
     for i in range(1):
        batch = next(iter(dl.train_dataloader()))
