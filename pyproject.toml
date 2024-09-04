@@ -52,7 +52,7 @@ joblib = "*"
 pandas = "*"
 h5py = "*"
 medpy = "*"
-matplotlib = "*"
+matplotlib = "3.7.2"
 holoviews = "*"
 seaborn = "*"
 comet-ml = '>=3.31.0'
