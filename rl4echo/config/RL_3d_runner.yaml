@@ -18,7 +18,7 @@ datamodule:
   gt_column: Gt_0
 
 predict_subset_frac: 0
-train: False
+train: True
 
 trainer:
   _target_: pytorch_lightning.Trainer
