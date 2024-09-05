@@ -249,9 +249,9 @@ class RLmodule3D(pl.LightningModule):
         for i in range(len(b_img)):
             log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
                          epoch=self.current_epoch)
-            log_video(self.logger, img=b_gt[i].unsqueeze(0), title='test_GroundTruth', number=batch_idx * (i + 1),
+            log_video(self.logger, img=b_gt[i].unsqueeze(0), background=b_img[i], title='test_GroundTruth', number=batch_idx * (i + 1),
                          epoch=self.current_epoch)
-            log_video(self.logger, img=prev_actions[i].unsqueeze(0), title='test_Prediction',
+            log_video(self.logger, img=prev_actions[i].unsqueeze(0), background=b_img[i], title='test_Prediction',
                          number=batch_idx * (i + 1), img_text=simple_dice[i].mean(), epoch=self.current_epoch)
             if v.shape == prev_actions[..., :4].shape:
                 log_sequence(self.logger, img=v[i].unsqueeze(0), title='test_v_function', number=batch_idx * (i + 1),
