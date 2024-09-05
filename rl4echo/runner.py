@@ -40,7 +40,7 @@ def main(cfg):
         ckpt_path = None
 
     # test with everything
-    datamodule.hparams.subset_frac = 0.005
+    datamodule.hparams.subset_frac = 1.0
     trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
     if getattr(cfg.model, "predict_save_dir", None) and cfg.predict_subset_frac > 0:
