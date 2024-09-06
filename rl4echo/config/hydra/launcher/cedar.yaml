@@ -4,3 +4,4 @@ defaults:
 cpus_per_task: 2
 gpus_per_node: 1
 mem_gb: 46
+account: rrg-descotea
