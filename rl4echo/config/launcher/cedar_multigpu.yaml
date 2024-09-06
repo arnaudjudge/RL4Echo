@@ -6,7 +6,8 @@ defaults:
 
 hydra:
   launcher:
-    gpus_per_node: 2
+#    gpus_per_node: 2
+    gres: gpu:v100l:2
     tasks_per_node: 2
 
 trainer:
