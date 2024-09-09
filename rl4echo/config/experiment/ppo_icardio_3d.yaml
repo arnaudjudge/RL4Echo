@@ -4,7 +4,7 @@ defaults:
   - override /model: ppo_3d
   - override /datamodule: icardio_3d
   - override /actor/actor@model.actor.actor: categorical_3d_unet_actor
-  - override /reward@model.reward: pixelwise_accuracy
+#  - override /reward@model.reward: pixelwise_accuracy
   - override /corrector@model.corrector: ae
 
 datamodule:

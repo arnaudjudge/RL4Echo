@@ -41,13 +41,11 @@ class RewardUnet3D(Reward):
         self.net = net
         self.net.load_state_dict(torch.load(state_dict_path))
         self.temp_factor = temp_factor
-        if torch.cuda.is_available():
-            self.net.cuda()
 
     @torch.no_grad()
     def __call__(self, pred, imgs, gt):
         stack = torch.stack((imgs.squeeze(1), pred), dim=1)
-        return torch.sigmoid(self.net(stack)/self.temp_factor).squeeze(1)
+        return torch.sigmoid(self.net.to(imgs.device)(stack)/self.temp_factor).squeeze(1)
 
 
 class RewardUnetSigma(Reward):
