@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 import hydra
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
-from pytorch_lightning import Trainer, seed_everything
+from lightning.pytorch import Trainer, seed_everything
 
 from rl4echo.utils.instantiators import instantiate_callbacks
 

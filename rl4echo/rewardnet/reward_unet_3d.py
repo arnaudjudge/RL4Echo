@@ -2,8 +2,8 @@ import pickle
 import random
 from typing import Dict
 
-import pytorch_lightning as pl
 import torch
+from lightning import LightningModule
 from torch import nn, optim
 from torch.nn import functional as F
 from vital.models.segmentation.unet import UNet
@@ -15,7 +15,7 @@ from rl4echo.utils.logging_helper import log_sequence
 import torch.distributions as distributions
 
 
-class Reward3DOptimizer(pl.LightningModule):
+class Reward3DOptimizer(LightningModule):
     def __init__(self, net, save_model_path=None, var_file=None, **kwargs):
         super().__init__(**kwargs)
 

@@ -5,9 +5,8 @@ import cv2
 import torch
 from PIL import Image
 from matplotlib import pyplot as plt, animation
-from lightning.pytorch.loggers import CometLogger
+from lightning.pytorch.loggers import CometLogger, TensorBoardLogger
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
-from pytorch_lightning.loggers import TensorBoardLogger
 
 import logging
 logging.getLogger("matplotlib").setLevel(logging.WARNING)

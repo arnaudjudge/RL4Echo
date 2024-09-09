@@ -3,8 +3,8 @@ from typing import Optional
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import pytorch_lightning as pl
 import torch
+from lightning import LightningDataModule
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
@@ -56,7 +56,7 @@ class CamusDataset(Dataset):
                 }
 
 
-class CamusDataModule(pl.LightningDataModule):
+class CamusDataModule(LightningDataModule):
     """
     DataModule used for semantic segmentation in geometric generalization project
     """

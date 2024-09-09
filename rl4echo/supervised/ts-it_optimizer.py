@@ -1,7 +1,7 @@
 from typing import Dict
 
 import h5py
-import pytorch_lightning as pl
+from lightning import LightningModule
 from scipy import ndimage
 from torch import Tensor
 from torchmetrics.classification import Dice
@@ -34,7 +34,7 @@ class DiceLoss(nn.Module):
         return 1 - ((2. * intersection) / (torch.sum(target) + torch.sum(output)))
 
 
-class TSITOptimizer(pl.LightningModule):
+class TSITOptimizer(LightningModule):
     def __init__(self,
                  input_shape=(1, 256, 256),
                  output_shape=(1, 256, 256),

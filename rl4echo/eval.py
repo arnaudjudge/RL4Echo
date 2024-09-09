@@ -1,10 +1,9 @@
 import os
 from dotenv import load_dotenv
 import hydra
-import pytorch_lightning
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
-from pytorch_lightning import Trainer
+from lightning.pytorch import Trainer, seed_everything
 
 from rl4echo.utils.instantiators import instantiate_callbacks
 
@@ -21,7 +20,7 @@ def main(cfg):
     os.environ["HYDRA_FULL_ERROR"] = "1"
     print(OmegaConf.to_yaml(cfg))
 
-    pytorch_lightning.seed_everything(cfg.seed)
+    seed_everything(cfg.seed)
 
     logger = instantiate(cfg.logger)
 

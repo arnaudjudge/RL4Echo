@@ -1,7 +1,7 @@
 from typing import List
 
 import hydra
-from pytorch_lightning import Callback
+from lightning.pytorch import Callback
 from omegaconf import DictConfig
 
 

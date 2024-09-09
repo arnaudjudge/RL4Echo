@@ -4,7 +4,7 @@ run_name: test
 logger_run_name: '${get_class_name: ${model._target_}}_${run_name}'
 
 defaults:
-  - logger: comet
+  - logger: tensorboard
   - model: rewardnet_3d
   - datamodule: rewardnet_diff_3d
   - callbacks: default
@@ -23,7 +23,7 @@ run_predict: False
 train: True
 
 trainer:
-  _target_: pytorch_lightning.Trainer
+  _target_: lightning.pytorch.Trainer
   max_epochs: 50
   log_every_n_steps: 1
   accelerator: gpu

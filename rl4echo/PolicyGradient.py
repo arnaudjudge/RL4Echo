@@ -1,11 +1,6 @@
 from typing import Any
-from typing import Tuple
 
-import numpy as np
-import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import TensorBoardLogger
 from torch import Tensor
 
 from rl4echo.RLmodule import RLmodule

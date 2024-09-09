@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import torch
 import torchio as tio
-import pytorch_lightning as pl
 from lightning import LightningDataModule
 from monai.data import DataLoader
 from torch.utils.data import Dataset
@@ -126,7 +125,7 @@ class RL3dDataset(Dataset):
                 approx_gt = approx_gt.unsqueeze(0)
 
         return {'img': img.type(torch.float32),
-                'gt': mask.type(torch.LongTensor) if self.allow_real_gt or self.test else torch.zeros_like(torch.tensor(mask)),
+                'gt': mask.type(torch.LongTensor) if self.allow_real_gt or self.test else torch.zeros_like(torch.tensor(mask).type(torch.LongTensor)),
                 'approx_gt': approx_gt.type(torch.LongTensor),
                 'use_gt': torch.tensor(self.use_gt[idx]),
                 'image_meta_dict': {'case_identifier': self.df.iloc[idx]['dicom_uuid'],
@@ -149,7 +148,7 @@ class RL3dDataset(Dataset):
         return x, y, z
 
 
-class RL3dDataModule(pl.LightningDataModule):
+class RL3dDataModule(LightningDataModule):
     """Data module for nnUnet pipeline."""
 
     def __init__(

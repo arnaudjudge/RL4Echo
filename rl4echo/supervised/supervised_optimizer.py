@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Dict, Any
 
 import numpy as np
-import pytorch_lightning as pl
+from lightning import LightningModule
 import torch
 from torch import nn, Tensor
 from torchmetrics.classification import Dice
@@ -28,7 +28,7 @@ class DiceLoss(nn.Module):
         return 1 - ((2. * intersection) / (torch.sum(target) + torch.sum(output)))
 
 
-class SupervisedOptimizer(pl.LightningModule):
+class SupervisedOptimizer(LightningModule):
     def __init__(self, input_shape=(1, 256, 256), output_shape=(1, 256, 256), loss=nn.BCELoss(), ckpt_path=None, corrector=None, predict_save_dir=None, **kwargs):
         super().__init__(**kwargs)
 

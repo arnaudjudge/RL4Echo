@@ -4,7 +4,7 @@ from typing import Optional
 
 import nibabel as nib
 import numpy as np
-import pytorch_lightning as pl
+from lightning import LightningDataModule
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data import random_split, DataLoader

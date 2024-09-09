@@ -2,7 +2,7 @@ import pickle
 import random
 from typing import Dict
 
-import pytorch_lightning as pl
+from lightning import LightningModule
 import torch
 from torch import nn, optim
 from torch.nn import functional as F
@@ -15,7 +15,7 @@ from rl4echo.utils.logging_helper import log_image
 import torch.distributions as distributions
 
 
-class RewardOptimizer(pl.LightningModule):
+class RewardOptimizer(LightningModule):
     def __init__(self, save_model_path=None, uncertainty=False, var_file=None, **kwargs):
         super().__init__(**kwargs)
 

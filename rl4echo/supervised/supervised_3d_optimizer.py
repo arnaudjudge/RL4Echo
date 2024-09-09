@@ -7,7 +7,6 @@ from typing import Dict, Any
 import lightning
 import numpy as np
 from scipy import ndimage
-# import pytorch_lightning as pl
 import torch
 from torch import nn, Tensor
 from torchmetrics.classification import Dice
@@ -175,9 +174,9 @@ class Supervised3DOptimizer(nnUNetPatchlessLitModule):
         for i in range(len(b_img)):
             log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
                          epoch=self.current_epoch)
-            log_video(self.logger, img=b_gt[i].unsqueeze(0), title='test_GroundTruth', number=batch_idx * (i + 1),
+            log_video(self.logger, img=b_gt[i].unsqueeze(0), background=b_img[i], title='test_GroundTruth', number=batch_idx * (i + 1),
                          epoch=self.current_epoch)
-            log_video(self.logger, img=y_pred[i].unsqueeze(0), title='test_Prediction', number=batch_idx * (i + 1),
+            log_video(self.logger, img=y_pred[i].unsqueeze(0), background=b_img[i], title='test_Prediction', number=batch_idx * (i + 1),
                       img_text=simple_dice[i].mean(), epoch=self.current_epoch)
 
         self.log_dict(logs)

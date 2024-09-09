@@ -4,8 +4,8 @@ from typing import Optional
 
 import nibabel as nib
 import numpy as np
-import pytorch_lightning as pl
 import torch
+from lightning import LightningDataModule
 from torch.utils.data import Dataset
 from torch.utils.data import random_split, DataLoader
 
@@ -46,7 +46,7 @@ class RewardNet3DDataset(Dataset):
         return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
 
 
-class RewardNet3DDataModule(pl.LightningDataModule):
+class RewardNet3DDataModule(LightningDataModule):
     """
     DataModule used for semantic segmentation in geometric generalization project
     """

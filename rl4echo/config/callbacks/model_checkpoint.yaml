@@ -1,5 +1,5 @@
 model_checkpoint:
-  _target_: pytorch_lightning.callbacks.ModelCheckpoint
+  _target_: lightning.pytorch.callbacks.ModelCheckpoint
 
   monitor: val_reward
   mode: max

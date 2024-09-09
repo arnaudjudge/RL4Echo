@@ -21,7 +21,7 @@ predict_subset_frac: 0
 train: True
 
 trainer:
-  _target_: pytorch_lightning.Trainer
+  _target_: lightning.pytorch.Trainer
   max_epochs: 10
   log_every_n_steps: 1
   accelerator: gpu

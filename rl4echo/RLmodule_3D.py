@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import h5py
 import nibabel as nib
 import numpy as np
-import pytorch_lightning as pl
+from lightning import LightningModule
 import torch
 from monai.data import MetaTensor
 from scipy import ndimage
@@ -42,7 +42,7 @@ def shrink_perturb(model, lamda=0.5, sigma=0.01):
     return model
 
 
-class RLmodule3D(pl.LightningModule):
+class RLmodule3D(LightningModule):
 
     def __init__(self, actor, reward,
                  corrector=None,
@@ -202,6 +202,7 @@ class RLmodule3D(pl.LightningModule):
         acc = accuracy(prev_actions, b_img, b_gt)
         simple_dice = dice_score(prev_actions, b_gt)
 
+        start_time = time.time()
         y_pred_np_as_batch = prev_actions.cpu().numpy().squeeze(0).transpose((2, 0, 1))
         b_gt_np_as_batch = b_gt.cpu().numpy().squeeze(0).transpose((2, 0, 1))
 
@@ -218,18 +219,26 @@ class RLmodule3D(pl.LightningModule):
         voxel_spacing = np.asarray([[abs(meta_dict['resampled_affine'][0, 0, 0].cpu().numpy()),
                                      abs(meta_dict['resampled_affine'][0, 1, 1].cpu().numpy())]]).repeat(
             repeats=len(y_pred_np_as_batch), axis=0)
+        print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
 
+        start_time = time.time()
         test_dice = dice(y_pred_np_as_batch, b_gt_np_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
                          exclude_bg=True, all_classes=True)
         test_dice_epi = dice((y_pred_np_as_batch != 0).astype(np.uint8), (b_gt_np_as_batch != 0).astype(np.uint8),
                              labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False)
+        print(f"Dice took {round(time.time() - start_time, 4)} (s).")
 
+        start_time = time.time()
         test_hd = hausdorff(y_pred_np_as_batch, b_gt_np_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
                             exclude_bg=True, all_classes=True, voxel_spacing=voxel_spacing)
         test_hd_epi = hausdorff((y_pred_np_as_batch != 0).astype(np.uint8), (b_gt_np_as_batch != 0).astype(np.uint8),
                                 labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False,
                                 voxel_spacing=voxel_spacing)['Hausdorff']
+        print(f"HD took {round(time.time() - start_time, 4)} (s).")
+
+        start_time = time.time()
         anat_errors = is_anatomically_valid(y_pred_np_as_batch)
+        print(f"AV took {round(time.time() - start_time, 4)} (s).")
 
         logs = {#'test_loss': loss,
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
@@ -242,6 +251,7 @@ class RLmodule3D(pl.LightningModule):
         logs.update(test_dice)
         logs.update(test_hd)
 
+        start_time = time.time()
         # for logging v
         # Use only first 4 for visualization, avoids having to implement sliding window inference for critic
         _, _, _, _, v, _ = self.actor.evaluate(b_img[..., :4], prev_actions[..., :4])
@@ -261,7 +271,7 @@ class RLmodule3D(pl.LightningModule):
                           img_text=prev_rewards[i].mean(), epoch=self.current_epoch)
 
         self.log_dict(logs)
-
+        print(f"Logging took {round(time.time() - start_time, 4)} (s).")
         # if self.save_uncertainty_path:
         #     with h5py.File(self.save_uncertainty_path, 'a') as f:
         #         for i in range(len(b_img)):

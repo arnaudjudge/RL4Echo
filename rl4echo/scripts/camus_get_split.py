@@ -10,7 +10,7 @@ from typing import Optional
 import h5py
 import torch
 import torch.utils.data
-from pytorch_lightning.trainer.states import TrainerFn
+from lightning.pytorch.trainer.states import TrainerFn
 from skimage.exposure import exposure
 from torch import Tensor
 from torchvision.transforms.functional import to_tensor

@@ -4,9 +4,9 @@ run_name: supervised_default
 logger_run_name: '${get_class_name: ${model._target_}}_${run_name}'
 
 defaults:
-  - logger: tensorboard
+  - logger: comet
   - model: supervised_3d
-  - datamodule: cardinal_3d
+  - datamodule: icardio_3d
   - callbacks: default
   - _self_
 #  - experiment: supervised_camus
@@ -25,7 +25,7 @@ predict_subset_frac: 1000
 train: True
 
 trainer:
-  _target_: pytorch_lightning.Trainer
+  _target_: lightning.pytorch.Trainer
   max_epochs: 10
   log_every_n_steps: 1
   accelerator: gpu

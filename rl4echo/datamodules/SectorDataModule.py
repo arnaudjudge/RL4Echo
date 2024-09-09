@@ -4,7 +4,7 @@ from typing import Optional
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import pytorch_lightning as pl
+from lightning import LightningDataModule
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
@@ -52,7 +52,7 @@ class SectorDataset(Dataset):
                 }
 
 
-class SectorDataModule(pl.LightningDataModule):
+class SectorDataModule(LightningDataModule):
     """
     DataModule used for semantic segmentation in geometric generalization project
     """

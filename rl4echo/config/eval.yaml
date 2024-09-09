@@ -34,7 +34,7 @@ logger:
 #ckpt_path:  /data/rl_logs//run_1_batchsize_increase/PPO_RewardUnet_es_ed/version_3/checkpoints/epoch=1-step=5920.ckpt # /data/rl_logs//run_6_batchsize_increase/PPO_RewardUnet_es_ed/version_3/checkpoints/epoch=0-step=2960.ckpt
 
 trainer:
-  _target_: pytorch_lightning.Trainer
+  _target_: lightning.pytorch.Trainer
   log_every_n_steps: 1
   accelerator: gpu
 #  num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)

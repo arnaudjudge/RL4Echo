@@ -7,8 +7,8 @@ from typing import Any
 import h5py
 import nibabel as nib
 import numpy as np
-import pytorch_lightning as pl
 import torch
+from lightning import LightningModule
 from scipy import ndimage
 from torchvision.transforms.functional import adjust_contrast
 from torch import Tensor
@@ -35,7 +35,7 @@ def shrink_perturb(model, lamda=0.5, sigma=0.01):
     return model
 
 
-class RLmodule(pl.LightningModule):
+class RLmodule(LightningModule):
 
     def __init__(self, actor, reward,
                  corrector=None,
