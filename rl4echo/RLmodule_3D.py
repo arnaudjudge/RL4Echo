@@ -60,6 +60,8 @@ class RLmodule3D(LightningModule):
 
         self.actor = actor
         self.reward_func = reward
+        if hasattr(self.reward_func, 'net'):
+            self.register_module('rewardnet', self.reward_func.net)
 
         self.actor_save_path = actor_save_path
         self.critic_save_path = critic_save_path
