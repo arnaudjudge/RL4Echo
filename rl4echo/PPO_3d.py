@@ -82,7 +82,7 @@ class PPO3D(RLmodule3D):
     def on_validation_epoch_end(self):
         print("FINISHED VALIDATION!!!")
 
-    def on_validation_batch_end(self):
+    def on_validation_batch_end(self, **kwargs):
         print(f"Batch finished!")
 
     def compute_policy_loss(self, batch, **kwargs):
