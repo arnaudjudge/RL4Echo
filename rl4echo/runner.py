@@ -41,11 +41,21 @@ def main(cfg):
 
     # test with everything
     datamodule.hparams.subset_frac = 1.0
+    trainer_conf = cfg.trainer
+    if trainer_conf.get('strategy'):
+        trainer_conf['strategy'] = 'auto'
+    trainer_conf['devices'] = 1
+    trainer: Trainer = hydra.utils.instantiate(trainer_conf, callbacks=callbacks, logger=logger)
     trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
     if getattr(cfg.model, "predict_save_dir", None) and cfg.predict_subset_frac > 0:
         datamodule.hparams.subset_frac = cfg.predict_subset_frac
         datamodule.setup(stage="predict")
+        trainer_conf = cfg.trainer
+        if trainer_conf.get('strategy'):
+            trainer_conf['strategy'] = 'auto'
+        trainer_conf['devices'] = 1
+        trainer: Trainer = hydra.utils.instantiate(trainer_conf, callbacks=callbacks, logger=logger)
         trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
 
