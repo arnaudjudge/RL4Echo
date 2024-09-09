@@ -42,7 +42,7 @@ class PPO3D(RLmodule3D):
         opt_net, opt_critic = self.optimizers()
 
         # TODO: REMOVE GT
-        b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['approx_gt'].squeeze(0), batch['use_gt']
+        b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['gt'].squeeze(0), batch['use_gt']
 
         start_time = time.time()
         # get actions, log_probs, rewards, etc from pi (stays constant for all steps k)
