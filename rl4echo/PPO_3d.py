@@ -1,3 +1,4 @@
+import time
 from typing import Any
 
 import torch
@@ -43,11 +44,13 @@ class PPO3D(RLmodule3D):
         # TODO: REMOVE GT
         b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['approx_gt'].squeeze(0), batch['use_gt']
 
+        start_time = time.time()
         # get actions, log_probs, rewards, etc from pi (stays constant for all steps k)
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_use_gt)
-
+        print(f"\nRollout took {round(time.time() - start_time, 4)} (s).")
         # iterate with pi prime k times
         for k in range(self.k_steps):
+            start_time = time.time()
             # calculates training loss
             loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                         prev_log_probs, b_gt, b_use_gt))
@@ -71,6 +74,16 @@ class PPO3D(RLmodule3D):
                     }
 
             self.log_dict(logs, prog_bar=True)
+            print(f"Iteration took {round(time.time() - start_time, 4)} (s).")
+
+    def on_train_start(self):
+        print("STARTING TRAINING!!!!")
+
+    def on_validation_epoch_end(self):
+        print("FINISHED VALIDATION!!!")
+
+    def on_validation_batch_end(self, outputs, batch, batch_idx, dataloader_idx):
+        print(f"Batch {batch_idx} finished!")
 
     def compute_policy_loss(self, batch, **kwargs):
         """
