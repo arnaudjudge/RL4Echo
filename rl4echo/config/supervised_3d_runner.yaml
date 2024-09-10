@@ -6,7 +6,7 @@ logger_run_name: '${get_class_name: ${model._target_}}_${run_name}'
 defaults:
   - logger: comet
   - model: supervised_3d
-  - datamodule: icardio_3d
+  - datamodule: cardinal_3d
   - callbacks: default
   - _self_
 #  - experiment: supervised_camus
@@ -17,16 +17,17 @@ callbacks:
   model_checkpoint:
     monitor: val_dice
 
-predict_subset_frac: 1000
+predict_subset_frac: 0
 
-#datamodule:
-#  use_dataset_fraction: 0.1
+datamodule:
+  supervised: True
+#  subset_frac: 0.01
 
 train: True
 
 trainer:
   _target_: lightning.pytorch.Trainer
-  max_epochs: 10
+  max_epochs: 50
   log_every_n_steps: 1
   accelerator: gpu
   devices: 1

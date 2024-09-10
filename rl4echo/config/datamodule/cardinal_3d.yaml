@@ -1,5 +1,5 @@
 _target_: rl4echo.datamodules.RL_3d_datamodule.RL3dDataModule
-data_dir: "/data/cardinal_landmarks/"
+data_dir: ${oc.env:DATA_PATH}/cardinal_RL_norm/
 num_workers: 12
 pin_memory: True
 batch_size: 1 # must be 1
