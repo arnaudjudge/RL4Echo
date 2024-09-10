@@ -166,7 +166,7 @@ class RLmodule3D(LightningModule):
                 log_sequence(self.logger, img=prev_rewards[idx].unsqueeze(0), title='RewardMap', number=batch_idx,
                              epoch=self.current_epoch)
 
-        self.log_dict(logs, sync_dist=True)
+        self.log_dict(logs)
         return logs
 
     def test_step(self, batch: dict[str, Tensor], batch_idx: int):
@@ -274,7 +274,7 @@ class RLmodule3D(LightningModule):
                     log_sequence(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap', number=batch_idx * (i + 1),
                               img_text=prev_rewards[i].mean(), epoch=self.current_epoch)
 
-        self.log_dict(logs, sync_dist=True)
+        self.log_dict(logs)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
         # if self.save_uncertainty_path:
         #     with h5py.File(self.save_uncertainty_path, 'a') as f:
