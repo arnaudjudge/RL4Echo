@@ -55,7 +55,7 @@ def main(cfg):
         # if trainer_conf.get('strategy'):
         #     trainer_conf['strategy'] = 'auto'
         # trainer_conf['devices'] = 1
-        trainer: Trainer = hydra.utils.instantiate(trainer_conf, callbacks=callbacks, logger=logger)
+        # trainer: Trainer = hydra.utils.instantiate(trainer_conf, callbacks=callbacks, logger=logger)
         trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
 
