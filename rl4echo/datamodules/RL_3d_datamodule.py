@@ -68,7 +68,7 @@ class RL3dDataset(Dataset):
         sub_path = get_img_subpath(self.df.iloc[idx])
         img_nifti = nib.load(self.data_path + '/img/' + sub_path)
         img = img_nifti.get_fdata()
-        if img.max() > 1:
+        if int(img.max()) > 1:
             img = img / 255
         mask = nib.load(self.data_path + '/segmentation/' + sub_path.replace("_0000", "")).get_fdata()
         original_shape = np.asarray(list(img.shape))
