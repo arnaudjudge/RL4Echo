@@ -11,7 +11,7 @@ hydra:
     tasks_per_node: 2
 
 trainer:
-  strategy: ddp
+  strategy: ddp_find_unused_parameters_true
   devices: 2
   accumulate_grad_batches: 1
 

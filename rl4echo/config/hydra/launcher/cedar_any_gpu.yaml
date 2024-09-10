@@ -1,6 +1,14 @@
 defaults:
   - alliancecan
 
+setup:
+  - "mkdir $SLURM_TMPDIR/RL4ECHO/data -p" # make sure the full path to where the data will be copied exists
+  # TODO Improve copy of data to compute node, by only copying the specific dataset required
+  # We tried to do this by interpolating the {datamodule.dataset_name} config node, but Hydra doesn't seem to have
+  # access to most of the config tree at the stage when it parses the current config group
+  - "rsync -a ${paths.data_dir}/ $SLURM_TMPDIR/RL4ECHO/data" # copy the dataset to the compute node
+  - "export DATA_PATH=$SLURM_TMPDIR/RL4ECHO/data" # override the previous data path with the path on the compute node
+
 cpus_per_task: 2
 gpus_per_node: 1
 mem_gb: 46
