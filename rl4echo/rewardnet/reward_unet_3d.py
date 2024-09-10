@@ -62,11 +62,12 @@ class Reward3DOptimizer(LightningModule):
                        "val_acc": acc.mean()})
 
         # log images
-        idx = random.randint(0, len(x) - 1)  # which image to log
-        log_sequence(self.logger, img=x[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
-        log_sequence(self.logger, img=y[idx], title='GroundTruth', number=batch_idx, epoch=self.current_epoch)
-        log_sequence(self.logger, img=y_pred[idx], title='Prediction', number=batch_idx,
-                  img_text=acc[idx].mean(), epoch=self.current_epoch)
+        if self.trainer.local_rank == 0:
+            idx = random.randint(0, len(x) - 1)  # which image to log
+            log_sequence(self.logger, img=x[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
+            log_sequence(self.logger, img=y[idx], title='GroundTruth', number=batch_idx, epoch=self.current_epoch)
+            log_sequence(self.logger, img=y_pred[idx], title='Prediction', number=batch_idx,
+                      img_text=acc[idx].mean(), epoch=self.current_epoch)
 
         return {'loss': loss}
 
@@ -81,11 +82,12 @@ class Reward3DOptimizer(LightningModule):
         self.log_dict({"test_loss": loss,
                        "test_acc": acc.mean()})
 
-        for i in range(len(x)):
-            log_sequence(self.logger, img=x[i], title='test_Image', number=batch_idx * (i + 1), epoch=self.current_epoch)
-            log_sequence(self.logger, img=y[i], title='test_GroundTruth', number=batch_idx * (i + 1), epoch=self.current_epoch)
-            log_sequence(self.logger, img=y_pred[i], title='test_Prediction', number=batch_idx * (i + 1),
-                      img_text=acc[i].mean(), epoch=self.current_epoch)
+        if self.trainer.local_rank == 0:
+            for i in range(len(x)):
+                log_sequence(self.logger, img=x[i], title='test_Image', number=batch_idx * (i + 1), epoch=self.current_epoch)
+                log_sequence(self.logger, img=y[i], title='test_GroundTruth', number=batch_idx * (i + 1), epoch=self.current_epoch)
+                log_sequence(self.logger, img=y_pred[i], title='test_Prediction', number=batch_idx * (i + 1),
+                          img_text=acc[i].mean(), epoch=self.current_epoch)
 
         return {'loss': loss}
 

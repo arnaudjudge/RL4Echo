@@ -46,7 +46,7 @@ class RewardNetAutoDataset(Dataset):
         return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
 
 
-class RewardNetDataModule(pl.LightningDataModule):
+class RewardNetDataModule(LightningDataModule):
     """
     DataModule used for semantic segmentation in geometric generalization project
     """

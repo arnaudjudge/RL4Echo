@@ -93,12 +93,13 @@ class Supervised3DOptimizer(nnUNetPatchlessLitModule):
                 }
 
         # log images
-        idx = random.randint(0, len(b_img) - 1)  # which image to log
-        log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
-        log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
-                     epoch=self.current_epoch)
-        log_sequence(self.logger, img=y_pred[idx].unsqueeze(0), title='Prediction', number=batch_idx,
-                     img_text=acc[idx].mean(), epoch=self.current_epoch)
+        if self.trainer.local_rank == 0:
+            idx = random.randint(0, len(b_img) - 1)  # which image to log
+            log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
+            log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
+                         epoch=self.current_epoch)
+            log_sequence(self.logger, img=y_pred[idx].unsqueeze(0), title='Prediction', number=batch_idx,
+                         img_text=acc[idx].mean(), epoch=self.current_epoch)
 
         self.log_dict(logs)
 
@@ -171,13 +172,14 @@ class Supervised3DOptimizer(nnUNetPatchlessLitModule):
         logs.update(test_dice)
         logs.update(test_hd)
 
-        for i in range(len(b_img)):
-            log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
-                         epoch=self.current_epoch)
-            log_video(self.logger, img=b_gt[i].unsqueeze(0), background=b_img[i], title='test_GroundTruth', number=batch_idx * (i + 1),
-                         epoch=self.current_epoch)
-            log_video(self.logger, img=y_pred[i].unsqueeze(0), background=b_img[i], title='test_Prediction', number=batch_idx * (i + 1),
-                      img_text=simple_dice[i].mean(), epoch=self.current_epoch)
+        if self.trainer.local_rank == 0:
+            for i in range(len(b_img)):
+                log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
+                             epoch=self.current_epoch)
+                log_video(self.logger, img=b_gt[i].unsqueeze(0), background=b_img[i], title='test_GroundTruth', number=batch_idx * (i + 1),
+                             epoch=self.current_epoch)
+                log_video(self.logger, img=y_pred[i].unsqueeze(0), background=b_img[i], title='test_Prediction', number=batch_idx * (i + 1),
+                          img_text=simple_dice[i].mean(), epoch=self.current_epoch)
 
         self.log_dict(logs)
 

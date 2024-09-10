@@ -60,6 +60,8 @@ class RLmodule3D(LightningModule):
 
         self.actor = actor
         self.reward_func = reward
+        if hasattr(self.reward_func, 'net'):
+            self.register_module('rewardnet', self.reward_func.net)
 
         self.actor_save_path = actor_save_path
         self.critic_save_path = critic_save_path
@@ -153,15 +155,16 @@ class RLmodule3D(LightningModule):
                 }
 
         # log images
-        idx = random.randint(0, len(b_img) - 1)  # which image to log
-        log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
-        log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
-                     epoch=self.current_epoch)
-        log_sequence(self.logger, img=prev_actions[idx].unsqueeze(0), title='Prediction', number=batch_idx,
-                  img_text=prev_rewards[idx].mean(), epoch=self.current_epoch)
-        if prev_rewards.shape == prev_actions.shape:
-            log_sequence(self.logger, img=prev_rewards[idx].unsqueeze(0), title='RewardMap', number=batch_idx,
+        if self.trainer.local_rank == 0:
+            idx = random.randint(0, len(b_img) - 1)  # which image to log
+            log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
+            log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
                          epoch=self.current_epoch)
+            log_sequence(self.logger, img=prev_actions[idx].unsqueeze(0), title='Prediction', number=batch_idx,
+                      img_text=prev_rewards[idx].mean(), epoch=self.current_epoch)
+            if prev_rewards.shape == prev_actions.shape:
+                log_sequence(self.logger, img=prev_rewards[idx].unsqueeze(0), title='RewardMap', number=batch_idx,
+                             epoch=self.current_epoch)
 
         self.log_dict(logs)
         return logs
@@ -256,19 +259,20 @@ class RLmodule3D(LightningModule):
         # Use only first 4 for visualization, avoids having to implement sliding window inference for critic
         _, _, _, _, v, _ = self.actor.evaluate(b_img[..., :4], prev_actions[..., :4])
 
-        for i in range(len(b_img)):
-            log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
-                         epoch=self.current_epoch)
-            log_video(self.logger, img=b_gt[i].unsqueeze(0), background=b_img[i], title='test_GroundTruth', number=batch_idx * (i + 1),
-                         epoch=self.current_epoch)
-            log_video(self.logger, img=prev_actions[i].unsqueeze(0), background=b_img[i], title='test_Prediction',
-                         number=batch_idx * (i + 1), img_text=simple_dice[i].mean(), epoch=self.current_epoch)
-            if v.shape == prev_actions[..., :4].shape:
-                log_sequence(self.logger, img=v[i].unsqueeze(0), title='test_v_function', number=batch_idx * (i + 1),
-                          img_text=v[i].mean(), epoch=self.current_epoch)
-            if prev_rewards.shape[:-1] == prev_actions.shape[:-1]:
-                log_sequence(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap', number=batch_idx * (i + 1),
-                          img_text=prev_rewards[i].mean(), epoch=self.current_epoch)
+        if self.trainer.local_rank == 0:
+            for i in range(len(b_img)):
+                log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
+                             epoch=self.current_epoch)
+                log_video(self.logger, img=b_gt[i].unsqueeze(0), background=b_img[i], title='test_GroundTruth', number=batch_idx * (i + 1),
+                             epoch=self.current_epoch)
+                log_video(self.logger, img=prev_actions[i].unsqueeze(0), background=b_img[i], title='test_Prediction',
+                             number=batch_idx * (i + 1), img_text=simple_dice[i].mean(), epoch=self.current_epoch)
+                if v.shape == prev_actions[..., :4].shape:
+                    log_sequence(self.logger, img=v[i].unsqueeze(0), title='test_v_function', number=batch_idx * (i + 1),
+                              img_text=v[i].mean(), epoch=self.current_epoch)
+                if prev_rewards.shape[:-1] == prev_actions.shape[:-1]:
+                    log_sequence(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap', number=batch_idx * (i + 1),
+                              img_text=prev_rewards[i].mean(), epoch=self.current_epoch)
 
         self.log_dict(logs)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
