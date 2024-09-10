@@ -3,30 +3,30 @@ import nibabel as nib
 from scipy import stats
 import skimage.exposure as exp
 from matplotlib import pyplot as plt
-
+from tqdm import tqdm
 
 if __name__ == "__main__":
-    data_path = "/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_affine/"
+    data_path = "/data/icardio/subsets/subset_40k_RL/"
     img_folder = "img/"
-    output_path = "/home/local/USHERBROOKE/juda2901/dev/data/camus/RLcamus_affine/"
+    output_path = "/data/icardio/subsets/subset_40k_RL/"
 
-    for p in Path(data_path + img_folder).rglob('*.nii.gz'):
+    for p in tqdm(Path(data_path + img_folder).rglob('*.nii.gz'), total=40000):
         print(p)
         img = nib.load(p)
         data = img.get_fdata()
-        print(data.mean())
-        print(data.std())
+        # print(data.mean())
+        # print(data.std())
 
         # data = stats.zscore(data, axis=None)
         data = data / 255
-        print(data.mean())
-        print(data.std())
+        # print(data.mean())
+        # print(data.std())
 
         # f, (ax1, ax2) = plt.subplots(2, 2)
         # ax1[1].hist(data.flatten() * 255, bins=255, range=[2, 255])
         # ax1[1].set_title("Before Equalization")
         #
-        # ax1[0].imshow(data.T * 255)
+        # ax1[0].imshow(data[..., 0].T * 255)
         # ax1[0].set_title("Before Equalization")
 
         data = exp.equalize_adapthist(data, clip_limit=0.01)
@@ -41,7 +41,7 @@ if __name__ == "__main__":
         # cdf = np.ma.filled(cdf_m, 0).astype('uint8')
         # data = cdf[data]
 
-        # ax2[0].imshow(data.T * 255)
+        # ax2[0].imshow(data[..., 0].T * 255)
         # ax2[0].set_title("After Equalization")
         #
         # ax2[1].hist(data.flatten()*255, bins=255, range=[2, 255])
@@ -51,6 +51,7 @@ if __name__ == "__main__":
         out_img = nib.Nifti1Image(data, img.affine, img.header)
         out_path = output_path + p.relative_to(data_path).as_posix()
         print(out_path)
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         nib.save(out_img, out_path)
 
         print("\n")
