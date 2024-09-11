@@ -55,16 +55,17 @@ def main(cfg):
         runner_main(sub_cfg)
 
     # Predict and test (baseline) on target domain
-    overrides = main_overrides + cfg.rl_overrides + [f"trainer.max_epochs=0",
-                                                     f"predict_subset_frac={cfg.rl_num_predict}",
-                                                     f"model.actor.actor.pretrain_ckpt={f'{output_path}/{0}/actor.ckpt' if pretrain_path is None else pretrain_path}",
-                                                     f"model.actor.actor.ref_ckpt={f'{output_path}/{0}/actor.ckpt' if pretrain_path is None else pretrain_path}",
-                                                     "reward@model.reward=pixelwise_accuracy",  # will not be used
-                                                     f"model.actor_save_path={output_path}/{0}/actor.ckpt",  # no need
-                                                     f"model.critic_save_path=null",  # no need
-                                                     f"model.predict_save_dir={output_path}/rewardDS/",
-                                                     f"experiment=ppo_{target_experiment}"
-                                                     ]
+    trainer_overrides = [f"trainer.{k}={v}" for k, v in cfg.get("trainer", {}).items()]
+    overrides = main_overrides + trainer_overrides + cfg.rl_overrides + [f"trainer.max_epochs=0",
+                                                                         f"predict_subset_frac={cfg.rl_num_predict}",
+                                                                         f"model.actor.actor.pretrain_ckpt={f'{output_path}/{0}/actor.ckpt' if pretrain_path is None else pretrain_path}",
+                                                                         f"model.actor.actor.ref_ckpt={f'{output_path}/{0}/actor.ckpt' if pretrain_path is None else pretrain_path}",
+                                                                         "reward@model.reward=pixelwise_accuracy",  # will not be used
+                                                                         f"model.actor_save_path={output_path}/{0}/actor.ckpt",  # no need
+                                                                         f"model.critic_save_path=null",  # no need
+                                                                         f"model.predict_save_dir={output_path}/rewardDS/",
+                                                                         f"experiment=ppo_{target_experiment}"
+                                                                         ]
     sub_cfg = compose(config_name=f"RL_3d_runner.yaml", overrides=overrides)
     # prepare dataset with custom split and gt column
     if experiment_split_column != sub_cfg.datamodule.splits_column:
@@ -89,11 +90,11 @@ def main(cfg):
         # print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/rewardDS/images/"]))
 
         # train reward net
-        overrides = main_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
-                                      f"datamodule.data_path={os.environ['DATA_PATH']}/rewardDS/",
-                                      f"model.save_model_path={output_path}/{i - 1}/rewardnet.ckpt",
-                                      ]
-                                      # f"+model.var_file={cfg.var_file}"]
+        overrides = main_overrides + trainer_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
+                                                          f"datamodule.data_path={os.environ['DATA_PATH']}/rewardDS/",
+                                                          f"model.save_model_path={output_path}/{i - 1}/rewardnet.ckpt",
+                                                          ]
+                                                          # f"+model.var_file={cfg.var_file}"]
         sub_cfg = compose(config_name=f"reward_3d_runner.yaml", overrides=overrides)
         print(OmegaConf.to_yaml(sub_cfg))
         runner_main(sub_cfg)
@@ -107,7 +108,7 @@ def main(cfg):
 
         load_dotenv()
         # train PPO model with fresh reward net
-        overrides = main_overrides + cfg.rl_overrides + \
+        overrides = main_overrides + trainer_overrides + cfg.rl_overrides + \
                     [f"trainer.max_epochs={cfg.rl_num_epochs}",
                      f"predict_subset_frac={cfg.rl_num_predict}",
                      f"datamodule.splits_column={experiment_split_column}",
