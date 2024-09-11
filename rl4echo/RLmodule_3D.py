@@ -1,4 +1,5 @@
 import copy
+import os
 import random
 import time
 from datetime import datetime
@@ -7,10 +8,13 @@ from typing import Any, Union
 
 import matplotlib.pyplot as plt
 import h5py
+import SimpleITK as sitk
 import nibabel as nib
 import numpy as np
+from einops import rearrange
 from lightning import LightningModule
 import torch
+import torchio as tio
 from monai.data import MetaTensor
 from scipy import ndimage
 from torchvision.transforms.functional import adjust_contrast
@@ -53,6 +57,7 @@ class RLmodule3D(LightningModule):
                  predict_do_model_perturb=True,
                  predict_do_img_perturb=True,
                  predict_do_corrections=True,
+                 save_on_test=False,
                  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
@@ -74,6 +79,8 @@ class RLmodule3D(LightningModule):
         self.predict_do_model_perturb = predict_do_model_perturb
         self.predict_do_img_perturb = predict_do_img_perturb
         self.predict_do_corrections = predict_do_corrections
+
+        self.save_on_test = save_on_test
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()
@@ -288,6 +295,23 @@ class RLmodule3D(LightningModule):
         #             f[dicom]['reward_map'] = prev_rewards[i].cpu().numpy()
         #             f[dicom]['accuracy_map'] = (prev_actions[i].cpu().numpy() != b_gt[i].cpu().numpy()).astype(np.uint8)
 
+        if self.save_on_test:
+            prev_actions = prev_actions.squeeze(0).cpu().detach().numpy()
+            original_shape = meta_dict.get("original_shape").cpu().detach().numpy()[0]
+
+            save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
+
+            fname = meta_dict.get("case_identifier")[0]
+            spacing = meta_dict.get("original_spacing").cpu().detach().numpy()[0]
+            resampled_affine = meta_dict.get("resampled_affine").cpu().detach().numpy()[0]
+
+            final_preds = np.expand_dims(prev_actions, 0)
+            transform = tio.Resample(spacing)
+            croporpad = tio.CropOrPad(original_shape)
+            final_preds = croporpad(transform(tio.LabelMap(tensor=final_preds, affine=resampled_affine))).numpy()[0]
+
+            self.save_mask(final_preds, fname, spacing.astype(np.float64), save_dir)
+
         return logs
 
     def on_test_start(self) -> None:  # noqa: D102
@@ -372,6 +396,26 @@ class RLmodule3D(LightningModule):
             inputs=image,
             network=self.actor.actor.net,
         )
+
+    def save_mask(
+        self, preds: np.ndarray, fname: str, spacing: np.ndarray, save_dir: Union[str, Path]
+    ) -> None:
+        """Save segmentation mask to the given save directory.
+
+        Args:
+            preds: Predicted segmentation mask.
+            fname: Filename to save.
+            spacing: Spacing to save the segmentation mask.
+            save_dir: Directory to save the segmentation mask.
+        """
+        print(f"Saving segmentation for {fname}... in {save_dir}")
+
+        os.makedirs(save_dir, exist_ok=True)
+
+        preds = preds.astype(np.uint8)
+        itk_image = sitk.GetImageFromArray(rearrange(preds, "w h d ->  d h w"))
+        itk_image.SetSpacing(spacing)
+        sitk.WriteImage(itk_image, os.path.join(save_dir, str(fname) + ".nii.gz"))
 
     def on_test_end(self) -> None:
         if self.actor_save_path:
