@@ -34,13 +34,15 @@ def main(cfg):
     experiment_split_column = f"split_{timestamp}"
     experiment_gt_column = f"Gt_{timestamp}"
     pretrain_path = cfg.get("pretrain_path", None)
+    trainer_overrides = [f"++trainer.{k}={v}" for k, v in cfg.get("trainer", {}).items()]
+
     if not pretrain_path:
         # train supervised network for initial actor
-        overrides = main_overrides + [f"trainer.max_epochs={cfg.sup_num_epochs}",
-                                      f'model.predict_save_dir={None}',  # no predictions here
-                                      f"model.ckpt_path={output_path}/{0}/actor.ckpt",
-                                      f"model.loss.label_smoothing={cfg.sup_loss_label_smoothing}",
-                                      f"experiment=supervised_{source_experiment}"]
+        overrides = main_overrides + trainer_overrides + [f"trainer.max_epochs={cfg.sup_num_epochs}",
+                                                          f'model.predict_save_dir={None}',  # no predictions here
+                                                          f"model.ckpt_path={output_path}/{0}/actor.ckpt",
+                                                          f"model.loss.label_smoothing={cfg.sup_loss_label_smoothing}",
+                                                          f"experiment=supervised_{source_experiment}"]
         sub_cfg = compose(config_name=f"supervised_runner.yaml", overrides=overrides)
         print(OmegaConf.to_yaml(sub_cfg))
 
@@ -55,7 +57,6 @@ def main(cfg):
         runner_main(sub_cfg)
 
     # Predict and test (baseline) on target domain
-    trainer_overrides = [f"trainer.{k}={v}" for k, v in cfg.get("trainer", {}).items()]
     overrides = main_overrides + trainer_overrides + cfg.rl_overrides + [f"trainer.max_epochs=0",
                                                                          f"predict_subset_frac={cfg.rl_num_predict}",
                                                                          f"model.actor.actor.pretrain_ckpt={f'{output_path}/{0}/actor.ckpt' if pretrain_path is None else pretrain_path}",
@@ -81,13 +82,6 @@ def main(cfg):
         # set OS data path for copy of data to happen
         # copy data to compute node, next to RL data
         subprocess.call(["rsync", "-a", f"{output_path}/rewardDS/", f"{os.environ['DATA_PATH']}/rewardDS/"])
-        # print(subprocess.call(["ls", f"{output_path}/rewardDS/"]))
-        # print(f"{os.environ['DATA_PATH']}/")
-        # print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/"]))
-        # print(f"{os.environ['DATA_PATH']}/rewardDS/")
-        # print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/rewardDS/"]))
-        # print(f"{os.environ['DATA_PATH']}/rewardDS/images")
-        # print(subprocess.call(["ls", f"{os.environ['DATA_PATH']}/rewardDS/images/"]))
 
         # train reward net
         overrides = main_overrides + trainer_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
