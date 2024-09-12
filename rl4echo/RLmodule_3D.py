@@ -627,8 +627,11 @@ class RLmodule3D(LightningModule):
         self.trainer.datamodule.update_dataframe()
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)
+        return self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]
 
-    def on_predict_end(self) -> None:
-        # useful for computecanada
-        if self.save_csv_after_predict:
-            self.trainer.datamodule.df.to_csv(self.save_csv_after_predict)
+    # def on_predict_end(self) -> None:
+    #     if self.trainer.local_rank == 0:
+    #         # useful for computecanada
+    #         if self.save_csv_after_predict:
+    #             self.trainer.datamodule.df.to_csv(self.save_csv_after_predict)
+    #             print(f"Saved csv at {self.save_csv_after_predict}")

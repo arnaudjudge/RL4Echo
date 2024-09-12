@@ -1,4 +1,6 @@
 import os
+
+import pandas as pd
 from dotenv import load_dotenv
 import hydra
 from hydra.utils import instantiate
@@ -40,13 +42,18 @@ def main(cfg):
         ckpt_path = None
 
     # test with everything
-    datamodule.hparams.subset_frac = 1.0
-    trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
+    # datamodule.hparams.subset_frac = 1.0
+    # trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
     if getattr(cfg.model, "predict_save_dir", None) and cfg.predict_subset_frac > 0:
         datamodule.hparams.subset_frac = cfg.predict_subset_frac
         datamodule.setup(stage="predict")
-        trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
+        predicted_rows = trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
+        if cfg.save_csv_after_predict:
+            for r in predicted_rows:
+                print(r)
+                datamodule.df.loc[r.index] = r
+            datamodule.df.to_csv(cfg.save_csv_after_predict)
 
 
 if __name__ == "__main__":

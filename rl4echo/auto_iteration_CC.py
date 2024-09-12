@@ -72,7 +72,7 @@ def main(cfg):
                                                                          f"model.critic_save_path=null",  # no need
                                                                          f"model.predict_save_dir={output_path}/rewardDS/",
                                                                          f"experiment=ppo_{target_experiment}",
-                                                                         f"++model.save_csv_after_predict=null"
+                                                                         f"++save_csv_after_predict=null"
                                                                          ]
     sub_cfg = compose(config_name=f"RL_3d_runner.yaml", overrides=overrides)
     # prepare dataset with custom split and gt column
@@ -84,7 +84,7 @@ def main(cfg):
     sub_cfg.datamodule.splits_column = experiment_split_column
     sub_cfg.datamodule.gt_column = experiment_gt_column
 
-    sub_cfg.model.save_csv_after_predict = \
+    sub_cfg.save_csv_after_predict = \
         f"{sub_cfg.datamodule.data_dir}/{sub_cfg.datamodule.dataset_name}/{sub_cfg.datamodule.csv_file}"
     OmegaConf.save(sub_cfg, "config.yaml")
     #runner_main(sub_cfg)
@@ -133,13 +133,13 @@ def main(cfg):
                      f"model.entropy_coeff={max(0.3 / (i * 2), 0)}",
                      f"model.divergence_coeff={0.1 / (i * 2)}",
                      f"experiment=ppo_{target_experiment}",
-                     f"++model.save_csv_after_predict=null"
+                     f"++save_csv_after_predict=null"
                      ]
         if Path(f"{output_path}/{i - 1}/critic.ckpt").exists():
             overrides += [f"model.actor.critic.pretrain_ckpt={output_path}/{i - 1}/critic.ckpt"]
         sub_cfg = compose(config_name=f"RL_3d_runner.yaml", overrides=overrides)
 
-        sub_cfg.model.save_csv_after_predict = \
+        sub_cfg.save_csv_after_predict = \
             f"{sub_cfg.datamodule.data_dir}/{sub_cfg.datamodule.dataset_name}/{sub_cfg.datamodule.csv_file}"
         print(OmegaConf.to_yaml(sub_cfg))
         OmegaConf.save(sub_cfg, "config.yaml")
