@@ -98,7 +98,7 @@ def main(cfg):
 
         # train reward net
         overrides = main_overrides + trainer_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
-                                                          f"datamodule.data_path={os.environ['DATA_PATH']}/rewardDS/",
+                                                          "datamodule.data_path=${oc.env:DATA_PATH}",
                                                           f"model.save_model_path={output_path}/{i - 1}/rewardnet.ckpt",
                                                           ]
                                                           # f"+model.var_file={cfg.var_file}"]
