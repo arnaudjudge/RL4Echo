@@ -49,11 +49,11 @@ def main(cfg):
         datamodule.hparams.subset_frac = cfg.predict_subset_frac
         datamodule.setup(stage="predict")
         trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
-        if cfg.save_csv_after_predict and model.predicted_rows:
+        if cfg.save_csv_after_predict and model.predicted_rows is not None:
             for r in model.predicted_rows:
                 print(r)
-                datamodule.df.loc[r.index] = r
-            datamodule.df.to_csv(cfg.save_csv_after_predict)
+                #datamodule.df.loc[r.index] = r
+            #datamodule.df.to_csv(cfg.save_csv_after_predict)
 
 
 if __name__ == "__main__":

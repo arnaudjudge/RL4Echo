@@ -628,10 +628,12 @@ class RLmodule3D(LightningModule):
         self.trainer.datamodule.update_dataframe()
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)
-        self.predicted_rows += [self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]]
+        # self.predicted_rows += [self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]]
+        self.predicted_rows += [torch.tensor(self.trainer.local_rank)[None,]]
 
     def on_predict_epoch_end(self) -> None:
-        self.predicted_rows = self.all_gather(self.predicted_rows)
+        rows = torch.cat(self.predicted_rows, dim=0)
+        self.predicted_rows = self.all_gather(rows)
         if self.trainer.local_rank == 0:
             print(f"After gather len: {len(self.predicted_rows)}")
 
