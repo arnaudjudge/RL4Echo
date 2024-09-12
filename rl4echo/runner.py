@@ -48,9 +48,9 @@ def main(cfg):
     if getattr(cfg.model, "predict_save_dir", None) and cfg.predict_subset_frac > 0:
         datamodule.hparams.subset_frac = cfg.predict_subset_frac
         datamodule.setup(stage="predict")
-        predicted_rows = trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
-        if cfg.save_csv_after_predict:
-            for r in predicted_rows:
+        trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
+        if cfg.save_csv_after_predict and model.predicted_rows:
+            for r in model.predicted_rows:
                 print(r)
                 datamodule.df.loc[r.index] = r
             datamodule.df.to_csv(cfg.save_csv_after_predict)

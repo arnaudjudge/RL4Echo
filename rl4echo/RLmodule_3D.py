@@ -4,7 +4,7 @@ import random
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, Union, Optional
 
 import matplotlib.pyplot as plt
 import h5py
@@ -83,6 +83,7 @@ class RLmodule3D(LightningModule):
 
         self.save_on_test = save_on_test
         self.save_csv_after_predict = save_csv_after_predict
+        self.predicted_rows = []
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()
@@ -497,7 +498,7 @@ class RLmodule3D(LightningModule):
                     if deformed_action.sum() == 0:
                         continue
 
-                    filename = f"{batch_idx}_{itr}_{time_seed}_weights.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.local_rank}_weights.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -561,7 +562,7 @@ class RLmodule3D(LightningModule):
                         continue
 
                     time_seed = int(round(datetime.now().timestamp())) + int(factor*10)
-                    filename = f"{batch_idx}_{itr}_{time_seed}_contrast.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.local_rank}_contrast.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -599,7 +600,7 @@ class RLmodule3D(LightningModule):
                         continue
 
                     time_seed = int(round(datetime.now().timestamp())) + int(blur*100)
-                    filename = f"{batch_idx}_{itr}_{time_seed}_blur.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.local_rank}_blur.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -617,7 +618,7 @@ class RLmodule3D(LightningModule):
                 # plt.show()
 
                 if self.predict_do_corrections:
-                    filename = f"{batch_idx}_{itr}_{int(round(datetime.now().timestamp()))}_correction.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{int(round(datetime.now().timestamp()))}_{self.trainer.local_rank}_correction.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -627,11 +628,10 @@ class RLmodule3D(LightningModule):
         self.trainer.datamodule.update_dataframe()
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)
-        return self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]
+        self.predicted_rows += [self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]]
 
-    # def on_predict_end(self) -> None:
-    #     if self.trainer.local_rank == 0:
-    #         # useful for computecanada
-    #         if self.save_csv_after_predict:
-    #             self.trainer.datamodule.df.to_csv(self.save_csv_after_predict)
-    #             print(f"Saved csv at {self.save_csv_after_predict}")
+    def on_predict_epoch_end(self) -> None:
+        self.predicted_rows = self.all_gather(self.predicted_rows)
+        if self.trainer.local_rank == 0:
+            print(f"After gather len: {len(self.predicted_rows)}")
+
