@@ -30,3 +30,5 @@ rl_overrides: []
 # RewardNet params
 #
 rn_num_epochs: 50
+
+launcher: cedar

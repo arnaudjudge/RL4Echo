@@ -13,6 +13,9 @@ from omegaconf import OmegaConf
 
 from rl4echo.runner import main as runner_main
 
+import subprocess
+import shlex
+
 import warnings
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -54,7 +57,9 @@ def main(cfg):
             df.to_csv(sub_cfg.datamodule.data_dir + sub_cfg.datamodule.csv_file)
         sub_cfg.datamodule.splits_column = experiment_split_column
         sub_cfg.datamodule.gt_column = experiment_gt_column
-        runner_main(sub_cfg)
+        OmegaConf.save(sub_cfg, "config.yaml")
+        # runner_main(sub_cfg)
+        subprocess.run(shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.launcher} --multirun"))
 
     # Predict and test (baseline) on target domain
     overrides = main_overrides + trainer_overrides + cfg.rl_overrides + [f"trainer.max_epochs=0",
@@ -76,12 +81,14 @@ def main(cfg):
         df.to_csv(sub_cfg.datamodule.data_dir + sub_cfg.datamodule.csv_file)
     sub_cfg.datamodule.splits_column = experiment_split_column
     sub_cfg.datamodule.gt_column = experiment_gt_column
-    runner_main(sub_cfg)
+    OmegaConf.save(sub_cfg, "config.yaml")
+    #runner_main(sub_cfg)
+    subprocess.run(shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.launcher} --multirun"))
 
     for i in range(1, iterations + 1):
         # set OS data path for copy of data to happen
         # copy data to compute node, next to RL data
-        subprocess.call(["rsync", "-a", f"{output_path}/rewardDS/", f"{os.environ['DATA_PATH']}/rewardDS/"])
+        subprocess.run(["rsync", "-a", f"{output_path}/rewardDS/", f"{os.environ['DATA_PATH']}/rewardDS/"])
 
         # train reward net
         overrides = main_overrides + trainer_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
@@ -91,7 +98,9 @@ def main(cfg):
                                                           # f"+model.var_file={cfg.var_file}"]
         sub_cfg = compose(config_name=f"reward_3d_runner.yaml", overrides=overrides)
         print(OmegaConf.to_yaml(sub_cfg))
-        runner_main(sub_cfg)
+        OmegaConf.save(sub_cfg, "config.yaml")
+        # runner_main(sub_cfg)
+        subprocess.run(shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.launcher} --multirun"))
 
         next_output_path = f'{output_path}/{i}/'
         Path(next_output_path).mkdir(parents=True, exist_ok=True)
@@ -123,7 +132,9 @@ def main(cfg):
             overrides += [f"model.actor.critic.pretrain_ckpt={output_path}/{i - 1}/critic.ckpt"]
         sub_cfg = compose(config_name=f"RL_3d_runner.yaml", overrides=overrides)
         print(OmegaConf.to_yaml(sub_cfg))
-        runner_main(sub_cfg)
+        OmegaConf.save(sub_cfg, "config.yaml")
+        # runner_main(sub_cfg)
+        subprocess.run(shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.launcher} --multirun"))
 
 
 if __name__ == '__main__':
