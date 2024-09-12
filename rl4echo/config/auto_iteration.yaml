@@ -31,4 +31,4 @@ rl_overrides: []
 #
 rn_num_epochs: 50
 
-launcher: cedar
+run_launcher: cedar
