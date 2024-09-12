@@ -59,6 +59,7 @@ def main(cfg):
         sub_cfg.datamodule.gt_column = experiment_gt_column
         OmegaConf.save(sub_cfg, "config.yaml")
         # runner_main(sub_cfg)
+        # torch.distributed.new_group(ranks=[0, 1, 2, 3], timeout=datetime.timedelta(seconds=1800), backend="nccl"
         subprocess.run(shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.launcher} --multirun"))
 
     # Predict and test (baseline) on target domain
@@ -70,7 +71,8 @@ def main(cfg):
                                                                          f"model.actor_save_path={output_path}/{0}/actor.ckpt",  # no need
                                                                          f"model.critic_save_path=null",  # no need
                                                                          f"model.predict_save_dir={output_path}/rewardDS/",
-                                                                         f"experiment=ppo_{target_experiment}"
+                                                                         f"experiment=ppo_{target_experiment}",
+                                                                         f"++model.save_csv_after_predict=null"
                                                                          ]
     sub_cfg = compose(config_name=f"RL_3d_runner.yaml", overrides=overrides)
     # prepare dataset with custom split and gt column
@@ -81,6 +83,9 @@ def main(cfg):
         df.to_csv(sub_cfg.datamodule.data_dir + sub_cfg.datamodule.csv_file)
     sub_cfg.datamodule.splits_column = experiment_split_column
     sub_cfg.datamodule.gt_column = experiment_gt_column
+
+    sub_cfg.model.save_csv_after_predict = \
+        f"{sub_cfg.datamodule.data_dir}/{sub_cfg.datamodule.dataset_name}/{sub_cfg.datamodule.csv_file}"
     OmegaConf.save(sub_cfg, "config.yaml")
     #runner_main(sub_cfg)
     subprocess.run(shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.launcher} --multirun"))
@@ -88,7 +93,8 @@ def main(cfg):
     for i in range(1, iterations + 1):
         # set OS data path for copy of data to happen
         # copy data to compute node, next to RL data
-        subprocess.run(["rsync", "-a", f"{output_path}/rewardDS/", f"{os.environ['DATA_PATH']}/rewardDS/"])
+        # subprocess.run(["rsync", "-a", f"{output_path}/rewardDS/", f"{os.environ['DATA_PATH']}/rewardDS/"])
+        os.environ['DATA_PATH'] = f"{output_path}/rewardDS/"
 
         # train reward net
         overrides = main_overrides + trainer_overrides + [f"trainer.max_epochs={cfg.rn_num_epochs}",
@@ -126,11 +132,15 @@ def main(cfg):
                      f'model.predict_save_dir={f"{output_path}/rewardDS/" if iterations > i else None}',
                      f"model.entropy_coeff={max(0.3 / (i * 2), 0)}",
                      f"model.divergence_coeff={0.1 / (i * 2)}",
-                     f"experiment=ppo_{target_experiment}"
+                     f"experiment=ppo_{target_experiment}",
+                     f"++model.save_csv_after_predict=null"
                      ]
         if Path(f"{output_path}/{i - 1}/critic.ckpt").exists():
             overrides += [f"model.actor.critic.pretrain_ckpt={output_path}/{i - 1}/critic.ckpt"]
         sub_cfg = compose(config_name=f"RL_3d_runner.yaml", overrides=overrides)
+
+        sub_cfg.model.save_csv_after_predict = \
+            f"{sub_cfg.datamodule.data_dir}/{sub_cfg.datamodule.dataset_name}/{sub_cfg.datamodule.csv_file}"
         print(OmegaConf.to_yaml(sub_cfg))
         OmegaConf.save(sub_cfg, "config.yaml")
         # runner_main(sub_cfg)

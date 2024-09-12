@@ -58,6 +58,7 @@ class RLmodule3D(LightningModule):
                  predict_do_img_perturb=True,
                  predict_do_corrections=True,
                  save_on_test=False,
+                 save_csv_after_predict=None,
                  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
@@ -81,6 +82,7 @@ class RLmodule3D(LightningModule):
         self.predict_do_corrections = predict_do_corrections
 
         self.save_on_test = save_on_test
+        self.save_csv_after_predict = save_csv_after_predict
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()
@@ -626,4 +628,7 @@ class RLmodule3D(LightningModule):
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)
 
-
+    def on_predict_end(self) -> None:
+        # useful for computecanada
+        if self.save_csv_after_predict:
+            self.trainer.datamodule.df.to_csv(self.save_csv_after_predict)
