@@ -1,0 +1,9 @@
+defaults:
+  - alliancecan
+
+setup:
+  - "echo NO SETUP"
+
+cpus_per_task: 2
+mem_gb: 10
+account: rrg-descotea
