@@ -51,10 +51,11 @@ def main(cfg):
         trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
         if cfg.save_csv_after_predict:
             for p in Path(f"{model.temp_files_path}/").glob("temp_pred_*.csv"):
+                print(trainer.local_rank)
                 print(p)
                 df = pd.read_csv(p, index_col=0)
                 datamodule.df.loc[df.index] = df
-                os.remove(p)
+                # os.remove(p)
             datamodule.df.to_csv(cfg.save_csv_after_predict)
 
 
