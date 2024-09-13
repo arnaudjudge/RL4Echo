@@ -117,6 +117,7 @@ def main(cfg):
         # saved_vars = pickle.load(open(cfg.var_file, "rb"))
 
         load_dotenv()
+        print(os.environ['DATA_PATH'])
         # train PPO model with fresh reward net
         overrides = main_overrides + trainer_overrides + cfg.rl_overrides + \
                     [f"trainer.max_epochs={cfg.rl_num_epochs}",
@@ -125,7 +126,7 @@ def main(cfg):
                      f"datamodule.gt_column=null", #{experiment_gt_column}",
                      f"+datamodule.train_batch_size={8 * i}",
                      f"model.actor.actor.pretrain_ckpt={output_path}/{i - 1}/actor.ckpt",
-                     f"model.actor.actor.ref_ckpt={output_path}/{0}/actor.ckpt",  # always supervised
+                     f"model.actor.actor.ref_ckpt={output_path}/{i - 1}/actor.ckpt",
                      f"model.reward.state_dict_path={output_path}/{i - 1}/rewardnet.ckpt",
                      # f"model.reward.temp_factor={float(saved_vars['Temperature_factor'])}",
                      f"model.actor_save_path={output_path}/{i}/actor.ckpt",
