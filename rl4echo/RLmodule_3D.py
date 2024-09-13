@@ -633,4 +633,6 @@ class RLmodule3D(LightningModule):
 
     def on_predict_epoch_end(self) -> None:
         # for multi gpu cases, save intermediate file before sending to main csv
+        print(pd.concat(self.predicted_rows))
+        print(f"./temp_pred_{self.trainer.local_rank}.csv")
         pd.concat(self.predicted_rows).to_csv(f"./temp_pred_{self.trainer.local_rank}.csv")

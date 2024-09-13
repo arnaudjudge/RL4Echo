@@ -52,6 +52,7 @@ def main(cfg):
         trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
         if cfg.save_csv_after_predict:
             for p in Path(".").glob("temp_pred_*.csv"):
+                print(p)
                 df = pd.read_csv(p, index_col=0)
                 datamodule.df.loc[df.index] = df
                 os.remove(p)
