@@ -50,12 +50,13 @@ def main(cfg):
         datamodule.hparams.subset_frac = cfg.predict_subset_frac
         trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
         if cfg.save_csv_after_predict:
-            for p in Path(".").glob(f"{model.temp_files_path}/temp_pred_*.csv"):
+            for p in Path(f"{model.temp_files_path}/").glob("temp_pred_*.csv"):
                 print(p)
                 df = pd.read_csv(p, index_col=0)
                 datamodule.df.loc[df.index] = df
                 os.remove(p)
             datamodule.df.to_csv(cfg.save_csv_after_predict)
+
 
 if __name__ == "__main__":
     load_dotenv()
