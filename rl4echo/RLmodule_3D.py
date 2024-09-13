@@ -32,6 +32,7 @@ from rl4echo.utils.file_utils import get_img_subpath, save_to_reward_dataset
 from rl4echo.utils.logging_helper import log_sequence, log_video
 from rl4echo.utils.tensor_utils import convert_to_numpy
 from rl4echo.utils.test_metrics import dice, hausdorff
+from rl4echo.utils.correctors import AEMorphoCorrector
 
 
 def shrink_perturb(model, lamda=0.5, sigma=0.01):
@@ -77,6 +78,8 @@ class RLmodule3D(LightningModule):
 
         self.predict_save_dir = predict_save_dir
         self.pred_corrector = corrector
+        if isinstance(self.pred_corrector, AEMorphoCorrector):
+            self.register_module('correctorAE', self.pred_corrector.ae_corrector.temporal_regularization.autoencoder)
 
         self.predict_do_model_perturb = predict_do_model_perturb
         self.predict_do_img_perturb = predict_do_img_perturb
