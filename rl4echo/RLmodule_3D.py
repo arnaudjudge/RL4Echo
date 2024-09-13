@@ -436,7 +436,9 @@ class RLmodule3D(LightningModule):
         # must be batch size 1 as images have varied sizes
         b_img, meta_dict = batch['img'].squeeze(0), batch['image_meta_dict']
         id = meta_dict['case_identifier'][0]
-
+        print(f"LOCAL RANK: {self.trainer.local_rank}")
+        self.predicted_rows += [self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]]
+        return
         # could use full sequence later and split into subsecquions here
         actions, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=False)

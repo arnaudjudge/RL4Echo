@@ -48,7 +48,6 @@ def main(cfg):
 
     if getattr(cfg.model, "predict_save_dir", None) and cfg.predict_subset_frac > 0:
         datamodule.hparams.subset_frac = cfg.predict_subset_frac
-        datamodule.setup(stage="predict")
         trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
         if cfg.save_csv_after_predict:
             for p in Path(".").glob("temp_pred_*.csv"):
