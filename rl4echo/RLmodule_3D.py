@@ -435,7 +435,8 @@ class RLmodule3D(LightningModule):
         # must be batch size 1 as images have varied sizes
         b_img, meta_dict = batch['img'].squeeze(0), batch['image_meta_dict']
         id = meta_dict['case_identifier'][0]
-
+        self.predicted_rows.append(torch.tensor(self.trainer.local_rank)[None,])
+        return
         # could use full sequence later and split into subsecquions here
         actions, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=False)
@@ -632,8 +633,9 @@ class RLmodule3D(LightningModule):
         self.predicted_rows += [torch.tensor(self.trainer.local_rank)[None,]]
 
     def on_predict_epoch_end(self) -> None:
-        rows = torch.cat(self.predicted_rows, dim=0)
-        self.predicted_rows = self.all_gather(rows)
+        self.predicted_rows = torch.cat(self.predicted_rows, dim=0)
+        self.predicted_rows = self.all_gather(self.predicted_rows)
         if self.trainer.local_rank == 0:
+            print(self.predicted_rows)
             print(f"After gather len: {len(self.predicted_rows)}")
 
