@@ -175,7 +175,7 @@ class RLmodule3D(LightningModule):
                 }
 
         # log images
-        if self.trainer.local_rank == 0:
+        if self.trainer.global_rank == 0:
             idx = random.randint(0, len(b_img) - 1)  # which image to log
             log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
             log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
@@ -279,7 +279,7 @@ class RLmodule3D(LightningModule):
         # Use only first 4 for visualization, avoids having to implement sliding window inference for critic
         _, _, _, _, v, _ = self.actor.evaluate(b_img[..., :4], prev_actions[..., :4])
 
-        if self.trainer.local_rank == 0:
+        if self.trainer.global_rank == 0:
             for i in range(len(b_img)):
                 log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
                              epoch=self.current_epoch)
@@ -445,7 +445,8 @@ class RLmodule3D(LightningModule):
         # must be batch size 1 as images have varied sizes
         b_img, meta_dict = batch['img'].squeeze(0), batch['image_meta_dict']
         id = meta_dict['case_identifier'][0]
-
+        self.predicted_rows += [self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]]
+        return
         # could use full sequence later and split into subsecquions here
         actions, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=False)
@@ -508,7 +509,7 @@ class RLmodule3D(LightningModule):
                     if deformed_action.sum() == 0:
                         continue
 
-                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.local_rank}_weights.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_weights.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -572,7 +573,7 @@ class RLmodule3D(LightningModule):
                         continue
 
                     time_seed = int(round(datetime.now().timestamp())) + int(factor*10)
-                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.local_rank}_contrast.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_contrast.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -610,7 +611,7 @@ class RLmodule3D(LightningModule):
                         continue
 
                     time_seed = int(round(datetime.now().timestamp())) + int(blur*100)
-                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.local_rank}_blur.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_blur.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -628,7 +629,7 @@ class RLmodule3D(LightningModule):
                 # plt.show()
 
                 if self.predict_do_corrections:
-                    filename = f"{batch_idx}_{itr}_{int(round(datetime.now().timestamp()))}_{self.trainer.local_rank}_correction.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{int(round(datetime.now().timestamp()))}_{self.trainer.global_rank}_correction.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -639,10 +640,10 @@ class RLmodule3D(LightningModule):
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)
         self.predicted_rows += [self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]]
-        print(f"LOCAL RANK: {self.trainer.local_rank}")
+        print(f"LOCAL RANK: {self.trainer.global_rank}")
 
     def on_predict_epoch_end(self) -> None:
         # for multi gpu cases, save intermediate file before sending to main csv
         print(pd.concat(self.predicted_rows))
-        print(f"{self.temp_files_path}/temp_pred_{self.trainer.local_rank}.csv")
-        pd.concat(self.predicted_rows).to_csv(f"{self.temp_files_path}/temp_pred_{self.trainer.local_rank}.csv")
+        print(f"{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv")
+        pd.concat(self.predicted_rows).to_csv(f"{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv")
