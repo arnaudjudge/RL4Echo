@@ -61,6 +61,7 @@ class RLmodule3D(LightningModule):
                  predict_do_corrections=True,
                  save_on_test=False,
                  save_csv_after_predict=None,
+                 temp_files_path='.',
                  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
@@ -88,6 +89,11 @@ class RLmodule3D(LightningModule):
         self.save_on_test = save_on_test
         self.save_csv_after_predict = save_csv_after_predict
         self.predicted_rows = []
+
+        self.temp_files_path = Path(temp_files_path)
+        if not self.temp_files_path.exists() and self.trainer.global_rank == 0:
+            self.temp_files_path.mkdir(parents=True, exist_ok=True)
+
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()
@@ -638,5 +644,5 @@ class RLmodule3D(LightningModule):
     def on_predict_epoch_end(self) -> None:
         # for multi gpu cases, save intermediate file before sending to main csv
         print(pd.concat(self.predicted_rows))
-        print(f"./temp_pred_{self.trainer.local_rank}.csv")
-        pd.concat(self.predicted_rows).to_csv(f"./temp_pred_{self.trainer.local_rank}.csv")
+        print(f"{self.temp_files_path}/temp_pred_{self.trainer.local_rank}.csv")
+        pd.concat(self.predicted_rows).to_csv(f"{self.temp_files_path}/temp_pred_{self.trainer.local_rank}.csv")

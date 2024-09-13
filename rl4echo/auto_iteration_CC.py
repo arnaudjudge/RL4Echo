@@ -72,7 +72,8 @@ def main(cfg):
                                                                          f"model.critic_save_path=null",  # no need
                                                                          f"model.predict_save_dir={output_path}/rewardDS/",
                                                                          f"experiment=ppo_{target_experiment}",
-                                                                         f"++save_csv_after_predict=null"
+                                                                         f"++save_csv_after_predict=null",
+                                                                         f"++model.temp_files_path={output_path}"
                                                                          ]
     sub_cfg = compose(config_name=f"RL_3d_runner.yaml", overrides=overrides)
     # prepare dataset with custom split and gt column
@@ -133,7 +134,8 @@ def main(cfg):
                      f"model.entropy_coeff={max(0.3 / (i * 2), 0)}",
                      f"model.divergence_coeff={0.1 / (i * 2)}",
                      f"experiment=ppo_{target_experiment}",
-                     f"++save_csv_after_predict=null"
+                     f"++save_csv_after_predict=null",
+                     f"++model.temp_files_path={output_path}"
                      ]
         if Path(f"{output_path}/{i - 1}/critic.ckpt").exists():
             overrides += [f"model.actor.critic.pretrain_ckpt={output_path}/{i - 1}/critic.ckpt"]
