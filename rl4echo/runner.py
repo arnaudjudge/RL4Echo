@@ -55,7 +55,7 @@ def main(cfg):
                 print(p)
                 df = pd.read_csv(p, index_col=0)
                 datamodule.df.loc[df.index] = df
-                os.remove(p)
+                # os.remove(p)
             datamodule.df.to_csv(cfg.save_csv_after_predict)
 
 
