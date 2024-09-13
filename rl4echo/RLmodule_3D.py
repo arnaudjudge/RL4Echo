@@ -449,19 +449,18 @@ class RLmodule3D(LightningModule):
         # could use full sequence later and split into subsecquions here
         actions, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=False)
-        print(1)
+
         b_img_as_batch = b_img.squeeze(0).permute((3, 0, 1, 2))
         actions_unsampled_as_batch = actions_unsampled.squeeze(0).permute((2, 0, 1))
         corrected, corrected_validity, ae_comp = self.pred_corrector.correct_batch(b_img_as_batch, actions_unsampled_as_batch)
         corrected = corrected.transpose((1, 2, 3, 0))
-        print(2)
+
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
         itr = 0
-        print(3)
+
         # valid for all frames
         corrected_validity = corrected_validity.min()
         ae_comp = ae_comp.mean()
-        print(4)
         self.trainer.datamodule.add_to_train(id)
         if ae_comp > 0.95 and all([check_segmentation_validity(actions_unsampled_as_batch[i].cpu().numpy().T, (1.0, 1.0),
                                                              [0, 1, 2]) for i in range(len(actions_unsampled_as_batch))]):
@@ -474,7 +473,7 @@ class RLmodule3D(LightningModule):
             nifti = nib.Nifti1Image(convert_to_numpy(torch.round(actions_unsampled).squeeze(0)),
                                     np.diag(np.asarray([-1, -1, 1, 0])), hdr)
             nifti.to_filename(approx_gt_path)
-            print(5)
+
             if self.predict_do_model_perturb:
                 for j, multiplier in enumerate([0.1, 0.15, 0.2, 0.25]):  # have been adapted from 2d
                     # get random seed based on time to maximise randomness of noise and subsequent predictions
@@ -634,15 +633,12 @@ class RLmodule3D(LightningModule):
                                            convert_to_numpy(b_img.squeeze(0)),
                                            convert_to_numpy(corrected),
                                            convert_to_numpy(actions))
-        print(6)
+
         self.trainer.datamodule.update_dataframe()
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)
         self.predicted_rows += [self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]]
-        print(f"LOCAL RANK: {self.trainer.global_rank}")
 
     def on_predict_epoch_end(self) -> None:
         # for multi gpu cases, save intermediate file before sending to main csv
-        print(pd.concat(self.predicted_rows))
-        print(f"{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv")
         pd.concat(self.predicted_rows).to_csv(f"{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv")
