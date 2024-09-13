@@ -11,6 +11,7 @@ import h5py
 import SimpleITK as sitk
 import nibabel as nib
 import numpy as np
+import pandas as pd
 from einops import rearrange
 from lightning import LightningModule
 import torch
@@ -435,8 +436,7 @@ class RLmodule3D(LightningModule):
         # must be batch size 1 as images have varied sizes
         b_img, meta_dict = batch['img'].squeeze(0), batch['image_meta_dict']
         id = meta_dict['case_identifier'][0]
-        self.predicted_rows.append(torch.tensor(self.trainer.local_rank)[None,])
-        return
+
         # could use full sequence later and split into subsecquions here
         actions, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=False)
@@ -629,13 +629,8 @@ class RLmodule3D(LightningModule):
         self.trainer.datamodule.update_dataframe()
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)
-        # self.predicted_rows += [self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]]
-        self.predicted_rows += [torch.tensor(self.trainer.local_rank)[None,]]
+        self.predicted_rows += [self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]]
 
     def on_predict_epoch_end(self) -> None:
-        self.predicted_rows = torch.cat(self.predicted_rows, dim=0)
-        self.predicted_rows = self.all_gather(self.predicted_rows)
-        if self.trainer.local_rank == 0:
-            print(self.predicted_rows)
-            print(f"After gather len: {len(self.predicted_rows)}")
-
+        # for multi gpu cases, save intermediate file before sending to main csv
+        pd.concat(self.predicted_rows).to_csv(f"./temp_pred_{self.trainer.local_rank}.csv")
