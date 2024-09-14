@@ -38,6 +38,8 @@ def main(cfg):
     experiment_gt_column = f"Gt_{timestamp}"
     pretrain_path = cfg.get("pretrain_path", None)
     trainer_overrides = [f"++trainer.{k}={v}" for k, v in cfg.get("trainer", {}).items()]
+    start_data_path = os.environ['DATA_PATH']
+    print(f"starting data path: {start_data_path}")
 
     if not pretrain_path:
         # train supervised network for initial actor
@@ -116,8 +118,7 @@ def main(cfg):
         # load temporary variable file
         # saved_vars = pickle.load(open(cfg.var_file, "rb"))
 
-        load_dotenv()
-        print(os.environ['DATA_PATH'])
+        os.environ['DATA_PATH'] = start_data_path
         # train PPO model with fresh reward net
         overrides = main_overrides + trainer_overrides + cfg.rl_overrides + \
                     [f"trainer.max_epochs={cfg.rl_num_epochs}",
