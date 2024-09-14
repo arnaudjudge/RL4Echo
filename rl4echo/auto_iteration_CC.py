@@ -38,6 +38,8 @@ def main(cfg):
     experiment_gt_column = f"Gt_{timestamp}"
     pretrain_path = cfg.get("pretrain_path", None)
     trainer_overrides = [f"++trainer.{k}={v}" for k, v in cfg.get("trainer", {}).items()]
+
+    load_dotenv()
     start_data_path = os.environ['DATA_PATH']
     print(f"starting data path: {start_data_path}")
 
