@@ -20,6 +20,8 @@ datamodule:
 predict_subset_frac: 0
 train: True
 
+save_csv_after_predict: null
+
 trainer:
   _target_: lightning.pytorch.Trainer
   max_epochs: 10
