@@ -1,0 +1,5 @@
+# @package _global_
+
+defaults:
+  - alliancecan
+  - override /hydra/launcher: cedar_no_gpu
