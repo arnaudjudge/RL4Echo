@@ -95,7 +95,7 @@ def main(cfg):
     OmegaConf.save(sub_cfg, "config.yaml")
     #runner_main(sub_cfg)
     subprocess.run(shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml "
-                               f"+launcher={cfg.run_launcher} hydra.launcher.timeout_min={600} --multirun"))
+                               f"+launcher={cfg.run_launcher} hydra.launcher.timeout_min={1500} --multirun"))
 
     for i in range(1, iterations + 1):
         # set OS data path for copy of data to happen
