@@ -9,6 +9,7 @@ hydra:
 #    gpus_per_node: 2
     gres: gpu:v100l:2
     tasks_per_node: 2
+    cpus_per_task: 6
 
 trainer:
   strategy: ddp_find_unused_parameters_true
@@ -16,4 +17,4 @@ trainer:
   accumulate_grad_batches: 1
 
 datamodule:
-  num_workers: 2
+  num_workers: 5
