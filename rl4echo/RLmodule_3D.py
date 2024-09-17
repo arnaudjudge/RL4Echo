@@ -59,7 +59,7 @@ class RLmodule3D(LightningModule):
                  predict_do_model_perturb=True,
                  predict_do_img_perturb=True,
                  predict_do_corrections=True,
-                 save_on_test=True,
+                 save_on_test=False,
                  save_csv_after_predict=None,
                  temp_files_path='.',
                  *args: Any, **kwargs: Any) -> None:
@@ -315,11 +315,10 @@ class RLmodule3D(LightningModule):
             prev_actions = prev_actions.squeeze(0).cpu().detach().numpy()
             original_shape = meta_dict.get("original_shape").cpu().detach().numpy()[0]
 
-            save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
-
             fname = meta_dict.get("case_identifier")[0]
             spacing = meta_dict.get("original_spacing").cpu().detach().numpy()[0]
             resampled_affine = meta_dict.get("resampled_affine").cpu().detach().numpy()[0]
+            save_dir = os.path.join(self.trainer.default_root_dir, f"testing_raw/{self.trainer.datamodule.get_approx_gt_subpath(fname).rsplit('/', 1)[0]}/")
 
             final_preds = np.expand_dims(prev_actions, 0)
             transform = tio.Resample(spacing)
