@@ -59,7 +59,7 @@ class RLmodule3D(LightningModule):
                  predict_do_model_perturb=True,
                  predict_do_img_perturb=True,
                  predict_do_corrections=True,
-                 save_on_test=False,
+                 save_on_test=True,
                  save_csv_after_predict=None,
                  temp_files_path='.',
                  *args: Any, **kwargs: Any) -> None:
@@ -260,14 +260,17 @@ class RLmodule3D(LightningModule):
         print(f"HD took {round(time.time() - start_time, 4)} (s).")
 
         start_time = time.time()
-        anat_errors = is_anatomically_valid(y_pred_np_as_batch)
+        if test_hd['Hausdorff'] > 10:
+            anat_errors = torch.zeros(len(y_pred_np_as_batch))
+        else:
+            anat_errors = is_anatomically_valid(y_pred_np_as_batch)
         print(f"AV took {round(time.time() - start_time, 4)} (s).")
 
         logs = {#'test_loss': loss,
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
                 'test_acc': acc.mean(),
                 "test_dice": simple_dice.mean(),
-                "test_anat_valid": anat_errors.mean(),
+                "test_anat_valid": int(all(anat_errors)),
                 'dice_epi': test_dice_epi,
                 'hd_epi': test_hd_epi,
                 }
