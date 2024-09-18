@@ -282,7 +282,7 @@ class RLmodule3D(LightningModule):
         # Use only first 4 for visualization, avoids having to implement sliding window inference for critic
         _, _, _, _, v, _ = self.actor.evaluate(b_img[..., :4], prev_actions[..., :4])
 
-        if (self.trainer.global_rank + batch_idx) % self.trainer.world_size == 0:
+        if self.trainer.global_rank == 0 and batch_idx % 5 == 0:
             for i in range(len(b_img)):
                 log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
                              epoch=self.current_epoch)
