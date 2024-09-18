@@ -270,9 +270,9 @@ class RLmodule3D(LightningModule):
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
                 'test_acc': acc.mean(),
                 "test_dice": simple_dice.mean(),
-                "test_anat_valid": int(all(anat_errors)),
-                'dice_epi': test_dice_epi,
-                'hd_epi': test_hd_epi,
+                "test_anat_valid": torch.tensor(int(all(anat_errors)), device=self.device),
+                'dice_epi': torch.tensor(test_dice_epi, device=self.device),
+                'hd_epi': torch.tensor(test_hd_epi, device=self.device),
                 }
         logs.update(test_dice)
         logs.update(test_hd)
