@@ -65,7 +65,7 @@ def main(cfg):
         # runner_main(sub_cfg)
         # torch.distributed.new_group(ranks=[0, 1, 2, 3], timeout=datetime.timedelta(seconds=1800), backend="nccl"
         subprocess.run(
-            shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={600} --multirun"))
+            shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={cfg.sup_time} --multirun"))
 
     # Predict and test (baseline) on target domain
     overrides = main_overrides + trainer_overrides + cfg.rl_overrides + [f"trainer.max_epochs=0",
@@ -95,7 +95,7 @@ def main(cfg):
     OmegaConf.save(sub_cfg, "config.yaml")
     #runner_main(sub_cfg)
     subprocess.run(
-        shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min=60 --multirun"))
+        shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={cfg.test_pred_time} --multirun"))
 
     for i in range(1, iterations + 1):
         # set OS data path for copy of data to happen
@@ -114,7 +114,7 @@ def main(cfg):
         OmegaConf.save(sub_cfg, "config.yaml")
         # runner_main(sub_cfg)
         subprocess.run(
-            shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min=60 --multirun"))
+            shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={cfg.reward_time} --multirun"))
 
         next_output_path = f'{output_path}/{i}/'
         Path(next_output_path).mkdir(parents=True, exist_ok=True)
@@ -130,7 +130,7 @@ def main(cfg):
                      f"predict_subset_frac={cfg.rl_num_predict}",
                      f"datamodule.splits_column={experiment_split_column}",
                      f"datamodule.gt_column=null", #{experiment_gt_column}",
-                     f"+datamodule.train_batch_size={8 * i}",
+                     # f"+datamodule.train_batch_size={8 * i}",
                      f"model.actor.actor.pretrain_ckpt={output_path}/{i - 1}/actor.ckpt",
                      f"model.actor.actor.ref_ckpt={output_path}/{i - 1}/actor.ckpt",
                      f"model.reward.state_dict_path={output_path}/{i - 1}/rewardnet.ckpt",
@@ -154,7 +154,7 @@ def main(cfg):
         OmegaConf.save(sub_cfg, "config.yaml")
         # runner_main(sub_cfg)
         subprocess.run(
-            shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min=60 --multirun"))
+            shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={cfg.rl_time} --multirun"))
 
 
 if __name__ == '__main__':

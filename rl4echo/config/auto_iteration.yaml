@@ -32,3 +32,11 @@ rl_overrides: []
 rn_num_epochs: 50
 
 run_launcher: cedar
+
+#
+# Time
+#
+sup_time: 60
+test_pred_time: 60
+reward_time: 60
+rl_time: 60
