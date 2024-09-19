@@ -1,6 +1,8 @@
 defaults:
   - _self_
 
+continue_from_ckpt: False
+
 num_iter: 4
 run_name: 3d_test
 output_path: ${oc.env:LOG_PATH}/${run_name}/
