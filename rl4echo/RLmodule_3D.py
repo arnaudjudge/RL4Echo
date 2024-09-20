@@ -447,25 +447,22 @@ class RLmodule3D(LightningModule):
         # must be batch size 1 as images have varied sizes
         b_img, meta_dict = batch['img'].squeeze(0), batch['image_meta_dict']
         id = meta_dict['case_identifier'][0]
+        voxel_spacing = np.asarray([abs(meta_dict['resampled_affine'][0, 0, 0].cpu().numpy()),
+                                     abs(meta_dict['resampled_affine'][0, 1, 1].cpu().numpy())])
 
         # could use full sequence later and split into subsecquions here
         actions, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=False)
 
-        b_img_as_batch = b_img.squeeze(0).permute((3, 0, 1, 2))
-        actions_unsampled_as_batch = actions_unsampled.squeeze(0).permute((2, 0, 1))
-        corrected, corrected_validity, ae_comp = self.pred_corrector.correct_batch(b_img_as_batch, actions_unsampled_as_batch)
-        corrected = corrected.transpose((1, 2, 3, 0))
+        corrected, corrected_validity, ae_comp = self.pred_corrector.correct_single_seq(b_img.squeeze(0), actions_unsampled.squeeze(0), voxel_spacing)
+        corrected = corrected[None,]
 
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
         itr = 0
 
-        # valid for all frames
-        corrected_validity = corrected_validity.min()
-        ae_comp = ae_comp.mean()
         self.trainer.datamodule.add_to_train(id)
-        if ae_comp > 0.95 and all([check_segmentation_validity(actions_unsampled_as_batch[i].cpu().numpy().T, (1.0, 1.0),
-                                                             [0, 1, 2]) for i in range(len(actions_unsampled_as_batch))]):
+        if ae_comp > 0.95 and all([check_segmentation_validity(actions_unsampled[0, ..., i].cpu().numpy().T, voxel_spacing,
+                                                               [0, 1, 2]) for i in range(actions_unsampled.shape[-1])]):
             self.trainer.datamodule.add_to_gt(id)
 
             path = self.trainer.datamodule.get_approx_gt_subpath(id)

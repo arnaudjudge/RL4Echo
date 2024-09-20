@@ -41,6 +41,19 @@ class AEMorphoCorrector(Corrector):
             ae_comp[i] = compare_segmentation_with_ae(act.unsqueeze(0).cpu().numpy(), corrected[i])
         return corrected, corrected_validity, ae_comp
 
+    def correct_single_seq(self, img, act, spacing):
+        corrected, _, _ = self.ae_corrector.fix_morphological_and_ae(act.cpu().numpy())
+
+        corrected_validity = True
+        for i in range(act.shape[-1]):
+            try:
+                corrected_validity = corrected_validity and check_segmentation_validity(corrected[..., i].T, spacing, [0, 1, 2])
+            except:
+                corrected_validity = False
+                break
+        ae_comp = compare_segmentation_with_ae(act.cpu().numpy(), corrected)
+        return corrected, corrected_validity, ae_comp
+
 
 # class RansacCorrector(Corrector):
 #     def correct_batch(self, b_img, b_act):
