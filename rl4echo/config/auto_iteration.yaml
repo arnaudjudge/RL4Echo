@@ -1,6 +1,8 @@
 defaults:
   - _self_
 
+continue_from_ckpt: False
+
 num_iter: 4
 run_name: 3d_test
 output_path: ${oc.env:LOG_PATH}/${run_name}/
@@ -30,3 +32,13 @@ rl_overrides: []
 # RewardNet params
 #
 rn_num_epochs: 50
+
+run_launcher: cedar
+
+#
+# Time
+#
+sup_time: 60
+test_pred_time: 60
+reward_time: 60
+rl_time: 60

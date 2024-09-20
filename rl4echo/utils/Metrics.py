@@ -16,7 +16,7 @@ def accuracy(pred, imgs, gt):
 
 def dice_score(output, target):
     classes = target.unique()
-    out = torch.zeros(len(output))
+    out = torch.zeros(len(output), device=output.device)
     for i in range(len(output)):
         d = 0
         for c in classes:

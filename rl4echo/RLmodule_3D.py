@@ -4,13 +4,14 @@ import random
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, Union, Optional
 
 import matplotlib.pyplot as plt
 import h5py
 import SimpleITK as sitk
 import nibabel as nib
 import numpy as np
+import pandas as pd
 from einops import rearrange
 from lightning import LightningModule
 import torch
@@ -31,6 +32,7 @@ from rl4echo.utils.file_utils import get_img_subpath, save_to_reward_dataset
 from rl4echo.utils.logging_helper import log_sequence, log_video
 from rl4echo.utils.tensor_utils import convert_to_numpy
 from rl4echo.utils.test_metrics import dice, hausdorff
+from rl4echo.utils.correctors import AEMorphoCorrector
 
 
 def shrink_perturb(model, lamda=0.5, sigma=0.01):
@@ -58,6 +60,8 @@ class RLmodule3D(LightningModule):
                  predict_do_img_perturb=True,
                  predict_do_corrections=True,
                  save_on_test=False,
+                 save_csv_after_predict=None,
+                 temp_files_path='.',
                  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
@@ -75,12 +79,21 @@ class RLmodule3D(LightningModule):
 
         self.predict_save_dir = predict_save_dir
         self.pred_corrector = corrector
+        if isinstance(self.pred_corrector, AEMorphoCorrector):
+            self.register_module('correctorAE', self.pred_corrector.ae_corrector.temporal_regularization.autoencoder)
 
         self.predict_do_model_perturb = predict_do_model_perturb
         self.predict_do_img_perturb = predict_do_img_perturb
         self.predict_do_corrections = predict_do_corrections
 
         self.save_on_test = save_on_test
+        self.save_csv_after_predict = save_csv_after_predict
+        self.predicted_rows = []
+
+        self.temp_files_path = Path(temp_files_path)
+        if not self.temp_files_path.exists() and self.trainer.global_rank == 0:
+            self.temp_files_path.mkdir(parents=True, exist_ok=True)
+
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()
@@ -162,7 +175,7 @@ class RLmodule3D(LightningModule):
                 }
 
         # log images
-        if self.trainer.local_rank == 0:
+        if self.trainer.global_rank == 0:
             idx = random.randint(0, len(b_img) - 1)  # which image to log
             log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
             log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
@@ -173,7 +186,7 @@ class RLmodule3D(LightningModule):
                 log_sequence(self.logger, img=prev_rewards[idx].unsqueeze(0), title='RewardMap', number=batch_idx,
                              epoch=self.current_epoch)
 
-        self.log_dict(logs)
+        self.log_dict(logs, sync_dist=True)
         return logs
 
     def test_step(self, batch: dict[str, Tensor], batch_idx: int):
@@ -247,16 +260,19 @@ class RLmodule3D(LightningModule):
         print(f"HD took {round(time.time() - start_time, 4)} (s).")
 
         start_time = time.time()
-        anat_errors = is_anatomically_valid(y_pred_np_as_batch)
+        if test_hd['Hausdorff'] > 10:
+            anat_errors = torch.zeros(len(y_pred_np_as_batch))
+        else:
+            anat_errors = is_anatomically_valid(y_pred_np_as_batch)
         print(f"AV took {round(time.time() - start_time, 4)} (s).")
 
         logs = {#'test_loss': loss,
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
                 'test_acc': acc.mean(),
                 "test_dice": simple_dice.mean(),
-                "test_anat_valid": anat_errors.mean(),
-                'dice_epi': test_dice_epi,
-                'hd_epi': test_hd_epi,
+                "test_anat_valid": torch.tensor(int(all(anat_errors)), device=self.device),
+                'dice_epi': torch.tensor(test_dice_epi, device=self.device),
+                'hd_epi': torch.tensor(test_hd_epi, device=self.device),
                 }
         logs.update(test_dice)
         logs.update(test_hd)
@@ -266,7 +282,7 @@ class RLmodule3D(LightningModule):
         # Use only first 4 for visualization, avoids having to implement sliding window inference for critic
         _, _, _, _, v, _ = self.actor.evaluate(b_img[..., :4], prev_actions[..., :4])
 
-        if self.trainer.local_rank == 0:
+        if self.trainer.global_rank == 0 and batch_idx % 5 == 0:
             for i in range(len(b_img)):
                 log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
                              epoch=self.current_epoch)
@@ -281,7 +297,7 @@ class RLmodule3D(LightningModule):
                     log_sequence(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap', number=batch_idx * (i + 1),
                               img_text=prev_rewards[i].mean(), epoch=self.current_epoch)
 
-        self.log_dict(logs)
+        self.log_dict(logs, sync_dist=True)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
         # if self.save_uncertainty_path:
         #     with h5py.File(self.save_uncertainty_path, 'a') as f:
@@ -299,11 +315,10 @@ class RLmodule3D(LightningModule):
             prev_actions = prev_actions.squeeze(0).cpu().detach().numpy()
             original_shape = meta_dict.get("original_shape").cpu().detach().numpy()[0]
 
-            save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
-
             fname = meta_dict.get("case_identifier")[0]
             spacing = meta_dict.get("original_spacing").cpu().detach().numpy()[0]
             resampled_affine = meta_dict.get("resampled_affine").cpu().detach().numpy()[0]
+            save_dir = os.path.join(self.trainer.default_root_dir, f"testing_raw/{self.trainer.datamodule.get_approx_gt_subpath(fname).rsplit('/', 1)[0]}/")
 
             final_preds = np.expand_dims(prev_actions, 0)
             transform = tio.Resample(spacing)
@@ -448,7 +463,6 @@ class RLmodule3D(LightningModule):
         # valid for all frames
         corrected_validity = corrected_validity.min()
         ae_comp = ae_comp.mean()
-
         self.trainer.datamodule.add_to_train(id)
         if ae_comp > 0.95 and all([check_segmentation_validity(actions_unsampled_as_batch[i].cpu().numpy().T, (1.0, 1.0),
                                                              [0, 1, 2]) for i in range(len(actions_unsampled_as_batch))]):
@@ -495,7 +509,7 @@ class RLmodule3D(LightningModule):
                     if deformed_action.sum() == 0:
                         continue
 
-                    filename = f"{batch_idx}_{itr}_{time_seed}_weights.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_weights.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -559,7 +573,7 @@ class RLmodule3D(LightningModule):
                         continue
 
                     time_seed = int(round(datetime.now().timestamp())) + int(factor*10)
-                    filename = f"{batch_idx}_{itr}_{time_seed}_contrast.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_contrast.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -597,7 +611,7 @@ class RLmodule3D(LightningModule):
                         continue
 
                     time_seed = int(round(datetime.now().timestamp())) + int(blur*100)
-                    filename = f"{batch_idx}_{itr}_{time_seed}_blur.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_blur.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -615,7 +629,7 @@ class RLmodule3D(LightningModule):
                 # plt.show()
 
                 if self.predict_do_corrections:
-                    filename = f"{batch_idx}_{itr}_{int(round(datetime.now().timestamp()))}_correction.nii.gz"
+                    filename = f"{batch_idx}_{itr}_{int(round(datetime.now().timestamp()))}_{self.trainer.global_rank}_correction.nii.gz"
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
@@ -625,5 +639,8 @@ class RLmodule3D(LightningModule):
         self.trainer.datamodule.update_dataframe()
         # make sure initial params are back at end of step
         self.actor.actor.net.load_state_dict(initial_params)
+        self.predicted_rows += [self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]]
 
-
+    def on_predict_epoch_end(self) -> None:
+        # for multi gpu cases, save intermediate file before sending to main csv
+        pd.concat(self.predicted_rows).to_csv(f"{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv")

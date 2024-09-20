@@ -1,4 +1,7 @@
 import os
+from pathlib import Path
+
+import pandas as pd
 from dotenv import load_dotenv
 import hydra
 from hydra.utils import instantiate
@@ -45,8 +48,13 @@ def main(cfg):
 
     if getattr(cfg.model, "predict_save_dir", None) and cfg.predict_subset_frac > 0:
         datamodule.hparams.subset_frac = cfg.predict_subset_frac
-        datamodule.setup(stage="predict")
         trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
+        if cfg.save_csv_after_predict and trainer.global_rank == 0:
+            for p in Path(f"{model.temp_files_path}/").glob("temp_pred_*.csv"):
+                df = pd.read_csv(p, index_col=0)
+                datamodule.df.loc[df.index] = df
+                os.remove(p)
+            datamodule.df.to_csv(cfg.save_csv_after_predict)
 
 
 if __name__ == "__main__":

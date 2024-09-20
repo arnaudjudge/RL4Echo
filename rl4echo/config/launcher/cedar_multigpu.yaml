@@ -6,14 +6,15 @@ defaults:
 
 hydra:
   launcher:
-#    gpus_per_node: 2
-    gres: gpu:v100l:2
-    tasks_per_node: 2
+    gres: gpu:v100l:4
+    tasks_per_node: 4
+    cpus_per_task: 6
+    mem_gb: 100
 
 trainer:
   strategy: ddp_find_unused_parameters_true
-  devices: 2
+  devices: 4
   accumulate_grad_batches: 1
 
 datamodule:
-  num_workers: 2
+  num_workers: 5
