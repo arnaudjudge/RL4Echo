@@ -1,0 +1,6 @@
+defaults:
+  - net: unet3d_combinedAC
+
+_target_: rl4echo.actors.CombinedAC.Unet3DActorCriticCategorical
+pretrain_ckpt: null #/home/local/USHERBROOKE/juda2901/dev/RL4Echo/rl4echo/actor_3d_first.ckpt
+ref_ckpt: null #/home/local/USHERBROOKE/juda2901/dev/RL4Echo/rl4echo/actor_3d_first.ckpt
