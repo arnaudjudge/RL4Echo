@@ -25,13 +25,17 @@ class RewardNet3DDataset(Dataset):
                  test=False,
                  common_spacing=[0.37, 0.37, 1],
                  shape_divisible_by=(32, 32, 4),
-                 max_window_len=4):
+                 max_window_len=4,
+                 max_batch_size=2,
+                 max_tensor_volume=5000000):
         super().__init__()
         self.data_path = data_path
         self.img_list = []
         self.common_spacing = common_spacing
         self.shape_divisible_by = shape_divisible_by
         self.max_window_len = max_window_len
+        self.max_batch_size = max_batch_size
+        self.max_tensor_volume = max_tensor_volume
 
         # only use /images/ folders to get number of individual entries
         for im_file in Path(f"{self.data_path}/img/").rglob("*.nii.gz"):
@@ -113,12 +117,21 @@ class RewardNet3DDataset(Dataset):
         pred = croporpad(
             transform(tio.LabelMap(tensor=np.expand_dims(pred, 0), affine=img_nifti.affine))).tensor.squeeze(0)
 
-        start_idx = np.random.randint(low=0, high=max(img.shape[-1] - self.max_window_len, 1))
-        img = img[..., start_idx:start_idx + self.max_window_len]
-        y = y[..., start_idx:start_idx + self.max_window_len]
-        pred = pred[..., start_idx:start_idx + self.max_window_len]
+        # use partial time window, create as many batches as possible with it unless self.max_batch_size not set
+        dynamic_batch_size = max(1, self.max_tensor_volume // (img.shape[0] * img.shape[1] * self.max_window_len))
+        b_img = []
+        b_pred = []
+        b_y = []
+        for i in range(dynamic_batch_size):
+            start_idx = np.random.randint(low=0, high=max(img.shape[-1] - self.max_window_len, 1))
+            b_img += [img[..., start_idx:start_idx + self.max_window_len]]
+            b_pred += [pred[..., start_idx:start_idx + self.max_window_len]]
+            b_y += [y[..., start_idx:start_idx + self.max_window_len]]
+        img = torch.stack(b_img)
+        pred = torch.stack(b_pred)
+        y = torch.stack(b_y)
 
-        x = torch.stack((img, pred))
+        x = torch.stack((img, pred), dim=1)
 
         return x.type(torch.float32), (1 - y).type(torch.float32)
 
@@ -191,16 +204,16 @@ if __name__ == "__main__":
 
        from matplotlib import pyplot as plt
        plt.figure()
-       plt.imshow(batch[0][0, 0, :, :, 0].cpu().numpy().T)
+       plt.imshow(batch[0][0, 0, 0, :, :, 0].cpu().numpy().T)
 
        plt.figure()
-       plt.imshow(batch[0][0, 1, :, :, 0].cpu().numpy().T)
+       plt.imshow(batch[0][0, 0, 1, :, :, 0].cpu().numpy().T)
 
        plt.figure()
-       plt.imshow(batch[1][0, :, :, 0].cpu().numpy().T)
+       plt.imshow(batch[1][0, 0, 0, :, :, 0].cpu().numpy().T)
        plt.show()
 
-       if count < 5:
+       if count < 100:
            count += 1
        else:
            break

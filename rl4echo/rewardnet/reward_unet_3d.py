@@ -38,6 +38,9 @@ class Reward3DOptimizer(LightningModule):
 
     def training_step(self, batch, *args, **kwargs) -> Dict:
         x, y = batch
+        if len(x.shape) > 5:
+            x = x.squeeze(0)
+            y = y.squeeze(0)
 
         y_pred = torch.sigmoid(self(x))
         loss = self.loss(y_pred, y)
@@ -51,7 +54,9 @@ class Reward3DOptimizer(LightningModule):
 
     def validation_step(self, batch, batch_idx: int):
         x, y = batch
-
+        if len(x.shape) > 5:
+            x = x.squeeze(0)
+            y = y.squeeze(0)
 
         y_pred = torch.sigmoid(self(x))
         loss = self.loss(y_pred, y)
@@ -73,6 +78,9 @@ class Reward3DOptimizer(LightningModule):
 
     def test_step(self, batch, batch_idx):
         x, y = batch
+        if len(x.shape) > 5:
+            x = x.squeeze(0)
+            y = y.squeeze(0)
 
         y_pred = torch.sigmoid(self(x))
         loss = self.loss(y_pred, y)
