@@ -1,11 +1,11 @@
 _target_: rl4echo.datamodules.RL_3d_datamodule.RL3dDataModule
-data_dir: "/data/icardio/processed/"
+data_dir: ${oc.env:DATA_PATH}/icardio/subsets/5000_w_test/
 num_workers: 12
 pin_memory: True
 batch_size: 1 # must be 1
 dataset_name: ""
-csv_file: finalsubsets_for_rl.csv
-splits_column: split_0_rl # column for train-test-val split, will be created if doesn't yet exist
+csv_file: "subset.csv"
+splits_column: split_validated # column for train-test-val split, will be created if doesn't yet exist
 seed: ${seed}
 
 common_spacing: [0.37, 0.37, 1] # approx average spacing in dataset
