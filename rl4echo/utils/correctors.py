@@ -42,7 +42,7 @@ class AEMorphoCorrector(Corrector):
         return corrected, corrected_validity, ae_comp
 
     def correct_single_seq(self, img, act, spacing):
-        corrected, _, _ = self.ae_corrector.fix_morphological_and_ae(act.cpu().numpy())
+        corrected, morph_fixed, _ = self.ae_corrector.fix_morphological_and_ae(act.cpu().numpy())
 
         corrected_validity = True
         for i in range(act.shape[-1]):
@@ -52,7 +52,7 @@ class AEMorphoCorrector(Corrector):
                 corrected_validity = False
                 break
         ae_comp = compare_segmentation_with_ae(act.cpu().numpy(), corrected)
-        return corrected, corrected_validity, ae_comp
+        return corrected, corrected_validity, ae_comp, morph_fixed.transpose((2, 1, 0))
 
 
 # class RansacCorrector(Corrector):

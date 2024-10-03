@@ -86,8 +86,8 @@ class RewardNet3DDataset(Dataset):
             lv_points = lv_points[np.argsort(lv_points[:, 1])]
             p_points = p_points[np.argsort(p_points[:, 1])]
 
-            d0 = (np.linalg.norm(lv_points[0] - p_points[0]) / a.shape[0] * 100)
-            d1 = (np.linalg.norm(lv_points[1] - p_points[1]) / b.shape[0] * 100)
+            d0 = (np.linalg.norm(lv_points[0] - p_points[0]) / a.shape[0] * 250)
+            d1 = (np.linalg.norm(lv_points[1] - p_points[1]) / b.shape[0] * 250)
 
             if d0 > 0:
                 rr, cc, val = skimage.draw.line_aa(p_points[0, 1], p_points[0, 0], lv_points[0, 1], lv_points[0, 0])

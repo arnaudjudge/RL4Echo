@@ -27,7 +27,8 @@ from patchless_nnunet.utils.softmax import softmax_helper
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 from vital.data.camus.config import Label
 
-from rl4echo.utils.Metrics import accuracy, dice_score, is_anatomically_valid
+from rl4echo.utils.Metrics import accuracy, dice_score, is_anatomically_valid, check_temporal_validity, \
+    mitral_valve_distance
 from rl4echo.utils.file_utils import get_img_subpath, save_to_reward_dataset
 from rl4echo.utils.logging_helper import log_sequence, log_video
 from rl4echo.utils.tensor_utils import convert_to_numpy
@@ -59,6 +60,7 @@ class RLmodule3D(LightningModule):
                  predict_do_model_perturb=True,
                  predict_do_img_perturb=True,
                  predict_do_corrections=True,
+                 predict_do_temporal_glitches=True,
                  save_on_test=False,
                  save_csv_after_predict=None,
                  temp_files_path='.',
@@ -71,6 +73,9 @@ class RLmodule3D(LightningModule):
         self.reward_func = reward
         if hasattr(self.reward_func, 'net'):
             self.register_module('rewardnet', self.reward_func.net)
+        elif hasattr(self.reward_func, 'nets'):
+            for i, n in enumerate(self.reward_func.nets):
+                self.register_module(f'rewardnet_{i}', n)
 
         self.actor_save_path = actor_save_path
         self.critic_save_path = critic_save_path
@@ -85,6 +90,7 @@ class RLmodule3D(LightningModule):
         self.predict_do_model_perturb = predict_do_model_perturb
         self.predict_do_img_perturb = predict_do_img_perturb
         self.predict_do_corrections = predict_do_corrections
+        self.predict_do_temporal_glitches = predict_do_temporal_glitches
 
         self.save_on_test = save_on_test
         self.save_csv_after_predict = save_csv_after_predict
@@ -161,6 +167,7 @@ class RLmodule3D(LightningModule):
         b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['gt'].squeeze(0), batch['use_gt']
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
+        prev_rewards = torch.mean(torch.stack(prev_rewards, dim=0), dim=0)
 
         loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
                                                                     prev_log_probs, b_gt, b_use_gt))
@@ -174,6 +181,7 @@ class RLmodule3D(LightningModule):
                 "val_dice": dice.mean()
                 }
 
+        _, _, _, _, v, _ = self.actor.evaluate(b_img, prev_actions)
         # log images
         if self.trainer.global_rank == 0:
             idx = random.randint(0, len(b_img) - 1)  # which image to log
@@ -182,6 +190,8 @@ class RLmodule3D(LightningModule):
                          epoch=self.current_epoch)
             log_sequence(self.logger, img=prev_actions[idx].unsqueeze(0), title='Prediction', number=batch_idx,
                       img_text=prev_rewards[idx].mean(), epoch=self.current_epoch)
+            log_sequence(self.logger, img=v[idx].unsqueeze(0), title='VFunction', number=batch_idx,
+                         img_text=v[idx].mean(), epoch=self.current_epoch)
             if prev_rewards.shape == prev_actions.shape:
                 log_sequence(self.logger, img=prev_rewards[idx].unsqueeze(0), title='RewardMap', number=batch_idx,
                              epoch=self.current_epoch)
@@ -214,7 +224,7 @@ class RLmodule3D(LightningModule):
         # should there be a test method in the reward class (which, in the case of 3d rewards
         # would have a different method, otherwise, only redirect to __call__())
         prev_rewards = self.reward_func(prev_actions[..., :4], b_img[..., :4], b_gt[..., :4])
-
+        prev_rewards = torch.mean(torch.stack(prev_rewards, dim=0), dim=0)
         # without sliding window
         # b_img = b_img[..., :4]
         # b_gt = b_gt[..., :4]
@@ -266,13 +276,22 @@ class RLmodule3D(LightningModule):
             anat_errors = is_anatomically_valid(y_pred_np_as_batch)
         print(f"AV took {round(time.time() - start_time, 4)} (s).")
 
+        start_time = time.time()
+        lm_mae, lm_mse, lm_mistakes = mitral_valve_distance(y_pred_np_as_batch, b_gt_np_as_batch)
+        print(f"LM dist took {round(time.time() - start_time, 4)} (s).")
+
+
         logs = {#'test_loss': loss,
                 "test_reward": torch.mean(prev_rewards.type(torch.float)),
                 'test_acc': acc.mean(),
                 "test_dice": simple_dice.mean(),
                 "test_anat_valid": torch.tensor(int(all(anat_errors)), device=self.device),
+                "test_anat_valid_frames": torch.tensor(anat_errors, device=self.device).mean(),
                 'dice_epi': torch.tensor(test_dice_epi, device=self.device),
                 'hd_epi': torch.tensor(test_hd_epi, device=self.device),
+                'lm_mae': torch.tensor(lm_mae.mean(), device=self.device),
+                'lm_mse': torch.tensor(lm_mse.mean(), device=self.device),
+                'lm_mistakes': torch.tensor(lm_mistakes, device=self.device),
                 }
         logs.update(test_dice)
         logs.update(test_hd)
@@ -312,7 +331,8 @@ class RLmodule3D(LightningModule):
         #             f[dicom]['accuracy_map'] = (prev_actions[i].cpu().numpy() != b_gt[i].cpu().numpy()).astype(np.uint8)
 
         if self.save_on_test:
-            prev_actions = prev_actions.squeeze(0).cpu().detach().numpy()
+            #prev_actions = prev_actions.squeeze(0).cpu().detach().numpy()
+            prev_actions = y_pred_np_as_batch.transpose((1, 2, 0))
             original_shape = meta_dict.get("original_shape").cpu().detach().numpy()[0]
 
             fname = meta_dict.get("case_identifier")[0]
@@ -454,22 +474,51 @@ class RLmodule3D(LightningModule):
         actions, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=False)
 
-        corrected, corrected_validity, ae_comp = self.pred_corrector.correct_single_seq(b_img.squeeze(0), actions_unsampled.squeeze(0), voxel_spacing)
+        corrected, corrected_validity, ae_comp, actions_unsampled_clean = self.pred_corrector.correct_single_seq(b_img.squeeze(0), actions_unsampled.squeeze(0), voxel_spacing)
+        actions_unsampled_clean = actions_unsampled_clean[None,]
         corrected = corrected[None,]
 
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
         itr = 0
 
         self.trainer.datamodule.add_to_train(id)
-        if ae_comp > 0.95 and all([check_segmentation_validity(actions_unsampled[0, ..., i].cpu().numpy().T, voxel_spacing,
-                                                               [0, 1, 2]) for i in range(actions_unsampled.shape[-1])]):
+
+        action_uns_anatomical_validity = [
+            check_segmentation_validity(actions_unsampled_clean[0, ..., i].T, voxel_spacing, [0, 1, 2])
+            for i in range(actions_unsampled_clean.shape[-1])]
+        #
+        # action_uns_temporal_validity = check_temporal_validity(actions_unsampled.squeeze(0).cpu().numpy(), voxel_spacing)\
+        #     if action_uns_anatomical_validity else False
+        # print(action_uns_temporal_validity)
+        #
+        # f, ax = plt.subplots(1, 4)
+        # ax[0].imshow(actions_unsampled_clean[0, ..., 0].T, cmap='grey')
+        # ax[1].imshow(actions_unsampled_clean[0, ..., 1].T, cmap='grey')
+        # ax[2].imshow(actions_unsampled_clean[0, ..., 2].T, cmap='grey')
+        # ax[3].imshow(actions_unsampled_clean[0, ..., 3].T, cmap='grey')
+        # plt.title(action_uns_anatomical_validity)
+
+        #
+        # corrected_temporal_validity = check_temporal_validity(corrected.squeeze(0), voxel_spacing) \
+        #     if corrected_validity else False
+        # print(corrected_temporal_validity)
+        # f, ax = plt.subplots(1, 4)
+        # ax[0].imshow(corrected[0, ..., 0].T, cmap='grey')
+        # ax[1].imshow(corrected[0, ..., 1].T, cmap='grey')
+        # ax[2].imshow(corrected[0, ..., 2].T, cmap='grey')
+        # ax[3].imshow(corrected[0, ..., 3].T, cmap='grey')
+        # plt.title(corrected_validity)
+        # print(ae_comp)
+        # plt.show()
+
+        if ae_comp > 0.95 and all(action_uns_anatomical_validity):
             self.trainer.datamodule.add_to_gt(id)
 
             path = self.trainer.datamodule.get_approx_gt_subpath(id)
             approx_gt_path = self.trainer.datamodule.hparams.approx_gt_dir + '/approx_gt/' + path
             Path(approx_gt_path).parent.mkdir(parents=True, exist_ok=True)
             hdr = nib.Nifti1Header()
-            nifti = nib.Nifti1Image(convert_to_numpy(torch.round(actions_unsampled).squeeze(0)),
+            nifti = nib.Nifti1Image(convert_to_numpy(np.round(actions_unsampled_clean).squeeze(0)),
                                     np.diag(np.asarray([-1, -1, 1, 0])), hdr)
             nifti.to_filename(approx_gt_path)
 
@@ -510,7 +559,7 @@ class RLmodule3D(LightningModule):
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
-                                           convert_to_numpy(actions_unsampled),
+                                           convert_to_numpy(actions_unsampled_clean),
                                            convert_to_numpy(deformed_action))
                 self.actor.actor.net.load_state_dict(initial_params)
             if self.predict_do_img_perturb:
@@ -574,7 +623,7 @@ class RLmodule3D(LightningModule):
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
-                                           convert_to_numpy(actions_unsampled),
+                                           convert_to_numpy(actions_unsampled_clean),
                                            convert_to_numpy(contr_action))
 
                 gaussian_blurs = [0.3, 0.6]
@@ -612,7 +661,7 @@ class RLmodule3D(LightningModule):
                     save_to_reward_dataset(self.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
-                                           convert_to_numpy(actions_unsampled),
+                                           convert_to_numpy(actions_unsampled_clean),
                                            convert_to_numpy(blurred_action))
 
         else:

@@ -46,13 +46,16 @@ class PPO3D(RLmodule3D):
 
         # get actions, log_probs, rewards, etc from pi (stays constant for all steps k)
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_use_gt)
+        num_rewards = len(prev_rewards)
 
         # iterate with pi prime k times
-        for k in range(self.k_steps):
+        for k in range(self.k_steps*num_rewards):
             # calculates training loss
-            loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
+            loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions,
+                                                                        prev_rewards[k % num_rewards],
                                                                         prev_log_probs, b_gt, b_use_gt))
 
+            # if self.trainer.current_epoch > 4:
             opt_net.zero_grad()
             self.manual_backward(loss, retain_graph=True)
             nn.utils.clip_grad_norm_(self.actor.parameters(),

@@ -1,3 +1,6 @@
+from copy import copy, deepcopy
+
+import matplotlib.pyplot as plt
 import numpy as np
 import skimage.morphology
 import torch
@@ -45,7 +48,31 @@ class RewardUnet3D(Reward):
     @torch.no_grad()
     def __call__(self, pred, imgs, gt):
         stack = torch.stack((imgs.squeeze(1), pred), dim=1)
-        return torch.sigmoid(self.net(stack)/self.temp_factor).squeeze(1)
+        # return as list for code suiting multireward
+        return [torch.sigmoid(self.net(stack)/self.temp_factor).squeeze(1)]
+
+
+class MultiRewardUnet3D(Reward):
+    def __init__(self, net, state_dict_paths, temp_factor=1):
+        self.nets = []
+        for path in state_dict_paths:
+            n = deepcopy(net)
+            n.load_state_dict(torch.load(path))
+            self.nets += [n]
+        # self.nets = net
+        # self.net2 = deepcopy(net)
+        # self.net.load_state_dict(torch.load(state_dict_path))
+        self.temp_factor = temp_factor
+        # self.net2.load_state_dict(torch.load("/home/local/USHERBROOKE/juda2901/dev/RL4Echo/reward_net_3d_landmarks.ckpt"))
+        # self.net2.cuda()
+
+    @torch.no_grad()
+    def __call__(self, pred, imgs, gt):
+        stack = torch.stack((imgs.squeeze(1), pred), dim=1)
+        r = []
+        for net in self.nets:
+            r += [torch.sigmoid(net(stack)/self.temp_factor).squeeze(1)]
+        return r #torch.minimum(r1, r2)
 
 
 class RewardUnetSigma(Reward):
