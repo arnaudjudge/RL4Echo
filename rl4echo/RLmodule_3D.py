@@ -164,7 +164,7 @@ class RLmodule3D(LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['gt'].squeeze(0), batch['use_gt']
+        b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['gt'].squeeze(0), batch['use_gt'].squeeze(0)
 
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
         prev_rewards = torch.mean(torch.stack(prev_rewards, dim=0), dim=0)

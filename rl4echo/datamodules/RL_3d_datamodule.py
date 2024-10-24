@@ -129,7 +129,7 @@ class RL3dDataset(Dataset):
         return {'img': img.type(torch.float32),
                 'gt': mask.type(torch.LongTensor) if self.allow_real_gt or self.test else torch.zeros_like(torch.tensor(mask).type(torch.LongTensor)),
                 'approx_gt': approx_gt.type(torch.LongTensor),
-                'use_gt': torch.tensor(self.use_gt[idx]),
+                'use_gt': torch.tensor([self.use_gt[idx] for _ in range(img.shape[0])]),
                 'image_meta_dict': {'case_identifier': self.df.iloc[idx]['dicom_uuid'],
                                     'original_shape': original_shape,
                                     'original_spacing': img_nifti.header['pixdim'][1:4],
