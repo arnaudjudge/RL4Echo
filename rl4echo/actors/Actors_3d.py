@@ -43,4 +43,7 @@ class Unet3DCritic(nn.Module):
             self.net.load_state_dict(torch.load(pretrain_ckpt))
 
     def forward(self, x):
-        return torch.sigmoid(self.net(x))
+        y = self.net(x)
+        if self.net.deep_supervision and self.net.training:
+           return [torch.sigmoid(y_) for y_ in y]
+        return torch.sigmoid(y)

@@ -90,6 +90,11 @@ class PPO3D(RLmodule3D):
 
         _, logits, log_probs, entropy, v, old_log_probs = self.actor.evaluate(b_img, b_actions)
 
+        v_deeps = None
+        if isinstance(v, list):
+            v_deeps = v
+            v = v[0]
+
         log_pi_ratio = (log_probs - old_log_probs)
         with torch.no_grad():
             total_reward = b_rewards - (self.divergence_coeff * log_pi_ratio)
@@ -115,7 +120,17 @@ class PPO3D(RLmodule3D):
         # Critic loss
         if b_rewards.shape != v.shape:  # if critic is resnet, use reward mean instead of pixel-wise
             b_rewards = b_rewards.mean(dim=(1, 2), keepdim=True)
-        critic_loss = nn.MSELoss()(v, b_rewards)
+
+        if v_deeps:
+            # deep supervision
+            critic_loss = nn.MSELoss()(v_deeps[0], b_rewards)
+            for i, v_ in enumerate(v_deeps[1:]):
+                downsampled_label = nn.functional.interpolate(b_rewards.unsqueeze(0), v_.shape[1:]).squeeze(0)
+                loss += 0.5 ** (i + 1) * nn.MSELoss()(v_, downsampled_label)
+            c_norm = 1 / (2 - 2 ** (-len(v_deeps)))
+            critic_loss = c_norm * critic_loss
+        else:
+            critic_loss = nn.MSELoss()(v, b_rewards)
 
         # metrics dict
         metrics = {
