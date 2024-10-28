@@ -100,7 +100,6 @@ class RLmodule3D(LightningModule):
         if not self.temp_files_path.exists() and self.trainer.global_rank == 0:
             self.temp_files_path.mkdir(parents=True, exist_ok=True)
 
-
     def configure_optimizers(self):
         return self.actor.get_optimizers()
 
@@ -251,7 +250,7 @@ class RLmodule3D(LightningModule):
         # should be still valid to use resampled spacing for metrics here
         voxel_spacing = np.asarray([[abs(meta_dict['resampled_affine'][0, 0, 0].cpu().numpy()),
                                      abs(meta_dict['resampled_affine'][0, 1, 1].cpu().numpy())]]).repeat(
-            repeats=len(y_pred_np_as_batch), axis=0)
+                                    repeats=len(y_pred_np_as_batch), axis=0)
         print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
 
         start_time = time.time()
@@ -277,7 +276,7 @@ class RLmodule3D(LightningModule):
         print(f"AV took {round(time.time() - start_time, 4)} (s).")
 
         start_time = time.time()
-        lm_mae, lm_mse, lm_mistakes = mitral_valve_distance(y_pred_np_as_batch, b_gt_np_as_batch)
+        lm_metrics = mitral_valve_distance(y_pred_np_as_batch, b_gt_np_as_batch, voxel_spacing[0])
         print(f"LM dist took {round(time.time() - start_time, 4)} (s).")
 
 
@@ -289,12 +288,10 @@ class RLmodule3D(LightningModule):
                 "test/anat_valid_frames": torch.tensor(anat_errors, device=self.device).mean(),
                 'test/dice/epi': torch.tensor(test_dice_epi, device=self.device),
                 'test/hd/epi': torch.tensor(test_hd_epi, device=self.device),
-                'test/LM/mae': torch.tensor(lm_mae.mean(), device=self.device),
-                'test/LM/mse': torch.tensor(lm_mse.mean(), device=self.device),
-                'test/LM/mistakes': torch.tensor(lm_mistakes, device=self.device),
                 }
         logs.update({f'test/{k}': v for k, v in test_dice.items()})
         logs.update({f'test/{k}': v for k, v in test_hd.items()})
+        logs.update({f'test/LM/{k}': v for k, v in lm_metrics.items()})
 
         start_time = time.time()
         # for logging v
