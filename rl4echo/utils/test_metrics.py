@@ -27,7 +27,7 @@ def dice(pred: np.ndarray, target: np.ndarray, labels: Tuple[LabelEnum], exclude
                 pred_mask, gt_mask = np.isin(pred, label), np.isin(target, label)
                 dices.append(dc(pred_mask, gt_mask))
         if all_classes:
-            dice_dict = {f"dice_{label.name}": dice for label, dice in zip(labels[1:], dices)}
+            dice_dict = {f"dice/{label.name}": dice for label, dice in zip(labels[1:], dices)}
             dice_dict['Dice'] = np.array(dices).mean()
             return dice_dict
         else:
@@ -66,7 +66,7 @@ def hausdorff(pred: np.ndarray, target: np.ndarray, labels: Tuple[LabelEnum], ex
                 hausdorffs.append(hd(pred_mask, gt_mask, voxel_spacing[i] if voxel_spacing is not None else None))
         if all_classes:
             for label, haus in zip(labels[1:], hausdorffs):
-                hd_dict[f"hd_{label.name}"] = hd_dict.get(f"hd_{label.name}", 0) + haus / len(pred)
+                hd_dict[f"hd/{label.name}"] = hd_dict.get(f"hd/{label.name}", 0) + haus / len(pred)
             hd_dict['Hausdorff'] = hd_dict.get('Hausdorff', 0) + np.array(hausdorffs).mean() / len(pred)
         else:
             hd_dict['Hausdorff'] = hd_dict.get('Hausdorff', 0) + np.array(hausdorffs).mean() / len(pred)

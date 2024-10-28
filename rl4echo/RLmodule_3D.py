@@ -175,10 +175,10 @@ class RLmodule3D(LightningModule):
         acc = accuracy(prev_actions, b_img, b_gt)
         dice = dice_score(prev_actions, b_gt)
 
-        logs = {'val_loss': loss,
-                "val_reward": torch.mean(prev_rewards.type(torch.float)),
-                "val_acc": acc.mean(),
-                "val_dice": dice.mean()
+        logs = {'val/loss': loss,
+                "val/reward": torch.mean(prev_rewards.type(torch.float)),
+                "val/acc": acc.mean(),
+                "val/dice": dice.mean()
                 }
 
         _, _, _, _, v, _ = self.actor.evaluate(b_img, prev_actions)
@@ -282,19 +282,19 @@ class RLmodule3D(LightningModule):
 
 
         logs = {#'test_loss': loss,
-                "test_reward": torch.mean(prev_rewards.type(torch.float)),
-                'test_acc': acc.mean(),
-                "test_dice": simple_dice.mean(),
-                "test_anat_valid": torch.tensor(int(all(anat_errors)), device=self.device),
-                "test_anat_valid_frames": torch.tensor(anat_errors, device=self.device).mean(),
-                'dice_epi': torch.tensor(test_dice_epi, device=self.device),
-                'hd_epi': torch.tensor(test_hd_epi, device=self.device),
-                'lm_mae': torch.tensor(lm_mae.mean(), device=self.device),
-                'lm_mse': torch.tensor(lm_mse.mean(), device=self.device),
-                'lm_mistakes': torch.tensor(lm_mistakes, device=self.device),
+                "test/reward": torch.mean(prev_rewards.type(torch.float)),
+                'test/acc': acc.mean(),
+                "test/dice/simple_mean": simple_dice.mean(),
+                "test/anat_valid": torch.tensor(int(all(anat_errors)), device=self.device),
+                "test/anat_valid_frames": torch.tensor(anat_errors, device=self.device).mean(),
+                'test/dice/epi': torch.tensor(test_dice_epi, device=self.device),
+                'test/hd/epi': torch.tensor(test_hd_epi, device=self.device),
+                'test/LM/mae': torch.tensor(lm_mae.mean(), device=self.device),
+                'test/LM/mse': torch.tensor(lm_mse.mean(), device=self.device),
+                'test/LM/mistakes': torch.tensor(lm_mistakes, device=self.device),
                 }
-        logs.update(test_dice)
-        logs.update(test_hd)
+        logs.update({f'test/{k}': v for k, v in test_dice.items()})
+        logs.update({f'test/{k}': v for k, v in test_hd.items()})
 
         start_time = time.time()
         # for logging v
@@ -318,17 +318,6 @@ class RLmodule3D(LightningModule):
 
         self.log_dict(logs, sync_dist=True)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
-        # if self.save_uncertainty_path:
-        #     with h5py.File(self.save_uncertainty_path, 'a') as f:
-        #         for i in range(len(b_img)):
-        #             dicom = batch['id'][i] + "_" + batch['instant'][i]
-        #             if dicom not in f:
-        #                 f.create_group(dicom)
-        #             f[dicom]['img'] = b_img[i].cpu().numpy()
-        #             f[dicom]['gt'] = b_gt[i].cpu().numpy()
-        #             f[dicom]['pred'] = prev_actions[i].cpu().numpy()
-        #             f[dicom]['reward_map'] = prev_rewards[i].cpu().numpy()
-        #             f[dicom]['accuracy_map'] = (prev_actions[i].cpu().numpy() != b_gt[i].cpu().numpy()).astype(np.uint8)
 
         if self.save_on_test:
             #prev_actions = prev_actions.squeeze(0).cpu().detach().numpy()
