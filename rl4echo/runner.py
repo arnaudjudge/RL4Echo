@@ -8,6 +8,7 @@ from hydra.utils import instantiate
 from omegaconf import OmegaConf
 from lightning.pytorch import Trainer, seed_everything
 
+from patchless_nnunet.utils import log_hyperparameters
 from rl4echo.utils.instantiators import instantiate_callbacks
 
 OmegaConf.register_new_resolver(
@@ -33,6 +34,18 @@ def main(cfg):
     callbacks = instantiate_callbacks(cfg.callbacks)
 
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
+
+    if logger:
+        print("Logging hyperparams")
+        object_dict = {
+            "cfg": cfg,
+            "datamodule": datamodule,
+            "model": model,
+            "callbacks": callbacks,
+            "logger": logger,
+            "trainer": trainer,
+        }
+        log_hyperparameters(object_dict)
 
     if cfg.train:
         trainer.fit(train_dataloaders=datamodule, model=model)
