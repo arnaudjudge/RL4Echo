@@ -19,11 +19,6 @@ class PPO3D(RLmodule3D):
                  **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-        self.clip_value = clip_value
-        self.k_steps = k_steps_per_batch
-        self.entropy_coeff = entropy_coeff
-        self.divergence_coeff = divergence_coeff
-
         # since optimization is done manually, this flag needs to be set
         self.automatic_optimization = False
 
@@ -49,7 +44,7 @@ class PPO3D(RLmodule3D):
         num_rewards = len(prev_rewards)
 
         # iterate with pi prime k times
-        for k in range(self.k_steps*num_rewards):
+        for k in range(self.hparams.k_steps_per_batch*num_rewards):
             # calculates training loss
             loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions,
                                                                         prev_rewards[k % num_rewards],
@@ -97,7 +92,7 @@ class PPO3D(RLmodule3D):
 
         log_pi_ratio = (log_probs - old_log_probs)
         with torch.no_grad():
-            total_reward = b_rewards - (self.divergence_coeff * log_pi_ratio)
+            total_reward = b_rewards - (self.hparams.divergence_coeff * log_pi_ratio)
             # ignore divergence if using ground truth
             total_reward[b_use_gt, ...] = torch.ones_like(b_rewards)[b_use_gt, ...]
 
@@ -110,12 +105,12 @@ class PPO3D(RLmodule3D):
         ratio = (log_probs - b_log_probs).exp()
 
         # clamp with epsilon value
-        clipped = ratio.clamp(1 - self.clip_value, 1 + self.clip_value)
+        clipped = ratio.clamp(1 - self.hparams.clip_value, 1 + self.hparams.clip_value)
         surr_loss = torch.min(adv * ratio, adv * clipped)
         # surr_loss[b_use_gt, ...] = (adv * ratio)[b_use_gt, ...]
 
         # min trick
-        loss = -surr_loss.mean() + (-self.entropy_coeff * entropy.mean())
+        loss = -surr_loss.mean() + (-self.hparams.entropy_coeff * entropy.mean())
 
         # Critic loss
         if b_rewards.shape != v.shape:  # if critic is resnet, use reward mean instead of pixel-wise

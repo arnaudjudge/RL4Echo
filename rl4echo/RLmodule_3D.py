@@ -67,7 +67,7 @@ class RLmodule3D(LightningModule):
                  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-        #TODO: use automatic hparams
+        self.save_hyperparameters(logger=False, ignore=["actor", "reward", "corrector"])
 
         self.actor = actor
         self.reward_func = reward
@@ -77,23 +77,10 @@ class RLmodule3D(LightningModule):
             for i, n in enumerate(self.reward_func.nets):
                 self.register_module(f'rewardnet_{i}', n)
 
-        self.actor_save_path = actor_save_path
-        self.critic_save_path = critic_save_path
-
-        self.save_uncertainty_path = save_uncertainty_path
-
-        self.predict_save_dir = predict_save_dir
         self.pred_corrector = corrector
         if isinstance(self.pred_corrector, AEMorphoCorrector):
             self.register_module('correctorAE', self.pred_corrector.ae_corrector.temporal_regularization.autoencoder)
 
-        self.predict_do_model_perturb = predict_do_model_perturb
-        self.predict_do_img_perturb = predict_do_img_perturb
-        self.predict_do_corrections = predict_do_corrections
-        self.predict_do_temporal_glitches = predict_do_temporal_glitches
-
-        self.save_on_test = save_on_test
-        self.save_csv_after_predict = save_csv_after_predict
         self.predicted_rows = []
 
         self.temp_files_path = Path(temp_files_path)
@@ -316,7 +303,7 @@ class RLmodule3D(LightningModule):
         self.log_dict(logs, sync_dist=True)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
 
-        if self.save_on_test:
+        if self.hparams.save_on_test:
             #prev_actions = prev_actions.squeeze(0).cpu().detach().numpy()
             prev_actions = y_pred_np_as_batch.transpose((1, 2, 0))
             original_shape = meta_dict.get("original_shape").cpu().detach().numpy()[0]
@@ -439,15 +426,15 @@ class RLmodule3D(LightningModule):
         sitk.WriteImage(itk_image, os.path.join(save_dir, str(fname) + ".nii.gz"))
 
     def on_test_end(self) -> None:
-        if self.actor_save_path:
-            torch.save(self.actor.actor.net.state_dict(), self.actor_save_path)
+        if self.hparams.actor_save_path:
+            torch.save(self.actor.actor.net.state_dict(), self.hparams.actor_save_path)
 
             actor_net = shrink_perturb(copy.deepcopy(self.actor.actor.net))
-            torch.save(actor_net.state_dict(), self.actor_save_path.replace('.ckpt', '_s-p.ckpt'))
-        if self.critic_save_path:
-            torch.save(self.actor.critic.net.state_dict(), self.critic_save_path)
+            torch.save(actor_net.state_dict(), self.hparams.actor_save_path.replace('.ckpt', '_s-p.ckpt'))
+        if self.hparams.critic_save_path:
+            torch.save(self.actor.critic.net.state_dict(), self.hparams.critic_save_path)
             critic_net = shrink_perturb(copy.deepcopy(self.actor.critic.net))
-            torch.save(critic_net.state_dict(), self.critic_save_path.replace('.ckpt', '_s-p.ckpt'))
+            torch.save(critic_net.state_dict(), self.hparams.critic_save_path.replace('.ckpt', '_s-p.ckpt'))
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
         # must be batch size 1 as images have varied sizes
@@ -508,7 +495,7 @@ class RLmodule3D(LightningModule):
                                     np.diag(np.asarray([-1, -1, 1, 0])), hdr)
             nifti.to_filename(approx_gt_path)
 
-            if self.predict_do_model_perturb:
+            if self.hparams.predict_do_model_perturb:
                 for j, multiplier in enumerate([0.1, 0.15, 0.2, 0.25]):  # have been adapted from 2d
                     # get random seed based on time to maximise randomness of noise and subsequent predictions
                     # explore as much space around policy as possible
@@ -542,13 +529,13 @@ class RLmodule3D(LightningModule):
                         continue
 
                     filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_weights.nii.gz"
-                    save_to_reward_dataset(self.predict_save_dir,
+                    save_to_reward_dataset(self.hparams.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
                                            convert_to_numpy(actions_unsampled_clean),
                                            convert_to_numpy(deformed_action))
                 self.actor.actor.net.load_state_dict(initial_params)
-            if self.predict_do_img_perturb:
+            if self.hparams.predict_do_img_perturb:
                 contrast_factors = [0.4, 0.05]  # check this !!!
                 for factor in contrast_factors:
                     in_img = copy.deepcopy(b_img)
@@ -606,7 +593,7 @@ class RLmodule3D(LightningModule):
 
                     time_seed = int(round(datetime.now().timestamp())) + int(factor*10)
                     filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_contrast.nii.gz"
-                    save_to_reward_dataset(self.predict_save_dir,
+                    save_to_reward_dataset(self.hparams.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
                                            convert_to_numpy(actions_unsampled_clean),
@@ -644,7 +631,7 @@ class RLmodule3D(LightningModule):
 
                     time_seed = int(round(datetime.now().timestamp())) + int(blur*100)
                     filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_blur.nii.gz"
-                    save_to_reward_dataset(self.predict_save_dir,
+                    save_to_reward_dataset(self.hparams.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
                                            convert_to_numpy(actions_unsampled_clean),
@@ -660,9 +647,9 @@ class RLmodule3D(LightningModule):
                 # ax2.imshow(corrected[..., 0].T)
                 # plt.show()
 
-                if self.predict_do_corrections:
+                if self.hparams.predict_do_corrections:
                     filename = f"{batch_idx}_{itr}_{int(round(datetime.now().timestamp()))}_{self.trainer.global_rank}_correction.nii.gz"
-                    save_to_reward_dataset(self.predict_save_dir,
+                    save_to_reward_dataset(self.hparams.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
                                            convert_to_numpy(corrected),
