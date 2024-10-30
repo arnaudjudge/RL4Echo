@@ -5,6 +5,7 @@ import pandas as pd
 from dotenv import load_dotenv
 import hydra
 from hydra.utils import instantiate
+from lightning.pytorch.loggers import CometLogger
 from omegaconf import OmegaConf
 from lightning.pytorch import Trainer, seed_everything
 
@@ -34,6 +35,11 @@ def main(cfg):
     callbacks = instantiate_callbacks(cfg.callbacks)
 
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
+
+    if isinstance(trainer.logger, CometLogger):
+        logger.experiment.log_asset_folder(".hydra", log_file_name=True)
+        if cfg.get("comet_tags", None):
+            logger.experiment.add_tags(list(cfg.comet_tags))
 
     if logger:
         print("Logging hyperparams")
