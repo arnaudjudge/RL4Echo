@@ -108,7 +108,7 @@ def mitral_valve_distance(segmentation, gt, spacing, mistake_distances=[5, 7.5])
     mistakes.update(dict((f"mistake_per_cycle_{d}mm_R", 0) for d in mistake_distances))
 
     lv_area = EchoMeasure.structure_area(gt, labels=1)
-    n_cardiac_cycles = estimate_num_cycles(lv_area)
+    n_cardiac_cycles, _, _ = estimate_num_cycles(lv_area)
 
     for i in range(len(gt)):
         try:

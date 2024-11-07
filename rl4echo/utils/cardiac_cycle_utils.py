@@ -20,17 +20,17 @@ def extract_cycle_points(lv_area, pad_width=10, peaks_prominence=0.15, peaks_hei
 
     # remove padding
     peaks -= pad_width
-    peaks = [p for p in peaks if p < len(lv_area)]
+    peaks = [p for p in peaks if len(lv_area) > p >= 0]
 
     valleys -= pad_width
-    valleys = [v for v in valleys if v < len(lv_area)]
+    valleys = [v for v in valleys if len(lv_area) > v >= 0]
 
     return peaks, valleys
 
 
 def estimate_num_cycles(lv_area, pad_width=10, peaks_prominence=0.15, peaks_height=0.5, peaks_distance=10, plot=False):
     peaks, valleys = extract_cycle_points(lv_area, pad_width, peaks_prominence, peaks_height, peaks_distance)
-    num_cycles = len(peaks) - (len(peaks) - len(valleys))
+    num_cycles = max((len(peaks) - (len(peaks) - len(valleys))), 1)  # max to make sure at least one cycle
 
     if plot:
         from matplotlib import pyplot as plt
@@ -44,6 +44,6 @@ def estimate_num_cycles(lv_area, pad_width=10, peaks_prominence=0.15, peaks_heig
         plt.title(f"{num_cycles}")
         plt.show()
 
-    return num_cycles
+    return num_cycles, peaks, valleys
 
 
