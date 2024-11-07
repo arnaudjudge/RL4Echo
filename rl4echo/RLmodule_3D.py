@@ -209,7 +209,8 @@ class RLmodule3D(LightningModule):
         # this would not work with a neural net (no sliding window)
         # should there be a test method in the reward class (which, in the case of 3d rewards
         # would have a different method, otherwise, only redirect to __call__())
-        prev_rewards = self.reward_func(prev_actions[..., :4], b_img[..., :4], b_gt[..., :4])
+        # prev_rewards = self.reward_func(prev_actions[..., :4], b_img[..., :4], b_gt[..., :4])
+        prev_rewards = self.reward_func.predict_full_sequence(prev_actions, b_img, b_gt)
         prev_rewards = torch.mean(torch.stack(prev_rewards, dim=0), dim=0)
         # without sliding window
         # b_img = b_img[..., :4]
@@ -296,9 +297,11 @@ class RLmodule3D(LightningModule):
                 if v.shape == prev_actions[..., :4].shape:
                     log_sequence(self.logger, img=v[i].unsqueeze(0), title='test_v_function', number=batch_idx * (i + 1),
                               img_text=v[i].mean(), epoch=self.current_epoch)
-                if prev_rewards.shape[:-1] == prev_actions.shape[:-1]:
-                    log_sequence(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap', number=batch_idx * (i + 1),
-                              img_text=prev_rewards[i].mean(), epoch=self.current_epoch)
+                # if prev_rewards.shape[:-1] == prev_actions.shape[:-1]:
+                #     log_sequence(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap', number=batch_idx * (i + 1),
+                #               img_text=prev_rewards[i].mean(), epoch=self.current_epoch)
+                log_video(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap',
+                          number=batch_idx * (i + 1), epoch=self.current_epoch)
 
         self.log_dict(logs, sync_dist=True)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
@@ -336,6 +339,8 @@ class RLmodule3D(LightningModule):
             mode='gaussian',
             cache_roi_weight_map=True,
         )
+
+        self.reward_func.prepare_for_full_sequence(self.trainer.datamodule.hparams.batch_size)
 
     def predict(
         self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
