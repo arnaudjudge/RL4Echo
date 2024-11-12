@@ -98,6 +98,7 @@ def log_video(logger, img, title, background=None, number=0, img_text=None, epoc
                        alpha=0.35 if background is not None else 1.0,
                        interpolation='none')
         ax.axis("off")
+
         def update(i):
             im.set_array(img[..., i])
             if background is not None:
@@ -109,4 +110,5 @@ def log_video(logger, img, title, background=None, number=0, img_text=None, epoc
         animation_fig.save("tmp.gif")
         # Log gif file to Comet
         logger.experiment.log_video("tmp.gif", name="{}_{}".format(title, number), overwrite=True, step=epoch)
+        plt.close()
         os.remove("tmp.gif")
