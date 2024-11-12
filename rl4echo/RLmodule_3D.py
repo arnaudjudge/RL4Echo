@@ -63,6 +63,7 @@ class RLmodule3D(LightningModule):
                  predict_do_temporal_glitches=True,
                  save_on_test=False,
                  save_csv_after_predict=None,
+                 val_batch_size=4,
                  temp_files_path='.',
                  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -150,40 +151,44 @@ class RLmodule3D(LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['gt'].squeeze(0), batch['use_gt'].squeeze(0)
+        b_imgs, b_gts, b_use_gts = batch['img'].squeeze(0), batch['gt'].squeeze(0), batch['use_gt'].squeeze(0)
 
-        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
-        prev_rewards = torch.mean(torch.stack(prev_rewards, dim=0), dim=0)
+        for i in range(0, b_imgs.shape[0], self.hparams.val_batch_size):
+            b_img = b_imgs[i:i+self.hparams.val_batch_size]
+            b_gt = b_gts[i:i+self.hparams.val_batch_size]
+            b_use_gt = b_use_gts[i:i+self.hparams.val_batch_size]
 
-        loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
-                                                                    prev_log_probs, b_gt, b_use_gt))
+            prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
+            prev_rewards = torch.mean(torch.stack(prev_rewards, dim=0), dim=0)
 
-        acc = accuracy(prev_actions, b_img, b_gt)
-        dice = dice_score(prev_actions, b_gt)
+            loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
+                                                                        prev_log_probs, b_gt, b_use_gt))
 
-        logs = {'val/loss': loss,
-                "val/reward": torch.mean(prev_rewards.type(torch.float)),
-                "val/acc": acc.mean(),
-                "val/dice": dice.mean()
-                }
+            acc = accuracy(prev_actions, b_img, b_gt)
+            dice = dice_score(prev_actions, b_gt)
 
-        _, _, _, _, v, _ = self.actor.evaluate(b_img, prev_actions)
-        # log images
-        if self.trainer.global_rank == 0:
-            idx = random.randint(0, len(b_img) - 1)  # which image to log
-            log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
-            log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
-                         epoch=self.current_epoch)
-            log_sequence(self.logger, img=prev_actions[idx].unsqueeze(0), title='Prediction', number=batch_idx,
-                      img_text=prev_rewards[idx].mean(), epoch=self.current_epoch)
-            log_sequence(self.logger, img=v[idx].unsqueeze(0), title='VFunction', number=batch_idx,
-                         img_text=v[idx].mean(), epoch=self.current_epoch)
-            if prev_rewards.shape == prev_actions.shape:
-                log_sequence(self.logger, img=prev_rewards[idx].unsqueeze(0), title='RewardMap', number=batch_idx,
+            logs = {'val/loss': loss,
+                    "val/reward": torch.mean(prev_rewards.type(torch.float)),
+                    "val/acc": acc.mean(),
+                    "val/dice": dice.mean()
+                    }
+
+            _, _, _, _, v, _ = self.actor.evaluate(b_img, prev_actions)
+            # log images
+            if self.trainer.global_rank == 0:
+                idx = random.randint(0, len(b_img) - 1)  # which image to log
+                log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
+                log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
                              epoch=self.current_epoch)
+                log_sequence(self.logger, img=prev_actions[idx].unsqueeze(0), title='Prediction', number=batch_idx,
+                          img_text=prev_rewards[idx].mean(), epoch=self.current_epoch)
+                log_sequence(self.logger, img=v[idx].unsqueeze(0), title='VFunction', number=batch_idx,
+                             img_text=v[idx].mean(), epoch=self.current_epoch)
+                if prev_rewards.shape == prev_actions.shape:
+                    log_sequence(self.logger, img=prev_rewards[idx].unsqueeze(0), title='RewardMap', number=batch_idx,
+                                 epoch=self.current_epoch)
 
-        self.log_dict(logs, sync_dist=True)
-        return logs
+            self.log_dict(logs, on_epoch=True, sync_dist=True)
 
     def test_step(self, batch: dict[str, Tensor], batch_idx: int):
         """
@@ -286,7 +291,7 @@ class RLmodule3D(LightningModule):
         # Use only first 4 for visualization, avoids having to implement sliding window inference for critic
         _, _, _, _, v, _ = self.actor.evaluate(b_img[..., :4], prev_actions[..., :4])
 
-        if self.trainer.global_rank == 0 and batch_idx % 5 == 0:
+        if self.trainer.global_rank == 0 and batch_idx % 1 == 0:
             for i in range(len(b_img)):
                 log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
                              epoch=self.current_epoch)
