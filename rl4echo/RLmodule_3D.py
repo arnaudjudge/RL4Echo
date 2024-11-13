@@ -192,7 +192,7 @@ class RLmodule3D(LightningModule):
                     log_sequence(self.logger, img=prev_rewards[idx].unsqueeze(0), title='RewardMap', number=batch_idx,
                                  epoch=self.current_epoch)
 
-        logs = {k: torch.tensor(v).mean() for k, v in logs.items()}
+        logs = {k: torch.tensor(v, device=self.device).mean() for k, v in logs.items()}
         self.log_dict(logs, on_epoch=True, sync_dist=True)
         return logs
 
