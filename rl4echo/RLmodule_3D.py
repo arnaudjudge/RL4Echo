@@ -153,6 +153,11 @@ class RLmodule3D(LightningModule):
         """
         b_imgs, b_gts, b_use_gts = batch['img'].squeeze(0), batch['gt'].squeeze(0), batch['use_gt'].squeeze(0)
 
+        logs = {'val/loss': [],
+                "val/reward": [],
+                "val/acc": [],
+                "val/dice": []
+                }
         for i in range(0, b_imgs.shape[0], self.hparams.val_batch_size):
             b_img = b_imgs[i:i+self.hparams.val_batch_size]
             b_gt = b_gts[i:i+self.hparams.val_batch_size]
@@ -167,11 +172,10 @@ class RLmodule3D(LightningModule):
             acc = accuracy(prev_actions, b_img, b_gt)
             dice = dice_score(prev_actions, b_gt)
 
-            logs = {'val/loss': loss,
-                    "val/reward": torch.mean(prev_rewards.type(torch.float)),
-                    "val/acc": acc.mean(),
-                    "val/dice": dice.mean()
-                    }
+            logs["val/loss"] += [loss]
+            logs["val/reward"] += [torch.mean(prev_rewards.type(torch.float))]
+            logs["val/acc"] += [acc.mean()]
+            logs["val/dice"] += [dice.mean()]
 
             _, _, _, _, v, _ = self.actor.evaluate(b_img, prev_actions)
             # log images
@@ -188,7 +192,9 @@ class RLmodule3D(LightningModule):
                     log_sequence(self.logger, img=prev_rewards[idx].unsqueeze(0), title='RewardMap', number=batch_idx,
                                  epoch=self.current_epoch)
 
-            self.log_dict(logs, on_epoch=True, sync_dist=True)
+        logs = {k: torch.tensor(v).mean() for k, v in logs.items()}
+        self.log_dict(logs, on_epoch=True, sync_dist=True)
+        return logs
 
     def test_step(self, batch: dict[str, Tensor], batch_idx: int):
         """
