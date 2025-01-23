@@ -204,16 +204,14 @@ if __name__ == "__main__":
 
        from matplotlib import pyplot as plt
        plt.figure()
-       plt.imshow(batch[0][0, 0, 0, :, :, 0].cpu().numpy().T)
+       plt.imshow(batch[0][0, 0, 0, :, :, 0].cpu().numpy().T, cmap='gray')
 
        plt.figure()
-       plt.imshow(batch[0][0, 0, 1, :, :, 0].cpu().numpy().T)
-
-       plt.figure()
-       plt.imshow(batch[1][0, 0, 0, :, :, 0].cpu().numpy().T)
+       plt.imshow(batch[0][0, 0, 1, :, :, 0].cpu().numpy().T, cmap='gray')
+       plt.imshow(1 - batch[1][0, 0, 0, :, :, 0].cpu().numpy().T, alpha=0.35, cmap='jet')
        plt.show()
 
-       if count < 100:
+       if count < 5:
            count += 1
        else:
            break

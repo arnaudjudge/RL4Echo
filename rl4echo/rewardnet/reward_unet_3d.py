@@ -16,7 +16,7 @@ import torch.distributions as distributions
 
 
 class Reward3DOptimizer(LightningModule):
-    def __init__(self, net, save_model_path=None, var_file=None, **kwargs):
+    def __init__(self, net, loss=nn.MSELoss(), save_model_path=None, var_file=None, **kwargs):
         super().__init__(**kwargs)
 
         self.net = net
@@ -24,7 +24,7 @@ class Reward3DOptimizer(LightningModule):
         self.temperature = nn.Parameter(torch.ones(1).to(self.device))
         self.var_file = var_file
 
-        self.loss = nn.BCELoss()
+        self.loss = loss
         self.save_model_path = save_model_path
 
     def forward(self, x):

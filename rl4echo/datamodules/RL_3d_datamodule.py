@@ -217,6 +217,11 @@ class RL3dDataModule(LightningDataModule):
         # open dataframe for dataset
         self.df = pd.read_csv(self.data_path + '/' + self.hparams.csv_file, index_col=0)
 
+        # es_ed_df = pd.read_csv(
+        #     "/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_affine/subset_official_test.csv")
+        # es_ed_dicoms = list(es_ed_df[es_ed_df['split_0'] == 'test']['dicom_uuid'].unique())
+        # self.df = self.df[self.df['dicom_uuid'].isin(es_ed_dicoms)]
+
         self.data_train: Optional[torch.utils.Dataset] = None
         self.data_val: Optional[torch.utils.Dataset] = None
         self.data_test: Optional[torch.utils.Dataset] = None
@@ -266,9 +271,9 @@ class RL3dDataModule(LightningDataModule):
         if self.hparams.splits_column and self.hparams.splits_column in self.df.columns:
             # splits are already defined in csv file
             print(f"Using split from column: {self.hparams.splits_column}")
-            self.train_idx = self.df.index[self.df[self.hparams.splits_column] == 'test'].tolist()[5:6]
-            self.val_idx = self.df.index[self.df[self.hparams.splits_column] == 'test'].tolist()[5:6]
-            self.test_idx = self.df.index[self.df[self.hparams.splits_column] == 'test'].tolist()[5:6]
+            self.train_idx = self.df.index[self.df[self.hparams.splits_column] == 'train'].tolist()
+            self.val_idx = self.df.index[self.df[self.hparams.splits_column] == 'val'].tolist()
+            self.test_idx = self.df.index[self.df[self.hparams.splits_column] == 'test'].tolist()
             self.pred_idx = self.df.index[(self.df[self.hparams.splits_column] == 'pred')].tolist()
         else:
             # create new splits, save if column name is given

@@ -4,7 +4,7 @@ defaults:
 _target_: rl4echo.Reward.MultiRewardUnet3D
 
 state_dict_paths: [rewardnet_5000best.ckpt,
-                   reward_net_3d_landmarks.ckpt]
+                   reward_net_3d_landmarkbigelipse.ckpt]
 temp_factor: 1
 
 net:

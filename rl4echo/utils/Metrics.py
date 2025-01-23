@@ -100,7 +100,7 @@ def check_temporal_validity(segmentation_3d, voxelspacing, labels=None, relaxed_
     return sum([e for e in total_errors]) <= 1 if relaxed_factor else sum([e != 0 for e in total_errors]) == 0
 
 
-def mitral_valve_distance(segmentation, gt, spacing, mistake_distances=[5, 7.5]):
+def mitral_valve_distance(segmentation, gt, spacing, mistake_distances=[5, 7.5], return_mean=True):
     mae = []
     mse = []
     mistakes = dict((f"mistake_per_cycle_{d}mm", 0) for d in mistake_distances)
@@ -157,6 +157,9 @@ def mitral_valve_distance(segmentation, gt, spacing, mistake_distances=[5, 7.5])
         mistakes[k] /= n_cardiac_cycles
 
     mae = np.asarray(mae)
-    metrics = {"mse": np.asarray(mse).mean(), "mae_L": mae[..., 0].mean(), "mae_R": mae[..., 1].mean(), "mae": mae.mean()}
+    if return_mean:
+        metrics = {"mse": np.asarray(mse).mean(), "mae_L": mae[..., 0].mean(), "mae_R": mae[..., 1].mean(), "mae": mae.mean()}
+    else:
+        metrics = {"mse": np.asarray(mse), "mae_L": mae[..., 0], "mae_R": mae[..., 1], "mae": mae}
     metrics.update(mistakes)
     return metrics
