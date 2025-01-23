@@ -163,7 +163,18 @@ class MultiRewardUnet3D(Reward):
         stack = torch.stack((imgs.squeeze(1), pred), dim=1)
         r = []
         for net in self.nets:
-            r += [torch.sigmoid(net(stack)/self.temp_factor).squeeze(1)]
+            rew = torch.sigmoid(net(stack) / self.temp_factor).squeeze(1)
+            for i in range(rew.shape[0]):
+                for j in range(rew.shape[-1]):
+                    rew[i, ..., j] = rew[i, ..., j] - rew[i, ..., j].min()
+                    rew[i, ..., j] = rew[i, ..., j] / rew[i, ..., j].max()
+            # r += [torch.sigmoid(net(stack)/self.temp_factor).squeeze(1)]
+            # import matplotlib.pyplot as plt
+            # plt.figure()
+            # plt.imshow(rew[0, ..., 2].cpu().numpy().T)
+            r += [rew]
+        r[1][r[1] < 0.9] = 0
+        r = [torch.minimum(r[0], r[1])]
         return r
 
     @torch.no_grad()
