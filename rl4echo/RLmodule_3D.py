@@ -445,12 +445,12 @@ class RLmodule3D(LightningModule):
         if self.hparams.actor_save_path:
             torch.save(self.actor.actor.net.state_dict(), self.hparams.actor_save_path)
 
-            actor_net = shrink_perturb(copy.deepcopy(self.actor.actor.net))
-            torch.save(actor_net.state_dict(), self.hparams.actor_save_path.replace('.ckpt', '_s-p.ckpt'))
+            # actor_net = shrink_perturb(copy.deepcopy(self.actor.actor.net))
+            # torch.save(actor_net.state_dict(), self.hparams.actor_save_path.replace('.ckpt', '_s-p.ckpt'))
         if self.hparams.critic_save_path:
             torch.save(self.actor.critic.net.state_dict(), self.hparams.critic_save_path)
-            critic_net = shrink_perturb(copy.deepcopy(self.actor.critic.net))
-            torch.save(critic_net.state_dict(), self.hparams.critic_save_path.replace('.ckpt', '_s-p.ckpt'))
+            # critic_net = shrink_perturb(copy.deepcopy(self.actor.critic.net))
+            # torch.save(critic_net.state_dict(), self.hparams.critic_save_path.replace('.ckpt', '_s-p.ckpt'))
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
         # must be batch size 1 as images have varied sizes
