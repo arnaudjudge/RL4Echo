@@ -35,6 +35,7 @@ class PPO3D(RLmodule3D):
             Training loss and log metrics or None
         """
         opt_net, opt_critic = self.optimizers()
+        opt_net.zero_grad()  # do once first if not done initially in loop
 
         # TODO: REMOVE GT
         b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['approx_gt'].squeeze(0), batch['use_gt'].squeeze(0)
@@ -51,16 +52,17 @@ class PPO3D(RLmodule3D):
                                                                         prev_log_probs, b_gt, b_use_gt))
 
             # if self.trainer.current_epoch > 4:
-            opt_net.zero_grad()
             self.manual_backward(loss, retain_graph=True)
-            nn.utils.clip_grad_norm_(self.actor.parameters(),
-                                     0.5)
+            nn.utils.clip_grad_norm_(self.actor.actor.parameters(), 0.5)
             # TODO: grad accumulation here???
-            opt_net.step()
+            if k % num_rewards == (num_rewards-1):  # only step when all rewards are done, like a2c with multiple actors
+                opt_net.step()
+                opt_net.zero_grad()
 
             # TODO: should this be outside the loop? According to real algo...
             opt_critic.zero_grad()
             self.manual_backward(critic_loss)
+            nn.utils.clip_grad_norm_(self.actor.critic.parameters(), 0.5)
             opt_critic.step()
 
             logs = {**metrics_dict,
@@ -121,7 +123,7 @@ class PPO3D(RLmodule3D):
             critic_loss = nn.MSELoss()(v_deeps[0], b_rewards)
             for i, v_ in enumerate(v_deeps[1:]):
                 downsampled_label = nn.functional.interpolate(b_rewards.unsqueeze(0), v_.shape[1:]).squeeze(0)
-                loss += 0.5 ** (i + 1) * nn.MSELoss()(v_, downsampled_label)
+                critic_loss += 0.5 ** (i + 1) * nn.MSELoss()(v_, downsampled_label)
             c_norm = 1 / (2 - 2 ** (-len(v_deeps)))
             critic_loss = c_norm * critic_loss
         else:
