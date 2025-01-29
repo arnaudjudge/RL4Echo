@@ -124,7 +124,7 @@ def main(cfg):
             # print(OmegaConf.to_yaml(sub_cfg))
             OmegaConf.save(sub_cfg, "config.yaml")
             subprocess.run(
-                shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={cfg.reward_time} --multirun"))
+                shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={int(cfg.reward_time)*(i+1)} --multirun"))
 
             checkpoint_dict['turn'] = 'RL'
             checkpoint_dict['current_it'] = i
@@ -167,7 +167,7 @@ def main(cfg):
         # print(OmegaConf.to_yaml(sub_cfg))
         OmegaConf.save(sub_cfg, "config.yaml")
         subprocess.run(
-            shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={cfg.rl_time} --multirun"))
+            shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={int(cfg.rl_time)*(i+1)} --multirun"))
 
         checkpoint_dict['current_it'] = i
         checkpoint_dict['turn'] = 'reward'
