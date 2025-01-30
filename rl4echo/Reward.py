@@ -313,7 +313,7 @@ class PixelWiseAccuracy(Reward):
         actions = torch.round(pred)
         assert actions.shape == gt.shape, \
             print(f"Actions shape {actions.shape} vs GT shape {gt.shape}")
-        return (actions == gt).float()
+        return [(actions == gt).float()]
 
 
 class Morphological(Reward):
