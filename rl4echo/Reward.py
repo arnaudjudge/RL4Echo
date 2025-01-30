@@ -29,6 +29,13 @@ class Reward:
     def __call__(self, pred, imgs, gt, *args, **kwargs):
         raise NotImplementedError
 
+    def prepare_for_full_sequence(self, batch_size=1) -> None:  # noqa: D102
+        pass
+
+    @torch.no_grad()
+    def predict_full_sequence(self, pred, imgs, gt):
+        return self(pred, imgs, gt)
+
 
 class RewardUnet(Reward):
     def __init__(self, state_dict_path, temp_factor=1):
