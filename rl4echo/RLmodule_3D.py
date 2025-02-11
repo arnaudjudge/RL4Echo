@@ -62,6 +62,7 @@ class RLmodule3D(LightningModule):
                  predict_do_corrections=True,
                  predict_do_temporal_glitches=True,
                  save_on_test=False,
+                 worst_frame_threshold=0.985,
                  save_csv_after_predict=None,
                  val_batch_size=4,
                  temp_files_path='.',
@@ -291,6 +292,19 @@ class RLmodule3D(LightningModule):
         logs.update({f'test/{k}': v for k, v in test_dice.items()})
         logs.update({f'test/{k}': v for k, v in test_hd.items()})
         logs.update({f'test/LM/{k}': v for k, v in lm_metrics.items()})
+
+        if self.hparams.worst_frame_threshold:
+            # skip if reward is too low according to thresh
+            min_frame_reward = prev_rewards.mean(dim=(0, 1, 2)).min()
+            if (min_frame_reward > self.hparams.worst_frame_threshold):
+                fname = meta_dict.get('case_identifier')[0]
+                print(f"{self.trainer.datamodule.get_approx_gt_subpath(fname).rsplit('/', 1)[0]}/{fname} - "
+                      f"Min frame reward higher than threshold: "
+                      f"{min_frame_reward:.4f} > {self.hparams.worst_frame_threshold}")
+                logs.update({f'{k.replace("test", "test_validated")}': v for k, v in logs.items()})
+                self.log("test_validated/count", 1)
+            else:
+                self.log("test_validated/count", 0)
 
         start_time = time.time()
         # for logging v
