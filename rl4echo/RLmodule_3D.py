@@ -238,6 +238,17 @@ class RLmodule3D(LightningModule):
         logs = full_test_metrics(y_pred_np_as_batch, b_gt_np_as_batch, voxel_spacing, self.device)
         logs.update({"test/reward": torch.mean(prev_rewards.type(torch.float))})
 
+        if self.hparams.vae_on_test:
+            start_time = time.time()
+            corrected, corrected_validity, ae_comp, _ = self.pred_corrector.correct_single_seq(
+                b_img.squeeze(0), prev_actions.squeeze(0), voxel_spacing)
+            # actions_unsampled_clean = actions_unsampled_clean[None,]
+            corrected = corrected.transpose((2, 0, 1))
+            vae_logs = full_test_metrics(corrected, b_gt_np_as_batch, voxel_spacing, self.device, prefix="test_vae", verbose=False)
+            vae_logs.update({"test_vae/vae_comp": ae_comp})
+            logs.update(vae_logs)
+            print(f"VAE took {round(time.time() - start_time, 4)} (s).")
+
         if self.hparams.worst_frame_threshold:
             # skip if reward is too low according to thresh
             min_frame_reward = prev_rewards.mean(dim=(0, 1, 2)).min()
