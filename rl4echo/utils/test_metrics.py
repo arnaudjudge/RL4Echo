@@ -103,14 +103,14 @@ def full_test_metrics(y_pred_as_batch, gt_as_batch, voxel_spacing, device, prefi
     print(f"LM dist took {round(time.time() - start_time, 4)} (s).")
 
     logs = {
-        "test/anat_valid": torch.tensor(int(all(anat_errors)), device=device),
-        "test/anat_valid_frames": torch.tensor(anat_errors, device=device).mean(),
-        'test/dice/epi': torch.tensor(test_dice_epi, device=device),
-        'test/hd/epi': torch.tensor(test_hd_epi, device=device),
+        f"{prefix}/anat_valid": torch.tensor(int(all(anat_errors)), device=device),
+        f"{prefix}/anat_valid_frames": torch.tensor(anat_errors, device=device).mean(),
+        f"{prefix}/dice/epi": torch.tensor(test_dice_epi, device=device),
+        f"{prefix}/hd/epi": torch.tensor(test_hd_epi, device=device),
     }
-    logs.update({f'test/{k}': v for k, v in test_dice.items()})
-    logs.update({f'test/{k}': v for k, v in test_hd.items()})
-    logs.update({f'test/LM/{k}': v for k, v in lm_metrics.items()})
+    logs.update({f"{prefix}/{k}": v for k, v in test_dice.items()})
+    logs.update({f"{prefix}/{k}": v for k, v in test_hd.items()})
+    logs.update({f"{prefix}/LM/{k}": v for k, v in lm_metrics.items()})
 
     return logs
 
