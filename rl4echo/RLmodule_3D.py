@@ -4,36 +4,31 @@ import random
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Union, Optional
+from typing import Any, Union
 
-import matplotlib.pyplot as plt
-import h5py
 import SimpleITK as sitk
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from einops import rearrange
-from lightning import LightningModule
 import torch
 import torchio as tio
+from einops import rearrange
+from lightning import LightningModule
 from monai.data import MetaTensor
 from scipy import ndimage
-from torchvision.transforms.functional import adjust_contrast
 from torch import Tensor
 from torch.nn.functional import pad
+from torchvision.transforms.functional import adjust_contrast
 
 from patchless_nnunet.utils.inferers import SlidingWindowInferer
 from patchless_nnunet.utils.softmax import softmax_helper
-from vital.metrics.camus.anatomical.utils import check_segmentation_validity
-from vital.data.camus.config import Label
-
-from rl4echo.utils.Metrics import accuracy, dice_score, is_anatomically_valid, check_temporal_validity, \
-    mitral_valve_distance
-from rl4echo.utils.file_utils import get_img_subpath, save_to_reward_dataset
+from rl4echo.utils.Metrics import accuracy, dice_score
+from rl4echo.utils.correctors import AEMorphoCorrector
+from rl4echo.utils.file_utils import save_to_reward_dataset
 from rl4echo.utils.logging_helper import log_sequence, log_video
 from rl4echo.utils.tensor_utils import convert_to_numpy
-from rl4echo.utils.test_metrics import dice, hausdorff
-from rl4echo.utils.correctors import AEMorphoCorrector
+from rl4echo.utils.test_metrics import full_test_metrics
+from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 
 
 def shrink_perturb(model, lamda=0.5, sigma=0.01):
@@ -218,21 +213,8 @@ class RLmodule3D(LightningModule):
         prev_actions = self.predict(b_img).argmax(dim=1)
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
-        # this would not work with a neural net (no sliding window)
-        # should there be a test method in the reward class (which, in the case of 3d rewards
-        # would have a different method, otherwise, only redirect to __call__())
-        # prev_rewards = self.reward_func(prev_actions[..., :4], b_img[..., :4], b_gt[..., :4])
         prev_rewards = self.reward_func.predict_full_sequence(prev_actions, b_img, b_gt)
         prev_rewards = torch.mean(torch.stack(prev_rewards, dim=0), dim=0)
-        # without sliding window
-        # b_img = b_img[..., :4]
-        # b_gt = b_gt[..., :4]
-        # prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
-        # loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
-        #                                                             prev_log_probs, b_gt, False))
-
-        acc = accuracy(prev_actions, b_img, b_gt)
-        simple_dice = dice_score(prev_actions, b_gt)
 
         start_time = time.time()
         y_pred_np_as_batch = prev_actions.cpu().numpy().squeeze(0).transpose((2, 0, 1))
@@ -253,45 +235,8 @@ class RLmodule3D(LightningModule):
                                     repeats=len(y_pred_np_as_batch), axis=0)
         print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
 
-        start_time = time.time()
-        test_dice = dice(y_pred_np_as_batch, b_gt_np_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
-                         exclude_bg=True, all_classes=True)
-        test_dice_epi = dice((y_pred_np_as_batch != 0).astype(np.uint8), (b_gt_np_as_batch != 0).astype(np.uint8),
-                             labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False)
-        print(f"Dice took {round(time.time() - start_time, 4)} (s).")
-
-        start_time = time.time()
-        test_hd = hausdorff(y_pred_np_as_batch, b_gt_np_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
-                            exclude_bg=True, all_classes=True, voxel_spacing=voxel_spacing)
-        test_hd_epi = hausdorff((y_pred_np_as_batch != 0).astype(np.uint8), (b_gt_np_as_batch != 0).astype(np.uint8),
-                                labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False,
-                                voxel_spacing=voxel_spacing)['Hausdorff']
-        print(f"HD took {round(time.time() - start_time, 4)} (s).")
-
-        start_time = time.time()
-        if test_hd['Hausdorff'] > 10:
-            anat_errors = torch.zeros(len(y_pred_np_as_batch))
-        else:
-            anat_errors = is_anatomically_valid(y_pred_np_as_batch)
-        print(f"AV took {round(time.time() - start_time, 4)} (s).")
-
-        start_time = time.time()
-        lm_metrics = mitral_valve_distance(y_pred_np_as_batch, b_gt_np_as_batch, voxel_spacing[0])
-        print(f"LM dist took {round(time.time() - start_time, 4)} (s).")
-
-
-        logs = {#'test_loss': loss,
-                "test/reward": torch.mean(prev_rewards.type(torch.float)),
-                'test/acc': acc.mean(),
-                "test/dice/simple_mean": simple_dice.mean(),
-                "test/anat_valid": torch.tensor(int(all(anat_errors)), device=self.device),
-                "test/anat_valid_frames": torch.tensor(anat_errors, device=self.device).mean(),
-                'test/dice/epi': torch.tensor(test_dice_epi, device=self.device),
-                'test/hd/epi': torch.tensor(test_hd_epi, device=self.device),
-                }
-        logs.update({f'test/{k}': v for k, v in test_dice.items()})
-        logs.update({f'test/{k}': v for k, v in test_hd.items()})
-        logs.update({f'test/LM/{k}': v for k, v in lm_metrics.items()})
+        logs = full_test_metrics(y_pred_np_as_batch, b_gt_np_as_batch, voxel_spacing, self.device)
+        logs.update({"test/reward": torch.mean(prev_rewards.type(torch.float))})
 
         if self.hparams.worst_frame_threshold:
             # skip if reward is too low according to thresh
@@ -313,18 +258,13 @@ class RLmodule3D(LightningModule):
 
         if self.trainer.global_rank == 0 and batch_idx % 1 == 0:
             for i in range(len(b_img)):
-                log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
-                             epoch=self.current_epoch)
                 log_video(self.logger, img=b_gt[i].unsqueeze(0), background=b_img[i], title='test_GroundTruth', number=batch_idx * (i + 1),
                              epoch=self.current_epoch)
                 log_video(self.logger, img=prev_actions[i].unsqueeze(0), background=b_img[i], title='test_Prediction',
-                             number=batch_idx * (i + 1), img_text=simple_dice[i].mean(), epoch=self.current_epoch)
+                             number=batch_idx * (i + 1), epoch=self.current_epoch)
                 if v.shape == prev_actions[..., :4].shape:
                     log_sequence(self.logger, img=v[i].unsqueeze(0), title='test_v_function', number=batch_idx * (i + 1),
                               img_text=v[i].mean(), epoch=self.current_epoch)
-                # if prev_rewards.shape[:-1] == prev_actions.shape[:-1]:
-                #     log_sequence(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap', number=batch_idx * (i + 1),
-                #               img_text=prev_rewards[i].mean(), epoch=self.current_epoch)
                 log_video(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap',
                           number=batch_idx * (i + 1), epoch=self.current_epoch)
 

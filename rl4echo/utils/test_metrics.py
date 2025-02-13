@@ -1,7 +1,12 @@
+import time
 from typing import Tuple
 
 import numpy as np
+import torch
 from medpy.metric import dc, hd
+
+from rl4echo.utils.Metrics import is_anatomically_valid, mitral_valve_distance
+from vital.data.camus.config import Label
 from vital.data.config import LabelEnum
 
 
@@ -71,3 +76,41 @@ def hausdorff(pred: np.ndarray, target: np.ndarray, labels: Tuple[LabelEnum], ex
         else:
             hd_dict['Hausdorff'] = hd_dict.get('Hausdorff', 0) + np.array(hausdorffs).mean() / len(pred)
     return hd_dict
+
+
+def full_test_metrics(y_pred_as_batch, gt_as_batch, voxel_spacing, device, prefix='test'):
+    start_time = time.time()
+    test_dice = dice(y_pred_as_batch, gt_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
+                     exclude_bg=True, all_classes=True)
+    test_dice_epi = dice((y_pred_as_batch != 0).astype(np.uint8), (gt_as_batch != 0).astype(np.uint8),
+                         labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False)
+    print(f"Dice took {round(time.time() - start_time, 4)} (s).")
+
+    start_time = time.time()
+    test_hd = hausdorff(y_pred_as_batch, gt_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
+                        exclude_bg=True, all_classes=True, voxel_spacing=voxel_spacing)
+    test_hd_epi = hausdorff((y_pred_as_batch != 0).astype(np.uint8), (gt_as_batch != 0).astype(np.uint8),
+                            labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False,
+                            voxel_spacing=voxel_spacing)['Hausdorff']
+    print(f"HD took {round(time.time() - start_time, 4)} (s).")
+
+    start_time = time.time()
+    anat_errors = is_anatomically_valid(y_pred_as_batch)
+    print(f"AV took {round(time.time() - start_time, 4)} (s).")
+
+    start_time = time.time()
+    lm_metrics = mitral_valve_distance(y_pred_as_batch, gt_as_batch, voxel_spacing[0])
+    print(f"LM dist took {round(time.time() - start_time, 4)} (s).")
+
+    logs = {
+        "test/anat_valid": torch.tensor(int(all(anat_errors)), device=device),
+        "test/anat_valid_frames": torch.tensor(anat_errors, device=device).mean(),
+        'test/dice/epi': torch.tensor(test_dice_epi, device=device),
+        'test/hd/epi': torch.tensor(test_hd_epi, device=device),
+    }
+    logs.update({f'test/{k}': v for k, v in test_dice.items()})
+    logs.update({f'test/{k}': v for k, v in test_hd.items()})
+    logs.update({f'test/LM/{k}': v for k, v in lm_metrics.items()})
+
+    return logs
+
