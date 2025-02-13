@@ -78,13 +78,14 @@ def hausdorff(pred: np.ndarray, target: np.ndarray, labels: Tuple[LabelEnum], ex
     return hd_dict
 
 
-def full_test_metrics(y_pred_as_batch, gt_as_batch, voxel_spacing, device, prefix='test'):
+def full_test_metrics(y_pred_as_batch, gt_as_batch, voxel_spacing, device, prefix='test', verbose=True):
     start_time = time.time()
     test_dice = dice(y_pred_as_batch, gt_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
                      exclude_bg=True, all_classes=True)
     test_dice_epi = dice((y_pred_as_batch != 0).astype(np.uint8), (gt_as_batch != 0).astype(np.uint8),
                          labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False)
-    print(f"Dice took {round(time.time() - start_time, 4)} (s).")
+    if verbose:
+        print(f"Dice took {round(time.time() - start_time, 4)} (s).")
 
     start_time = time.time()
     test_hd = hausdorff(y_pred_as_batch, gt_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
@@ -92,15 +93,18 @@ def full_test_metrics(y_pred_as_batch, gt_as_batch, voxel_spacing, device, prefi
     test_hd_epi = hausdorff((y_pred_as_batch != 0).astype(np.uint8), (gt_as_batch != 0).astype(np.uint8),
                             labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False,
                             voxel_spacing=voxel_spacing)['Hausdorff']
-    print(f"HD took {round(time.time() - start_time, 4)} (s).")
+    if verbose:
+        print(f"HD took {round(time.time() - start_time, 4)} (s).")
 
     start_time = time.time()
     anat_errors = is_anatomically_valid(y_pred_as_batch)
-    print(f"AV took {round(time.time() - start_time, 4)} (s).")
+    if verbose:
+        print(f"AV took {round(time.time() - start_time, 4)} (s).")
 
     start_time = time.time()
     lm_metrics = mitral_valve_distance(y_pred_as_batch, gt_as_batch, voxel_spacing[0])
-    print(f"LM dist took {round(time.time() - start_time, 4)} (s).")
+    if verbose:
+        print(f"LM dist took {round(time.time() - start_time, 4)} (s).")
 
     logs = {
         f"{prefix}/anat_valid": torch.tensor(int(all(anat_errors)), device=device),
