@@ -63,13 +63,17 @@ def log_sequence(logger, img, title, number=0, img_text=None, epoch=0):
 def log_video(logger, img, title, background=None, number=0, img_text=None, epoch=0):
     if logger is None:
         return
-    img = img.cpu().numpy().transpose((0, 2, 1, 3))
+    if not isinstance(img, np.ndarray):
+        img = img.cpu().numpy()
+    img = img.transpose((0, 2, 1, 3))
     img = (img.copy() * (255 / max(img.max(), 1))).astype(np.uint8)
     if img_text:
         img = put_text_to_image(img, img_text)
 
     if background is not None:
-        background = background.cpu().numpy().transpose((0, 2, 1, 3))
+        if not isinstance(background, np.ndarray):
+            background = background.cpu().numpy()
+        background = background.transpose((0, 2, 1, 3))
         background = (background.copy() * (255 / max(background.max(), 1))).astype(np.uint8)
         if img_text:
             background = put_text_to_image(background, img_text)

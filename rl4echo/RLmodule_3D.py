@@ -57,6 +57,7 @@ class RLmodule3D(LightningModule):
                  predict_do_corrections=True,
                  predict_do_temporal_glitches=True,
                  save_on_test=False,
+                 vae_on_test=True,
                  worst_frame_threshold=0.985,
                  save_csv_after_predict=None,
                  val_batch_size=4,
@@ -268,16 +269,17 @@ class RLmodule3D(LightningModule):
         _, _, _, _, v, _ = self.actor.evaluate(b_img[..., :4], prev_actions[..., :4])
 
         if self.trainer.global_rank == 0 and batch_idx % 1 == 0:
-            for i in range(len(b_img)):
-                log_video(self.logger, img=b_gt[i].unsqueeze(0), background=b_img[i], title='test_GroundTruth', number=batch_idx * (i + 1),
-                             epoch=self.current_epoch)
-                log_video(self.logger, img=prev_actions[i].unsqueeze(0), background=b_img[i], title='test_Prediction',
-                             number=batch_idx * (i + 1), epoch=self.current_epoch)
-                if v.shape == prev_actions[..., :4].shape:
-                    log_sequence(self.logger, img=v[i].unsqueeze(0), title='test_v_function', number=batch_idx * (i + 1),
-                              img_text=v[i].mean(), epoch=self.current_epoch)
-                log_video(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap',
-                          number=batch_idx * (i + 1), epoch=self.current_epoch)
+            log_video(self.logger, img=b_gt, background=b_img.squeeze(0), title='test_GroundTruth', number=batch_idx,
+                         epoch=self.current_epoch)
+            log_video(self.logger, img=prev_actions, background=b_img.squeeze(0), title='test_Prediction',
+                         number=batch_idx, epoch=self.current_epoch)
+            if v.shape == prev_actions[..., :4].shape:
+                log_sequence(self.logger, img=v, title='test_v_function', number=batch_idx,
+                          img_text=v.mean(), epoch=self.current_epoch)
+            log_video(self.logger, img=prev_rewards, title='test_RewardMap',
+                      number=batch_idx, epoch=self.current_epoch)
+            log_video(self.logger, img=corrected.transpose((1, 2, 0))[None,], background=b_img.squeeze(0),
+                      title='test_VAE_corrected', number=batch_idx, epoch=self.current_epoch)
 
         self.log_dict(logs, sync_dist=True)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
