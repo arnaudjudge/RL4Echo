@@ -47,6 +47,9 @@ class RewardUnets3D(Reward):
     def get_nets(self):
         return list(self.nets.values())
 
+    def get_reward_index(self, reward_name):
+        return list(self.nets.keys()).index(reward_name)
+
     @torch.no_grad()
     def predict_full_sequence(self, pred, imgs, gt):
         stack = torch.stack((imgs.squeeze(1), pred), dim=1)

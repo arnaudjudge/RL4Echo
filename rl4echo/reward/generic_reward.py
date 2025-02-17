@@ -16,3 +16,7 @@ class Reward:
     @torch.no_grad()
     def predict_full_sequence(self, pred, imgs, gt):
         return self(pred, imgs, gt)
+
+    def get_reward_index(self, reward_name):
+        print("No named rewards available, returned index 0")
+        return 0

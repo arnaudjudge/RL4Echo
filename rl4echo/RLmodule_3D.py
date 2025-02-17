@@ -58,7 +58,7 @@ class RLmodule3D(LightningModule):
                  predict_do_temporal_glitches=True,
                  save_on_test=False,
                  vae_on_test=True,
-                 worst_frame_threshold=0.985,
+                 worst_frame_thresholds={"anatomical": 0.985},
                  save_csv_after_predict=None,
                  val_batch_size=4,
                  temp_files_path='.',
@@ -218,8 +218,8 @@ class RLmodule3D(LightningModule):
         prev_actions = self.predict(b_img).argmax(dim=1)
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
-        prev_rewards = self.reward_func.predict_full_sequence(prev_actions, b_img, b_gt)
-        prev_rewards = torch.mean(torch.stack(prev_rewards, dim=0), dim=0)
+        prev_rewards = torch.stack(self.reward_func.predict_full_sequence(prev_actions, b_img, b_gt), dim=0)
+        prev_rewards_mean = torch.mean(prev_rewards, dim=0)
 
         start_time = time.time()
         y_pred_np_as_batch = prev_actions.cpu().numpy().squeeze(0).transpose((2, 0, 1))
@@ -241,7 +241,7 @@ class RLmodule3D(LightningModule):
         print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
 
         logs = full_test_metrics(y_pred_np_as_batch, b_gt_np_as_batch, voxel_spacing, self.device)
-        logs.update({"test/reward": torch.mean(prev_rewards.type(torch.float))})
+        logs.update({"test/reward": torch.mean(prev_rewards_mean.type(torch.float))})
 
         if self.hparams.vae_on_test:
             start_time = time.time()
@@ -254,14 +254,17 @@ class RLmodule3D(LightningModule):
             logs.update(vae_logs)
             print(f"VAE took {round(time.time() - start_time, 4)} (s).")
 
-        if self.hparams.worst_frame_threshold:
-            # skip if reward is too low according to thresh
-            min_frame_reward = prev_rewards.mean(dim=(0, 1, 2)).min()
-            if (min_frame_reward > self.hparams.worst_frame_threshold):
+        if self.hparams.worst_frame_thresholds:
+            # skip if rewards are too low according to thresholds
+            reward_indices = [self.reward_func.get_reward_index(key) for key in self.hparams.worst_frame_thresholds.keys()]
+            reward_frame_mins = np.take(prev_rewards.cpu().numpy().mean(axis=(1, 2, 3)).min(axis=1), reward_indices, 0)
+            thresholds = np.asarray(list(self.hparams.worst_frame_thresholds.values()))
+            validated = (reward_frame_mins > thresholds).all()
+            if validated:
                 fname = meta_dict.get('case_identifier')[0]
                 print(f"{self.trainer.datamodule.get_approx_gt_subpath(fname).rsplit('/', 1)[0]}/{fname} - "
                       f"Min frame reward higher than threshold: "
-                      f"{min_frame_reward:.4f} > {self.hparams.worst_frame_threshold}")
+                      f"{reward_frame_mins} vs  thresh:{thresholds}")
                 logs.update({f'{k.replace("test", "test_validated")}': v for k, v in logs.items()})
                 self.log("test_validated/count", 1)
             else:
@@ -280,13 +283,25 @@ class RLmodule3D(LightningModule):
             if v.shape == prev_actions[..., :4].shape:
                 log_sequence(self.logger, img=v, title='test_v_function', number=batch_idx,
                           img_text=v.mean(), epoch=self.current_epoch)
-            log_video(self.logger, img=prev_rewards, title='test_RewardMap',
+            log_video(self.logger, img=prev_rewards_mean, title='test_RewardMap',
                       number=batch_idx, epoch=self.current_epoch)
             log_video(self.logger, img=corrected.transpose((1, 2, 0))[None,], background=b_img.squeeze(0),
                       title='test_VAE_corrected', number=batch_idx, epoch=self.current_epoch)
 
         self.log_dict(logs, sync_dist=True)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
+
+        # with h5py.File('3d_anatomical_reward_100randompred_wclean.h5', 'a') as f:
+        #     for i in range(len(b_img)):
+        #         dicom = meta_dict.get("case_identifier")[0]
+        #         if dicom not in f:
+        #             f.create_group(dicom)
+        #         f[dicom]['img'] = b_img[i].cpu().numpy().squeeze(0)
+        #         f[dicom]['gt'] = b_gt[i].cpu().numpy()
+        #         f[dicom]['pred'] = y_pred_np_as_batch.transpose((1, 2, 0))
+        #         clean_reward = self.reward_func.predict_full_sequence(torch.tensor(y_pred_np_as_batch.transpose((1, 2, 0))[None,], device=self.device), b_img, b_gt)
+        #         f[dicom]['reward_map'] = clean_reward[i].cpu().numpy() #prev_rewards_mean[i].cpu().numpy()
+        #         f[dicom]['accuracy_map'] = (prev_actions[i].cpu().numpy() != b_gt[i].cpu().numpy()).astype(np.uint8)
 
         if self.hparams.save_on_test:
             #prev_actions = prev_actions.squeeze(0).cpu().detach().numpy()
