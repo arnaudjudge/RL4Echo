@@ -1,1 +1,1 @@
-_target_: rl4echo.Reward.Accuracy
+_target_: rl4echo.reward.classic_reward.Accuracy

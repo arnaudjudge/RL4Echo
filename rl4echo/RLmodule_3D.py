@@ -72,8 +72,12 @@ class RLmodule3D(LightningModule):
         if hasattr(self.reward_func, 'net'):
             self.register_module('rewardnet', self.reward_func.net)
         elif hasattr(self.reward_func, 'nets'):
-            for i, n in enumerate(self.reward_func.nets):
-                self.register_module(f'rewardnet_{i}', n)
+            if isinstance(self.reward_func.nets, list):  # backward compatibility
+                for i, n in enumerate(self.reward_func.nets):
+                    self.register_module(f'rewardnet_{i}', n)
+            elif isinstance(self.reward_func.nets, dict):
+                for i, n in enumerate(self.reward_func.nets.values()):
+                    self.register_module(f'rewardnet_{i}', n)
 
         self.pred_corrector = corrector
         if isinstance(self.pred_corrector, AEMorphoCorrector):

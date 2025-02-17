@@ -15,6 +15,7 @@ from torchmetrics.functional import dice
 
 from patchless_nnunet.utils.inferers import SlidingWindowInferer
 from patchless_nnunet.utils.softmax import softmax_helper
+from rl4echo.reward.generic_reward import Reward
 from vital.models.segmentation.unet import UNet
 
 from rl4echo.rewardnet.unet_heads import UNet_multihead
@@ -22,19 +23,6 @@ from rl4echo.rewardnet.unet_heads import UNet_multihead
 """
 Reward functions must each have pred, img, gt as input parameters
 """
-
-
-class Reward:
-    @torch.no_grad()
-    def __call__(self, pred, imgs, gt, *args, **kwargs):
-        raise NotImplementedError
-
-    def prepare_for_full_sequence(self, batch_size=1) -> None:  # noqa: D102
-        pass
-
-    @torch.no_grad()
-    def predict_full_sequence(self, pred, imgs, gt):
-        return self(pred, imgs, gt)
 
 
 class RewardUnet(Reward):
@@ -55,13 +43,25 @@ class RewardUnet3D(Reward):
     def __init__(self, net, state_dict_path, temp_factor=1):
         self.net = net
         self.net.load_state_dict(torch.load(state_dict_path))
+        self.net.eval()
         self.temp_factor = temp_factor
 
     @torch.no_grad()
     def __call__(self, pred, imgs, gt):
         stack = torch.stack((imgs.squeeze(1), pred), dim=1)
         # return as list for code suiting multireward
-        return [torch.sigmoid(self.net(stack)/self.temp_factor).squeeze(1)]
+
+        rew = torch.sigmoid(self.net(stack) / self.temp_factor).squeeze(1)
+
+        # normalize
+        for i in range(rew.shape[0]):
+            for j in range(rew.shape[-1]):
+                rew[i, ..., j] = rew[i, ..., j] - rew[i, ..., j].min()
+                rew[i, ..., j] = rew[i, ..., j] / rew[i, ..., j].max()
+        # plt.figure()
+        # plt.imshow(rew[0, ..., 2].cpu().numpy().T)
+        # plt.show()
+        return [rew]
 
     @torch.no_grad()
     def predict_full_sequence(self, pred, imgs, gt):
@@ -162,8 +162,6 @@ class MultiRewardUnet3D(Reward):
         # self.net2 = deepcopy(net)
         # self.net.load_state_dict(torch.load(state_dict_path))
         self.temp_factor = temp_factor
-        # self.net2.load_state_dict(torch.load("/home/local/USHERBROOKE/juda2901/dev/RL4Echo/reward_net_3d_landmarks.ckpt"))
-        # self.net2.cuda()
 
     @torch.no_grad()
     def __call__(self, pred, imgs, gt):
