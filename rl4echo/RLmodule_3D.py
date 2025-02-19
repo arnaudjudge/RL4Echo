@@ -57,7 +57,7 @@ class RLmodule3D(LightningModule):
                  predict_do_corrections=True,
                  predict_do_temporal_glitches=True,
                  save_on_test=False,
-                 vae_on_test=True,
+                 vae_on_test=False,
                  worst_frame_thresholds={"anatomical": 0.985},
                  save_csv_after_predict=None,
                  val_batch_size=4,
@@ -285,8 +285,9 @@ class RLmodule3D(LightningModule):
                           img_text=v.mean(), epoch=self.current_epoch)
             log_video(self.logger, img=prev_rewards_mean, title='test_RewardMap',
                       number=batch_idx, epoch=self.current_epoch)
-            log_video(self.logger, img=corrected.transpose((1, 2, 0))[None,], background=b_img.squeeze(0),
-                      title='test_VAE_corrected', number=batch_idx, epoch=self.current_epoch)
+            if self.hparams.vae_on_test:
+                log_video(self.logger, img=corrected.transpose((1, 2, 0))[None,], background=b_img.squeeze(0),
+                          title='test_VAE_corrected', number=batch_idx, epoch=self.current_epoch)
 
         self.log_dict(logs, sync_dist=True)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
