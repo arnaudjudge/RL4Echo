@@ -1,6 +1,12 @@
+import os
+from itertools import repeat
+from multiprocessing import Pool
+
 import numpy as np
 from matplotlib import pyplot as plt
+from medpy.metric import hd
 
+from vital.data.camus.config import Label
 from vital.metrics.evaluate.attribute import compute_temporal_consistency_metric, check_temporal_consistency_errors
 from vital.utils.image.us.measure import EchoMeasure
 
@@ -11,21 +17,52 @@ attr_thresholds = {
     'myo_area': 0.3,
     'epi_center_x': 0.3,
     'epi_center_y': 0.2,
+    'hd_frames_myo': 5.5,
+    'hd_frames_epi': 6.0,
 }
 
 
-def get_temporal_consistencies(segmentation_3d, voxelspacing):
+def temporal_hd(tpls, voxel_spacing, label=Label.MYO):
+    curr, bckw, forw = tpls
+    if label:
+        return (hd(curr == label, forw == label, voxel_spacing) +
+                hd(curr == label, bckw == label, voxel_spacing)) / 2
+    return (hd(curr, forw, voxel_spacing) + hd(curr, bckw, voxel_spacing)) / 2
+
+
+def get_temporal_hd_metric(pred_as_batch, voxel_spacing, label=None, num_threads=1):
+    prev_neigh = pred_as_batch[:-2]  # Previous neighbors of non-edge instants
+    next_neigh = pred_as_batch[2:]  # Next neighbors of non-edge instants
+    tuples = [(pred_as_batch[1:-1][i], prev_neigh[i], next_neigh[i]) for i in range(len(pred_as_batch[1:-1]))]
+
+    with Pool(processes=num_threads) as pool:
+        hds = list(
+            pool.starmap(
+                temporal_hd,
+                zip(
+                    tuples,
+                    repeat(voxel_spacing),
+                    repeat(label)
+                )
+            )
+        )
+    return [0] + hds + [0]
+
+
+def get_temporal_consistencies(segmentation_3d, voxelspacing=(0.37, 0.37), skip_measurement_metrics=False):
     measures_1d = {}
     # calculate measures
     # if exception, make sure threshold is triggered
     try:
-        measures_1d["lv_area"] = EchoMeasure.structure_area(segmentation_3d, labels=1, voxelarea=voxelspacing[0]*voxelspacing[1])
+        measures_1d["lv_area"] = EchoMeasure.structure_area(segmentation_3d, labels=1,
+                                                            voxelarea=voxelspacing[0]*voxelspacing[1])
     except :
         print("lv_area extraction failed")
         measures_1d["lv_area"] = np.resize([1, 0], len(segmentation_3d))
 
     try:
-        measures_1d["myo_area"] = EchoMeasure.structure_area(segmentation_3d, labels=2, voxelarea=voxelspacing[0]*voxelspacing[1])
+        measures_1d["myo_area"] = EchoMeasure.structure_area(segmentation_3d, labels=2,
+                                                             voxelarea=voxelspacing[0]*voxelspacing[1])
     except:
         print("myo_area extraction failed")
         measures_1d["myo_area"] = np.resize([1, 0], len(segmentation_3d))
@@ -42,27 +79,37 @@ def get_temporal_consistencies(segmentation_3d, voxelspacing):
         print("epi_center_y extraction failed")
         measures_1d["epi_center_y"] = np.resize([1, 0], len(segmentation_3d))
 
-    try:
-        measures_1d["lv_base_width"] = EchoMeasure.lv_base_width(segmentation_3d, lv_labels=1, myo_labels=2, voxelspacing=voxelspacing)
-    except:
-        print("lv_base_width extraction failed")
-        measures_1d["lv_base_width"] = np.resize([1, 0], len(segmentation_3d))
+    if not skip_measurement_metrics:
+        try:
+            measures_1d["lv_base_width"] = EchoMeasure.lv_base_width(segmentation_3d, lv_labels=1, myo_labels=2,
+                                                                     voxelspacing=voxelspacing)
+        except:
+            print("lv_base_width extraction failed")
+            measures_1d["lv_base_width"] = np.resize([1, 0], len(segmentation_3d))
 
-    try:
-        measures_1d["lv_length"] = EchoMeasure.lv_length(segmentation_3d, lv_labels=1, myo_labels=2, voxelspacing=voxelspacing)
-    except:
-        print("lv_length extraction failed")
-        measures_1d["lv_length"] = np.resize([1, 0], len(segmentation_3d))
+        try:
+            measures_1d["lv_length"] = EchoMeasure.lv_length(segmentation_3d, lv_labels=1, myo_labels=2,
+                                                             voxelspacing=voxelspacing)
+        except:
+            print("lv_length extraction failed")
+            measures_1d["lv_length"] = np.resize([1, 0], len(segmentation_3d))
 
     t_consistencies = {}
     for attr in measures_1d.keys():
         thresh = attr_thresholds[attr]
-        t_consistencies[attr] = check_temporal_consistency_errors(thresh, measures_1d[attr])
+        t_consistencies[attr] = check_temporal_consistency_errors(thresh, measures_1d[attr],
+                                                                  bounds=(measures_1d[attr].min()*0.99,
+                                                                          measures_1d[attr].max()*1.01))
+    if not skip_measurement_metrics:
+        hds_myo = np.asarray(get_temporal_hd_metric(segmentation_3d, voxelspacing, label=Label.MYO))
+        t_consistencies['hd_frames_myo'] = hds_myo > attr_thresholds['hd_frames_myo']
+        hds_epi = np.asarray(get_temporal_hd_metric(segmentation_3d, voxelspacing))
+        t_consistencies['hd_frames_epi'] = hds_epi > attr_thresholds['hd_frames_epi']
 
     return t_consistencies, measures_1d
 
 
-def check_temporal_validity(segmentation_3d, voxelspacing, relaxed_factor=None, plot=False, verbose=False):
+def check_temporal_validity(segmentation_3d, voxelspacing=(0.37, 0.37), relaxed_factor=None, plot=False, verbose=False):
     total_errors = []
     temp_constistencies, measures_1d = get_temporal_consistencies(segmentation_3d, voxelspacing)
     for attr in temp_constistencies.keys():
