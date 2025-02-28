@@ -53,25 +53,45 @@ class TemporalRewardUnets3D(Reward):
 
             temp_constistencies = torch.tensor(temp_constistencies, device=r[0].device).sum(dim=0)
             # print(temp_constistencies)
-            tc_penalty = torch.ones_like(temp_constistencies) - temp_constistencies
+            tc_penalty = torch.ones(len(temp_constistencies), device=r[0].device) + temp_constistencies
+            # print(tc_penalty)
 
-            r[0][i] = r[0][i] * tc_penalty
+
+
+            # r[0][i] = r[0][i] * tc_penalty
 
             # print(temp_constistencies)
             # print(measures_1d)
-            # import matplotlib.pyplot as plt
+            import matplotlib.pyplot as plt
             # f1, ax1 = plt.subplots(1, 4)
             # ax1[0].imshow(pred_as_b[0, ...])
             # ax1[1].imshow(pred_as_b[1, ...])
             # ax1[2].imshow(pred_as_b[2, ...])
             # ax1[3].imshow(pred_as_b[3, ...])
-            #
+
             # f, ax = plt.subplots(1, 4)
             # rew = r[0]
             # ax[0].imshow(rew[i, ..., 0].cpu().numpy().T, cmap='grey', vmin=0, vmax=1)
             # ax[1].imshow(rew[i, ..., 1].cpu().numpy().T, cmap='grey', vmin=0, vmax=1)
             # ax[2].imshow(rew[i, ..., 2].cpu().numpy().T, cmap='grey', vmin=0, vmax=1)
             # ax[3].imshow(rew[i, ..., 3].cpu().numpy().T, cmap='grey', vmin=0, vmax=1)
+
+            rew = 1 - r[0].cpu().numpy()
+
+            for j in range(rew.shape[-1]):
+                frame_penalty = tc_penalty.cpu().numpy()[i]
+                if frame_penalty != 1:
+                    rew[i, ..., j] = scipy.ndimage.gaussian_filter(rew[i, ..., j], sigma=frame_penalty*10)
+                    rew[i, ..., j] = rew[i, ..., j] - rew[i, ..., j].min()
+                    rew[i, ..., j] = rew[i, ..., j] / rew[i, ..., j].max()
+
+            r[0] = torch.tensor(np.minimum(r[0].cpu().numpy(), 1 - rew), device=r[0].device)
+            # f, ax2 = plt.subplots(1, 4)
+            # ax2[0].imshow(rew[i, ..., 0].T, cmap='grey', vmin=0, vmax=1)
+            # ax2[1].imshow(rew[i, ..., 1].T, cmap='grey', vmin=0, vmax=1)
+            # ax2[2].imshow(rew[i, ..., 2].T, cmap='grey', vmin=0, vmax=1)
+            # ax2[3].imshow(rew[i, ..., 3].T, cmap='grey', vmin=0, vmax=1)
+            #
             # plt.show()
 
         return r
