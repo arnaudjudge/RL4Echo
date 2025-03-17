@@ -93,7 +93,7 @@ def mitral_valve_distance(segmentation, gt, spacing, mistake_distances=[5, 7.5],
 
         except Exception as e:
             print(f"LM exception: {e}")
-            mae += [segmentation.shape[-1]]
+            mae += [[segmentation.shape[-1], segmentation.shape[-1]]]
             mse += [segmentation.shape[-1] ** 2]
             for k in mistakes.keys():
                 mistakes[k] += 1
@@ -104,7 +104,8 @@ def mitral_valve_distance(segmentation, gt, spacing, mistake_distances=[5, 7.5],
 
     mae = np.asarray(mae)
     if return_mean:
-        metrics = {"mse": np.asarray(mse).mean(), "mae_L": mae[..., 0].mean(), "mae_R": mae[..., 1].mean(), "mae": mae.mean()}
+        metrics = {"mse": np.asarray(mse).mean(), "mae_L": mae[..., 0].mean(), "mae_R": mae[..., 1].mean(),
+                   "mae": mae.mean()}
     else:
         metrics = {"mse": np.asarray(mse), "mae_L": mae[..., 0], "mae_R": mae[..., 1], "mae": mae}
     metrics.update(mistakes)
