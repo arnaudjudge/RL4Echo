@@ -325,6 +325,12 @@ class RLmodule3D(LightningModule):
 
     def on_test_start(self) -> None:  # noqa: D102
         super().on_test_start()
+
+        if self.trainer.world_size > 1:
+            print(f"World size is {self.trainer}, default to skip worse frame threshold and vae_on_test")
+            self.hparams.worst_frame_thresholds = None
+            self.hparams.vae_on_test = False
+
         if self.trainer.datamodule is None:
             sw_batch_size = 2
         else:
