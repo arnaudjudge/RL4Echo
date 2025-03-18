@@ -327,7 +327,7 @@ class RLmodule3D(LightningModule):
         super().on_test_start()
 
         if self.trainer.world_size > 1:
-            print(f"World size is {self.trainer}, default to skip worse frame threshold and vae_on_test")
+            print(f"\nWorld size is {self.trainer.world_size}, default to skip worse frame threshold and vae_on_test")
             self.hparams.worst_frame_thresholds = None
             self.hparams.vae_on_test = False
 
@@ -676,4 +676,5 @@ class RLmodule3D(LightningModule):
 
     def on_predict_epoch_end(self) -> None:
         # for multi gpu cases, save intermediate file before sending to main csv
+        print(f"Saving temporary rows file to : {f'{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv'}")
         pd.concat(self.predicted_rows).to_csv(f"{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv")
