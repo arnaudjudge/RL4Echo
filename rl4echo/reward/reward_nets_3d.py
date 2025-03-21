@@ -36,11 +36,8 @@ class RewardUnets3D(Reward):
                     rew[i, ..., j] = rew[i, ..., j] - rew[i, ..., j].min()
                     rew[i, ..., j] = rew[i, ..., j] / rew[i, ..., j].max()
             # r += [torch.sigmoid(net(stack)/self.temp_factor).squeeze(1)]
-            # import matplotlib.pyplot as plt
-            # plt.figure()
-            # plt.imshow(rew[0, ..., 2].cpu().numpy().T)
             r += [rew]
-        r[1][r[1] < 0.9] = 0
+        # r[1][r[1] < 0.9] = 0
         r = [torch.minimum(r[0], r[1])]
         return r
 
