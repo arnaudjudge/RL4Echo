@@ -1,8 +1,12 @@
+import os
 import warnings
 
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
+from multiprocessing import Pool
+from tqdm import tqdm
+from itertools import repeat
 
 from rl4echo.utils.cardiac_cycle_utils import estimate_num_cycles
 from vital.data.camus.config import Label
@@ -36,13 +40,36 @@ def dice_score(output, target):
     return out
 
 
-def is_anatomically_valid(output):
+def is_anatomically_valid(output, voxelspacing=(1.0, 1.0)):
     out = torch.zeros(len(output))
     for i in range(len(output)):
         try:
-            out[i] = int(check_segmentation_validity(output[i].T, (1.0, 1.0), [0, 1, 2]))
+            out[i] = int(check_segmentation_validity(output[i].T, voxelspacing, [0, 1, 2]))
         except:
             out[i] = 0
+    return out
+
+
+def check_frame_anatomical_validity(frame, voxelspacing, labels):
+    try:
+        return int(check_segmentation_validity(frame, voxelspacing, labels))
+    except:
+        return 0
+
+
+def is_anatomically_valid_multiproc(output, voxel_spacing=(1.0, 1.0), num_proc=os.cpu_count() - 1):
+    segmentations = [output[i].T for i in range(len(output))]
+    with Pool(processes=num_proc) as pool:
+        out = list(
+            pool.starmap(
+                check_frame_anatomical_validity,
+                zip(
+                    segmentations,
+                    repeat(voxel_spacing),
+                    repeat([0, 1, 2])
+                )
+            )
+        )
     return out
 
 
