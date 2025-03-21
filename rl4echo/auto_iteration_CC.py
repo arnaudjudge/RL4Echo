@@ -111,17 +111,17 @@ def main(cfg):
         # set OS data path for copy of data to happen
         # copy data to compute node, next to RL data
         # subprocess.run(["rsync", "-a", f"{output_path}/rewardDS/", f"{os.environ['DATA_PATH']}/rewardDS/"])
-        os.environ['DATA_PATH'] = f"{output_path}/rewardDS/"
+        # os.environ['DATA_PATH'] = f"{output_path}/rewardDS/"
 
         if checkpoint_dict['turn'] == 'reward':
             # train reward net
             overrides = checkpoint_dict['main_overrides'] + checkpoint_dict['trainer_overrides'] + [f"trainer.max_epochs={cfg.rn_num_epochs}",
-                                                              "datamodule.data_path=${oc.env:DATA_PATH}",
+                                                              f"datamodule.data_path={output_path}/rewardDS/",
                                                               f"model.save_model_path={output_path}/{i - 1}/rewardnet.ckpt",
                                                               ]
                                                               # f"+model.var_file={cfg.var_file}"]
             sub_cfg = compose(config_name=f"reward_3d_runner.yaml", overrides=overrides)
-            # print(OmegaConf.to_yaml(sub_cfg))
+            print(OmegaConf.to_yaml(sub_cfg))
             OmegaConf.save(sub_cfg, "config.yaml")
             subprocess.run(
                 shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={int(cfg.reward_time)*(i+1)} --multirun"))
@@ -151,7 +151,7 @@ def main(cfg):
                      # f"model.reward.temp_factor={float(saved_vars['Temperature_factor'])}",
                      f"model.actor_save_path={output_path}/{i}/actor.ckpt",
                      f"model.critic_save_path={output_path}/{i}/critic.ckpt",
-                     f'model.predict_save_dir={f"{output_path}/rewardDS/" if iterations > i else None}',
+                     f'model.predict_save_dir={f"{output_path}/rewardDS/"}',
                      f"model.entropy_coeff={max(0.3 / (i * 2), 0)}",
                      f"model.divergence_coeff={0.1 / (i * 2)}",
                      f"experiment=ppo_{checkpoint_dict['target_experiment']}",
@@ -164,7 +164,7 @@ def main(cfg):
 
         sub_cfg.save_csv_after_predict = \
             f"{sub_cfg.datamodule.data_dir}/{sub_cfg.datamodule.dataset_name}/{sub_cfg.datamodule.csv_file}"
-        # print(OmegaConf.to_yaml(sub_cfg))
+        print(OmegaConf.to_yaml(sub_cfg))
         OmegaConf.save(sub_cfg, "config.yaml")
         subprocess.run(
             shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={int(cfg.rl_time)*(i+1)} --multirun"))
