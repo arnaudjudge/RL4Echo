@@ -5,6 +5,7 @@ _target_: rl4echo.reward.reward_nets_3d.RewardUnets3D
 
 state_dict_paths:
   anatomical: rewardnet_5000best.ckpt
+  landmarks: reward_net_3d_landmarkbigelipse.ckpt
 
 temp_factor: 1
 
