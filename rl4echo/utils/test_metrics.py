@@ -103,7 +103,7 @@ def full_test_metrics(y_pred_as_batch, gt_as_batch, voxel_spacing, device, prefi
         print(f"AV took {round(time.time() - start_time, 4)} (s).")
 
     start_time = time.time()
-    temporal_valid = check_temporal_validity(y_pred_as_batch.transpose((0, 2, 1)),
+    temporal_valid, num_temporal_errors = check_temporal_validity(y_pred_as_batch.transpose((0, 2, 1)),
                                              voxel_spacing[0])
     if verbose:
         print(f"TV took {round(time.time() - start_time, 4)} (s).")
@@ -117,6 +117,7 @@ def full_test_metrics(y_pred_as_batch, gt_as_batch, voxel_spacing, device, prefi
         f"{prefix}/anat_valid": torch.tensor(int(all(anat_errors)), device=device),
         f"{prefix}/anat_valid_frames": torch.tensor(anat_errors, device=device).mean(),
         f"{prefix}/temporal_valid": torch.tensor(temporal_valid, device=device),
+        f"{prefix}/temporal_errors": torch.tensor(num_temporal_errors, device=device),
         f"{prefix}/dice/epi": torch.tensor(test_dice_epi, device=device),
         f"{prefix}/hd/epi": torch.tensor(test_hd_epi, device=device),
     }

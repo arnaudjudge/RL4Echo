@@ -35,17 +35,10 @@ def get_temporal_hd_metric(pred_as_batch, voxel_spacing, label=None, num_threads
     next_neigh = pred_as_batch[2:]  # Next neighbors of non-edge instants
     tuples = [(pred_as_batch[1:-1][i], prev_neigh[i], next_neigh[i]) for i in range(len(pred_as_batch[1:-1]))]
 
-    with Pool(processes=num_threads) as pool:
-        hds = list(
-            pool.starmap(
-                temporal_hd,
-                zip(
-                    tuples,
-                    repeat(voxel_spacing),
-                    repeat(label)
-                )
-            )
-        )
+    hds = []
+    for t in tuples:
+        hds += [temporal_hd(t, voxel_spacing, label)]
+
     return [0] + hds + [0]
 
 
@@ -101,22 +94,24 @@ def get_temporal_consistencies(segmentation_3d, voxelspacing=(0.37, 0.37), skip_
                                                                   bounds=(measures_1d[attr].min()*0.99,
                                                                           measures_1d[attr].max()*1.01))
     if not skip_measurement_metrics:
-        hds_myo = np.asarray(get_temporal_hd_metric(segmentation_3d, voxelspacing, label=Label.MYO))
-        t_consistencies['hd_frames_myo'] = hds_myo > attr_thresholds['hd_frames_myo']
-        hds_epi = np.asarray(get_temporal_hd_metric(segmentation_3d, voxelspacing))
-        t_consistencies['hd_frames_epi'] = hds_epi > attr_thresholds['hd_frames_epi']
+        measures_1d["hd_frames_myo"] = np.asarray(get_temporal_hd_metric(segmentation_3d, voxelspacing, label=Label.MYO))
+        t_consistencies["hd_frames_myo"] = measures_1d["hd_frames_myo"] > attr_thresholds["hd_frames_myo"]
+        measures_1d["hd_frames_epi"] = np.asarray(get_temporal_hd_metric(segmentation_3d, voxelspacing))
+        t_consistencies["hd_frames_epi"] = measures_1d["hd_frames_epi"] > attr_thresholds["hd_frames_epi"]
 
     return t_consistencies, measures_1d
 
 
 def check_temporal_validity(segmentation_3d, voxelspacing=(0.37, 0.37), relaxed_factor=None, plot=False, verbose=False):
     total_errors = []
+    frames = []
     temp_constistencies, measures_1d = get_temporal_consistencies(segmentation_3d, voxelspacing)
     for attr in temp_constistencies.keys():
         thresh = attr_thresholds[attr]
         t_consistency = temp_constistencies[attr]
         total_errors += [t_consistency.sum()]
-
+        frames += [t_consistency]
+        
         if plot:
             temp_constistencies[attr] = compute_temporal_consistency_metric(measures_1d[attr])
             idx = [i for i in range(len(t_consistency)) if t_consistency[i]]
@@ -139,13 +134,17 @@ def check_temporal_validity(segmentation_3d, voxelspacing=(0.37, 0.37), relaxed_
             idx = [i for i in range(len(t_consistency)) if t_consistency[i]]
             print(idx)
             print(f"{attr}: {t_consistency.sum()} - THRESH :{thresh}")
-            print(f"{attr} - {['%.4f' % tc for tc in temp_constistencies[attr]]}")
+            print(f"{attr} - {['%.4f' % tc for tc in measures_1d[attr]]}")
             if t_consistency.sum() > 0:
                 print(f"{attr} - {['%.4f' % tc for tc in temp_constistencies[attr] if abs(tc) > thresh]}")
     if plot:
         plt.show()
     # allow for one metric to have one error in it if relaxed.
-    print(sum([e != 0 for e in total_errors]))
-    return sum([e for e in total_errors]) <= 1 if relaxed_factor else sum([e != 0 for e in total_errors]) == 0
+    # print(total_errors)
+    # print(sum([e != 0 for e in total_errors]))
+    # count number of frames with errors in them
+    frame_errors = (np.asarray(frames).sum(axis=0) != 0)
+    return sum([e for e in total_errors]) <= 1 if relaxed_factor else sum([e != 0 for e in total_errors]) == 0, \
+        frame_errors.sum()
 
 
