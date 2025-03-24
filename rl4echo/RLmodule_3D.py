@@ -435,20 +435,19 @@ class RLmodule3D(LightningModule):
         sitk.WriteImage(itk_image, os.path.join(save_dir, str(fname) + ".nii.gz"))
 
     def on_test_end(self) -> None:
-        if self.trainer.global_rank == 0:
-            actor_save_path = self.hparams.actor_save_path if self.hparams.actor_save_path else \
-                f"{self.trainer.log_dir}/{self.trainer.logger.version}/actor.ckpt"
-            actor_save_path = Path(actor_save_path)
-            actor_save_path.parent.mkdir(parents=True, exist_ok=True)
-            torch.save(self.actor.actor.net.state_dict(), actor_save_path)
-            print(f"actor saved at: {actor_save_path}")
-    
-            critic_save_path = self.hparams.critic_save_path if self.hparams.critic_save_path else \
-                f"{self.trainer.log_dir}/{self.trainer.logger.version}/critic.ckpt"
-            critic_save_path = Path(critic_save_path)
-            critic_save_path.parent.mkdir(parents=True, exist_ok=True)
-            torch.save(self.actor.critic.net.state_dict(), critic_save_path)
-            print(f"critic saved at: {actor_save_path}")
+        actor_save_path = self.hparams.actor_save_path if self.hparams.actor_save_path else \
+            f"{self.trainer.log_dir}/{self.trainer.logger.version}/actor.ckpt"
+        actor_save_path = Path(actor_save_path)
+        actor_save_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self.actor.actor.net.state_dict(), actor_save_path)
+        print(f"actor saved at: {actor_save_path}")
+
+        critic_save_path = self.hparams.critic_save_path if self.hparams.critic_save_path else \
+            f"{self.trainer.log_dir}/{self.trainer.logger.version}/critic.ckpt"
+        critic_save_path = Path(critic_save_path)
+        critic_save_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self.actor.critic.net.state_dict(), critic_save_path)
+        print(f"critic saved at: {actor_save_path}")
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
         # must be batch size 1 as images have varied sizes
