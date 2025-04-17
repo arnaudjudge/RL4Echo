@@ -18,7 +18,7 @@ from monai.data import MetaTensor
 from scipy import ndimage
 from torch import Tensor
 from torch.nn.functional import pad
-from torchvision.transforms.functional import adjust_contrast
+from torchvision.transforms.functional import adjust_contrast, rotate
 
 from patchless_nnunet.utils.inferers import SlidingWindowInferer
 from patchless_nnunet.utils.softmax import softmax_helper
@@ -61,6 +61,7 @@ class RLmodule3D(LightningModule):
                  worst_frame_thresholds={"anatomical": 0.985},
                  save_csv_after_predict=None,
                  val_batch_size=4,
+                 tta=False,
                  temp_files_path='.',
                  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -215,7 +216,7 @@ class RLmodule3D(LightningModule):
         self.inferer.roi_size = self.patch_size
 
         start_time = time.time()
-        prev_actions = self.predict(b_img).argmax(dim=1)
+        prev_actions = self.tta_predict(b_img) if self.hparams.tta else self.predict(b_img).argmax(dim=1)
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
         prev_rewards = torch.stack(self.reward_func.predict_full_sequence(prev_actions, b_img, b_gt), dim=0)
@@ -374,6 +375,59 @@ class RLmodule3D(LightningModule):
                 raise ValueError("Check your patch size. You dummy.")
         if len(image.shape) == 4:
             raise ValueError("No 2D images here. You dummy.")
+
+    def tta_predict(
+        self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
+    ) -> Union[Tensor, MetaTensor]:
+        """Predict with test time augmentation.
+
+        Args:
+            image: Image to predict.
+            apply_softmax: Whether to apply softmax to prediction.
+
+        Returns:
+            Aggregated prediction over number of flips.
+        """
+        preds = self.predict(image, apply_softmax)
+        factors = [1.1, 0.9, 1.25, 0.75]
+        translations = [40, 60, 80, 120]
+        rotations = [5, 10, -5, -10]
+
+        for factor in factors:
+            preds += self.predict(adjust_contrast(
+                image.permute((4, 0, 1, 2, 3)), factor).permute((1, 2, 3, 4, 0)), apply_softmax)
+
+        def x_translate_left(img, amount=20):
+            return pad(img, (0, 0, 0, 0, amount, 0), mode="constant")[:, :, :-amount, :, :]
+        def x_translate_right(img, amount=20):
+            return pad(img, (0, 0, 0, 0, 0, amount), mode="constant")[:, :, amount:, :, :]
+        def y_translate_up(img, amount=20):
+            return pad(img, (0, 0, amount, 0, 0, 0), mode="constant")[:, :, :, :-amount, :]
+        def y_translate_down(img, amount=20):
+            return pad(img, (0, 0, 0, amount, 0, 0), mode="constant")[:, :, :, amount:, :]
+
+        for translation in translations:
+            preds += x_translate_right(self.predict(x_translate_left(image, translation), apply_softmax),
+                                       translation)
+            preds += x_translate_left(self.predict(x_translate_right(image, translation), apply_softmax),
+                                      translation)
+            preds += y_translate_down(self.predict(y_translate_up(image, translation), apply_softmax),
+                                      translation)
+            preds += y_translate_up(self.predict(y_translate_down(image, translation), apply_softmax),
+                                    translation)
+
+        # TODO: optimize this for compute time
+        for rotation in rotations:
+            rotated = torch.zeros_like(image)
+            for i in range(image.shape[-1]):
+                rotated[0, :, :, :, i] = rotate(image[0, :, :, :, i], angle=rotation)
+            rot_pred = self.predict(rotated, apply_softmax)
+            for i in range(image.shape[-1]):
+                rot_pred[0, :, :, :, i] = rotate(rot_pred[0, :, :, :, i], angle=-rotation)
+            preds += rot_pred
+
+        preds /= len(factors) + len(translations) * 4 + len(rotations) + 1
+        return preds.argmax(dim=1)
 
     def predict_3D_3Dconv_tiled(
         self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
