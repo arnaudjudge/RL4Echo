@@ -1,0 +1,5 @@
+defaults:
+  - net: unet_classification
+
+_target_: rl4echo.image_quality.image_quality_module.IQ3DOptimizer
+

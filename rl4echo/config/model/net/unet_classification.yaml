@@ -1,0 +1,3 @@
+_target_: rl4echo.image_quality.image_quality_network.FC3DResNet
+
+num_classes: 1

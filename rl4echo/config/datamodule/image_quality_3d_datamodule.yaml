@@ -1,0 +1,5 @@
+_target_: rl4echo.image_quality.image_quality_datamodule.IQ3dDataModule
+
+data_dir: '/data/icardio/processed/'
+csv_file: "../image_quality.csv"
+test_fra: 0.1
