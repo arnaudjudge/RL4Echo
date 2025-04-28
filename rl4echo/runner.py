@@ -58,6 +58,8 @@ def main(cfg):
 
     if cfg.trainer.max_epochs > 0 and cfg.train:
         ckpt_path = 'best'
+    elif cfg.test_from_ckpt:
+        ckpt_path = cfg.test_from_ckpt
     else:
         ckpt_path = None
 
