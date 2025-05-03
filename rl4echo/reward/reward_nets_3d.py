@@ -38,7 +38,8 @@ class RewardUnets3D(Reward):
             # r += [torch.sigmoid(net(stack)/self.temp_factor).squeeze(1)]
             r += [rew]
         # r[1][r[1] < 0.9] = 0
-        r = [torch.minimum(r[0], r[1])]
+        if len(r) > 1:
+            r = [torch.minimum(r[0], r[1])]
         return r
 
     def get_nets(self):
