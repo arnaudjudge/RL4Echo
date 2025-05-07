@@ -1,5 +1,6 @@
 import torch.nn as nn
-from torchvision.models.video.resnet import Bottleneck, BasicBlock, BasicStem, Conv3DSimple, Conv3DNoTemporal
+from torchvision.models.video.resnet import Bottleneck, BasicBlock, BasicStem, Conv3DSimple, Conv3DNoTemporal, \
+    r2plus1d_18, mc3_18
 import torchvision.models.video as video_models
 from torchvision.models.video import r3d_18
 
@@ -175,9 +176,11 @@ class FCNClassifVideoResNet(nn.Module):
 
 
 class FC3DResNet(nn.Module):
-    def __init__(self, num_classes, pretrained=True):
+    def __init__(self, num_classes, pretrained=False):
         super().__init__()
-        self.backbone = r3d_18(pretrained=pretrained)
+        # self.backbone = r3d_18(pretrained=pretrained)
+        # self.backbone = r2plus1d_18(pretrained=pretrained)
+        self.backbone = mc3_18(pretrained=pretrained)
 
         # Replace input conv to accept 1 channel instead of 3
         old_conv1 = self.backbone.stem[0]

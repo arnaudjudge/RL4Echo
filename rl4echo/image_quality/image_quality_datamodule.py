@@ -11,7 +11,7 @@ from lightning import LightningDataModule
 from monai.data import DataLoader
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
-
+from vital.utils.image.transform import resize_image
 
 def get_img_subpath(row):
     """
@@ -70,21 +70,38 @@ class IQ3dDataset(Dataset):
         if int(img.max()) > 1:
             img = img / 255
 
-        # limit size of tensor so it can fit on GPU, choose random slice
-        if not self.test and self.max_window_len is None:
-            if img.shape[0] * img.shape[1] * img.shape[2] > self.max_tensor_volume:
-                time_len = int(self.max_tensor_volume // (img.shape[0] * img.shape[1]))
-                start_idx = np.random.randint(low=0, high=max(img.shape[-1] - time_len, 1))
-                img = img[..., start_idx:start_idx + time_len]
+        #ECHANTIONNER EGALEMENT 32 framess
+        #  resize big environ 480x480
+        #  batch training...
 
-        img = tio.ScalarImage(tensor=np.expand_dims(img, 0), affine=img_nifti.affine)
-        croporpad = tio.CropOrPad(self.get_desired_size(img.shape[1:]))
-        img = croporpad(img).tensor
+        img = img.transpose((2, 0, 1))
 
-        img = img.permute(0, 3, 1, 2)
+        img = resize_image(img,(256, 256))
+
+        if len(img) > 60:
+            img = img[:60]
+
+        frames = np.round(np.linspace(0, len(img) - 1, 32)).astype(int)
+        img = img[frames]
+        img = torch.tensor(img).unsqueeze(0)
+        # # limit size of tensor so it can fit on GPU, choose random slice
+        # if not self.test and self.max_window_len is None:
+        #     if img.shape[0] * img.shape[1] * img.shape[2] > self.max_tensor_volume:
+        #         time_len = int(self.max_tensor_volume // (img.shape[0] * img.shape[1]))
+        #         start_idx = 0 #np.random.randint(low=0, high=max(img.shape[-1] - time_len, 1))
+        #         img = img[..., start_idx:start_idx + time_len]
+        #
+        # img = tio.ScalarImage(tensor=np.expand_dims(img, 0), affine=img_nifti.affine)
+        # croporpad = tio.CropOrPad(self.get_desired_size(img.shape[1:]))
+        # img = croporpad(img).tensor
+
+        # img = img.permute(0, 3, 1, 2)
+
+        label = self.df.iloc[idx]['quality_nicolas_rounded'].item()
+        # label = 0 if label < 2 else 1
 
         return {'img': img.type(torch.float32),
-                'label': torch.tensor(self.df.iloc[idx]['quality_nicolas'].item() >= 2).type(torch.FloatTensor),
+                'label': torch.tensor(label).type(torch.LongTensor),
         }
 
     def get_desired_size(self, current_shape):
@@ -149,10 +166,11 @@ class IQ3dDataModule(LightningDataModule):
         # open dataframe for dataset
         self.df = pd.read_csv(self.data_path + '/' + self.hparams.csv_file, index_col=0)
 
-        # es_ed_df = pd.read_csv(
-        #     "/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_affine/subset_official_test.csv")
-        # es_ed_dicoms = list(es_ed_df[es_ed_df['split_0'] == 'test']['dicom_uuid'].unique())
-        # self.df = self.df[self.df['dicom_uuid'].isin(es_ed_dicoms)]
+        self.df['quality_nicolas_rounded'] = np.ceil(self.df['quality_nicolas'])
+        # self.df = self.df[self.df['quality_nicolas'].isin([0, 3, 3.5, 4])]
+        # print(self.df['quality_nicolas'].value_counts())
+        #
+        # print(self.df['quality_nicolas_rounded'].value_counts())
 
         self.data_train: Optional[torch.utils.Dataset] = None
         self.data_val: Optional[torch.utils.Dataset] = None
@@ -193,16 +211,25 @@ class IQ3dDataModule(LightningDataModule):
 
         # Do splits
         print(f"Creating new splits!, seed : {self.hparams.seed}")
-        self.train_idx, val_and_test_idx = train_test_split(self.df.index.to_list(),
-                                                            train_size=0.8,
-                                                            random_state=self.hparams.seed)
-        self.val_idx, self.test_idx = train_test_split(val_and_test_idx,
-                                                       test_size=0.5,
-                                                       random_state=self.hparams.seed)
+        train_val_split, self.test_idx = train_test_split(self.df.index.to_list(),
+                                                            train_size=0.9,
+                                                            random_state=self.hparams.seed,
+                                                            stratify=self.df['quality_nicolas_rounded'])
+
+        self.train_idx, self.val_idx = train_test_split(train_val_split,
+                                                       test_size=0.1,
+                                                       random_state=self.hparams.seed,)
+                                                       # stratify=self.df.loc[val_and_test_idx, 'quality_nicolas_rounded'])
 
         # self.train_idx = self.train_idx[:10]
         # self.val_idx = self.train_idx[:10]
         # self.test_idx = self.train_idx[:10]
+        print("\nTRAIN")
+        print(self.df.loc[self.train_idx]['quality_nicolas_rounded'].value_counts())
+        print("\nVAL")
+        print(self.df.loc[self.val_idx]['quality_nicolas_rounded'].value_counts())
+        print("\nTEST")
+        print(self.df.loc[self.test_idx]['quality_nicolas_rounded'].value_counts())
 
         if self.hparams.subset_frac and type(self.hparams.subset_frac) == float:
             train_num = int(self.hparams.subset_frac * len(self.train_idx))
@@ -275,7 +302,7 @@ class IQ3dDataModule(LightningDataModule):
     def train_dataloader(self) -> DataLoader:  # noqa: D102
         return DataLoader(
             dataset=self.data_train,
-            batch_size=1,
+            batch_size=8,
             num_workers=max(self.hparams.num_workers, 1),
             pin_memory=self.hparams.pin_memory,
             shuffle=True,
