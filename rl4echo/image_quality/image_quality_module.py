@@ -39,7 +39,7 @@ class FocalLoss(nn.Module):
 
 
 class IQ3DOptimizer(LightningModule):
-    def __init__(self, net, loss=nn.CrossEntropyLoss(), save_model_path="last_IQ.ckpt", model_weights=None, **kwargs):
+    def __init__(self, net, loss=nn.CrossEntropyLoss(), save_model_path="ordinal_IQ.ckpt", model_weights=None, **kwargs):
         super().__init__(**kwargs)
 
         self.net = net
@@ -78,7 +78,12 @@ class IQ3DOptimizer(LightningModule):
         x, y = batch['img'], batch['label']
 
         y_pred = self(x)
-        loss = self.loss(y_pred, y)
+
+        prob = F.softmax(y_pred, dim=1)
+        expected = (prob * torch.arange(5).float().to(prob.device)).sum(dim=1)
+        loss = F.mse_loss(expected, y.float())
+
+        # loss = self.loss(y_pred, y)
 
         acc = (y == y_pred.argmax(dim=1)).type(torch.float)
         logs = {
@@ -92,7 +97,10 @@ class IQ3DOptimizer(LightningModule):
     def validation_step(self, batch, batch_idx: int):
         x, y = batch['img'], batch['label']
         y_pred = self(x)
-        loss = self.loss(y_pred, y)
+        # loss = self.loss(y_pred, y)
+        prob = F.softmax(y_pred, dim=1)
+        expected = (prob * torch.arange(5).float().to(prob.device)).sum(dim=1)
+        loss = F.mse_loss(expected, y.float())
 
         acc = (y == y_pred.argmax(dim=1)).type(torch.float)
 
@@ -112,7 +120,10 @@ class IQ3DOptimizer(LightningModule):
         x, y = batch['img'], batch['label']
         label = y
         y_pred = self(x)
-        loss = self.loss(y_pred, y)
+        # loss = self.loss(y_pred, y)
+        prob = F.softmax(y_pred, dim=1)
+        expected = (prob * torch.arange(5).float().to(prob.device)).sum(dim=1)
+        loss = F.mse_loss(expected, y.float())
 
         print(torch.softmax(y_pred, dim=1))
 
