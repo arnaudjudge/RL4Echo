@@ -63,6 +63,7 @@ class RLmodule3D(LightningModule):
                  val_batch_size=4,
                  tta=False,
                  temp_files_path='.',
+                 model_parallelism=False,
                  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
@@ -90,6 +91,24 @@ class RLmodule3D(LightningModule):
         if not self.temp_files_path.exists() and self.trainer.global_rank == 0:
             self.temp_files_path.mkdir(parents=True, exist_ok=True)
 
+        self.device0 = self.device
+        self.device1 = self.device
+
+    def setup(self, stage: str) -> None:
+        if self.hparams.model_parallelism:
+            local_rank = int(os.environ.get("SLURM_LOCALID", 0))  # Local ID on the node
+            gpu0 = local_rank * 2
+            gpu1 = gpu0 + 1
+
+            self.device0 = torch.device(f"cuda:{gpu0}")
+            self.device1 = torch.device(f"cuda:{gpu1}")
+
+            self.actor.actor.to(self.device0)
+            self.actor.critic.to(self.device1)
+            if hasattr(self.reward_func, 'nets'):
+                for i, n in enumerate(self.reward_func.nets):
+                    n.to(self.device1)
+
     def configure_optimizers(self):
         return self.actor.get_optimizers()
 
@@ -106,8 +125,13 @@ class RLmodule3D(LightningModule):
         Returns:
             Actions (used for rewards, log_pobs, etc), sampled_actions (mainly for display), log_probs, rewards
         """
+        imgs.to(self.device0)
         actions = self.actor.act(imgs, sample=sample)
-        rewards = self.reward_func(actions, imgs, gt)
+
+        actions.to(self.device1)
+        imgs.to(self.device1)
+        gt.to(self.device1)
+        rewards = self.reward_func(actions, imgs, gt).to(self.device0)
 
         if use_gt is not None:
             actions[use_gt, ...] = gt[use_gt, ...]
@@ -216,10 +240,13 @@ class RLmodule3D(LightningModule):
         self.inferer.roi_size = self.patch_size
 
         start_time = time.time()
-        prev_actions = self.tta_predict(b_img) if self.hparams.tta else self.predict(b_img).argmax(dim=1)
+        prev_actions = self.tta_predict(b_img.to(self.device0)) if self.hparams.tta else self.predict(b_img.to(self.device0)).argmax(dim=1)
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
-        prev_rewards = torch.stack(self.reward_func.predict_full_sequence(prev_actions, b_img, b_gt), dim=0)
+        prev_rewards = torch.stack(self.reward_func.predict_full_sequence(prev_actions.to(self.device1),
+                                                                          b_img.to(self.device1),
+                                                                          b_gt.to(self.device1)),
+                                   dim=0)
         prev_rewards_mean = torch.mean(prev_rewards, dim=0)
 
         start_time = time.time()
@@ -293,16 +320,17 @@ class RLmodule3D(LightningModule):
         self.log_dict(logs, sync_dist=True)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
 
+        # import h5py
         # with h5py.File('3d_anatomical_reward_100randompred_wclean.h5', 'a') as f:
         #     for i in range(len(b_img)):
         #         dicom = meta_dict.get("case_identifier")[0]
         #         if dicom not in f:
         #             f.create_group(dicom)
-        #         f[dicom]['img'] = b_img[i].cpu().numpy().squeeze(0)
-        #         f[dicom]['gt'] = b_gt[i].cpu().numpy()
-        #         f[dicom]['pred'] = y_pred_np_as_batch.transpose((1, 2, 0))
+        #         f[dicom]['img'] = (b_img[i].cpu().numpy().squeeze(0) * 255 ).astype(np.uint8)
+        #         f[dicom]['gt'] = b_gt[i].cpu().numpy().astype(np.uint8)
+        #         f[dicom]['pred'] = y_pred_np_as_batch.transpose((1, 2, 0)).astype(np.uint8)
         #         clean_reward = self.reward_func.predict_full_sequence(torch.tensor(y_pred_np_as_batch.transpose((1, 2, 0))[None,], device=self.device), b_img, b_gt)
-        #         f[dicom]['reward_map'] = clean_reward[i].cpu().numpy() #prev_rewards_mean[i].cpu().numpy()
+        #         f[dicom]['reward_map'] = (clean_reward[i].cpu().numpy()*255).astype(np.uint8) #prev_rewards_mean[i].cpu().numpy()
         #         f[dicom]['accuracy_map'] = (prev_actions[i].cpu().numpy() != b_gt[i].cpu().numpy()).astype(np.uint8)
 
         if self.hparams.save_on_test:
@@ -313,7 +341,7 @@ class RLmodule3D(LightningModule):
             fname = meta_dict.get("case_identifier")[0]
             spacing = meta_dict.get("original_spacing").cpu().detach().numpy()[0]
             resampled_affine = meta_dict.get("resampled_affine").cpu().detach().numpy()[0]
-            save_dir = os.path.join(self.trainer.default_root_dir, f"testing_raw/{self.trainer.datamodule.get_approx_gt_subpath(fname).rsplit('/', 1)[0]}/")
+            save_dir = os.path.join(self.trainer.default_root_dir, f"testing_raw_100first_CARDINAL/{self.trainer.datamodule.get_approx_gt_subpath(fname).rsplit('/', 1)[0]}/")
 
             final_preds = np.expand_dims(prev_actions, 0)
             transform = tio.Resample(spacing)

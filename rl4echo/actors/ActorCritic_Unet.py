@@ -19,7 +19,7 @@ class ActorCriticUnetCritic(Actor):
         Returns:
             actions (sampled), logits from actor predictions, log_probs, value function estimate from critic
         """
-        logits, distribution, old_distribution = self.actor(imgs)
+        logits, distribution, old_distribution = self.actor(imgs.to(self.actor.device))
         log_probs = distribution.log_prob(actions)
 
         if old_distribution:
@@ -30,11 +30,11 @@ class ActorCriticUnetCritic(Actor):
         sampled_actions = distribution.sample()
         entropy = distribution.entropy()
 
-        if self.critic.net.deep_supervision and self.critic.net.training:
-            v = self.critic(imgs)
-            v = [v_.squeeze(1) for v_ in v]
+        if hasattr(self.critic.net, "deep_supervision") and self.critic.net.deep_supervision and self.critic.net.training:
+            v = self.critic(imgs.to(self.critic.device))
+            v = [v_.squeeze(1).to(self.actor.device) for v_ in v]
         else:
-            v = self.critic(imgs).squeeze(1)
+            v = self.critic(imgs.to(self.critic.device)).squeeze(1).to(self.actor.device)
 
         return sampled_actions, logits, log_probs, entropy, v, old_log_probs
 
