@@ -30,7 +30,7 @@ class ActorCriticUnetCritic(Actor):
         sampled_actions = distribution.sample()
         entropy = distribution.entropy()
 
-        if self.critic.net.deep_supervision and self.critic.net.training:
+        if hasattr(self.critic.net, "deep_supervision") and self.critic.net.deep_supervision and self.critic.net.training:
             v = self.critic(imgs)
             v = [v_.squeeze(1) for v_ in v]
         else:
