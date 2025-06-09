@@ -22,7 +22,8 @@ class Unet3DActorCategorical(nn.Module):
                 self.old_net.requires_grad_(False)
 
     def forward(self, x):
-        logits = torch.softmax(self.net(x), dim=1)
+        with torch.cuda.amp.autocast(enabled=False):  # force float32
+            logits = torch.softmax(self.net(x).float(), dim=1)
         dist = Categorical(probs=logits.permute(0, 2, 3, 4, 1))
 
         if hasattr(self, "old_net"):

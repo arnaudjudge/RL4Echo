@@ -51,7 +51,9 @@ class RewardUnet3D(Reward):
         stack = torch.stack((imgs.squeeze(1), pred), dim=1)
         # return as list for code suiting multireward
 
-        rew = torch.sigmoid(self.net(stack) / self.temp_factor).squeeze(1)
+        with torch.cuda.amp.autocast(enabled=False):  # force float32
+            out = self.net(stack)
+        rew = torch.sigmoid(out / self.temp_factor).squeeze(1)
 
         # normalize
         for i in range(rew.shape[0]):
@@ -69,7 +71,8 @@ class RewardUnet3D(Reward):
 
         self.patch_size = list([stack.shape[-3], stack.shape[-2], 4])
         self.inferer.roi_size = self.patch_size
-        return [torch.sigmoid(self.predict(stack, apply_softmax=False)).squeeze(1)]
+        with torch.cuda.amp.autocast(enabled=False):  # force float32
+            return [torch.sigmoid(self.predict(stack, apply_softmax=False)).squeeze(1)]
 
     def prepare_for_full_sequence(self, batch_size=1) -> None:  # noqa: D102
         sw_batch_size = batch_size

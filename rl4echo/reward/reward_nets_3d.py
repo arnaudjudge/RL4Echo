@@ -30,7 +30,10 @@ class RewardUnets3D(Reward):
         stack = torch.stack((imgs.squeeze(1), pred), dim=1)
         r = []
         for net in self.get_nets():
-            rew = torch.sigmoid(net(stack) / self.temp_factor).squeeze(1)
+            with torch.cuda.amp.autocast(enabled=False):  # force float32
+                out = net(stack)
+            # assert not torch.isnan(o).any(), "NaNs in RewardNet out"
+            rew = torch.sigmoid(out / self.temp_factor).squeeze(1)
             for i in range(rew.shape[0]):
                 for j in range(rew.shape[-1]):
                     rew[i, ..., j] = rew[i, ..., j] - rew[i, ..., j].min()
@@ -54,7 +57,8 @@ class RewardUnets3D(Reward):
 
         self.patch_size = list([stack.shape[-3], stack.shape[-2], 4])
         self.inferer.roi_size = self.patch_size
-        return [torch.sigmoid(p).squeeze(1) for p in self.predict(stack)]
+        with torch.cuda.amp.autocast(enabled=False):  # force float32
+            return [torch.sigmoid(p).squeeze(1) for p in self.predict(stack)]
 
     def prepare_for_full_sequence(self, batch_size=1) -> None:  # noqa: D102
         sw_batch_size = batch_size

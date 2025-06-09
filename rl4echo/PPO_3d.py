@@ -50,10 +50,9 @@ class PPO3D(RLmodule3D):
             loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions,
                                                                         prev_rewards[k % num_rewards],
                                                                         prev_log_probs, b_gt, b_use_gt))
-
-            # if self.trainer.current_epoch > 4:
-            self.manual_backward(loss, retain_graph=True)
-            nn.utils.clip_grad_norm_(self.actor.actor.parameters(), 0.5)
+            self.manual_backward(loss)
+            if "32" in self.trainer.precision:
+                nn.utils.clip_grad_norm_(self.actor.actor.parameters(), 0.5)
             # TODO: grad accumulation here???
             if k % num_rewards == (num_rewards-1):  # only step when all rewards are done, like a2c with multiple actors
                 opt_net.step()
@@ -62,7 +61,8 @@ class PPO3D(RLmodule3D):
             # TODO: should this be outside the loop? According to real algo...
             opt_critic.zero_grad()
             self.manual_backward(critic_loss)
-            nn.utils.clip_grad_norm_(self.actor.critic.parameters(), 0.5)
+            if "32" in self.trainer.precision:
+                nn.utils.clip_grad_norm_(self.actor.critic.parameters(), 0.5)
             opt_critic.step()
 
             logs = {**metrics_dict,
@@ -96,10 +96,10 @@ class PPO3D(RLmodule3D):
         with torch.no_grad():
             total_reward = b_rewards - (self.hparams.divergence_coeff * log_pi_ratio)
             # ignore divergence if using ground truth
-            total_reward[b_use_gt, ...] = torch.ones_like(b_rewards)[b_use_gt, ...]
+            # total_reward[b_use_gt, ...] = torch.ones_like(b_rewards)[b_use_gt, ...]
 
-        # assert b_rewards.shape == v.shape
-        adv = total_reward - v
+            # assert b_rewards.shape == v.shape
+            adv = total_reward - v
 
         # PPO loss
         # importance ratio
