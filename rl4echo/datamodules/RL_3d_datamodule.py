@@ -179,6 +179,7 @@ class RL3dDataModule(LightningDataModule):
             batch_size: int = 1,
             seed: int = 0,
             common_spacing: tuple[float, ...] = None,
+            max_image_area: int = None,
             max_window_len: int = None,
             max_batch_size: int = None,
             max_tensor_volume: int = 5000000,
@@ -306,6 +307,20 @@ class RL3dDataModule(LightningDataModule):
             self.val_idx = self.val_idx[:min(self.hparams.subset_frac, len(self.val_idx))]
             self.test_idx = self.test_idx[:min(self.hparams.subset_frac, len(self.test_idx))]
             self.pred_idx = self.pred_idx[:min(self.hparams.subset_frac, len(self.pred_idx))]
+
+        if self.hparams.max_image_area:
+            if not {'H', 'W'}.issubset(self.df.columns):
+                raise "MISSING KEY FOR MAX_IMAGE_AREA!"
+            self.df["expected_area"] = ((self.df["H"] * (self.df["dx"] * 10) / self.hparams.common_spacing[0]) *
+                                        (self.df["W"] * (self.df["dy"] * 10) / self.hparams.common_spacing[1]))
+            print(f"Removing {len(self.df[(self.df[self.hparams.splits_column].isin(['pred', 'train'])) & (self.df['expected_area'] > self.hparams.max_image_area)])} "
+                  f"entries with expected resampled area larger than {self.hparams.max_image_area} (before: {len(self.df['expected_area'])})")
+            self.df = self.df[((self.df[self.hparams.splits_column].isin(['pred', 'train'])) &
+                              (self.df["expected_area"] <= self.hparams.max_image_area)) |
+                              (~self.df[self.hparams.splits_column].isin(['pred', 'train']))]
+            # remake train_idx and pred_idx
+            self.train_idx = self.df.index[self.df[self.hparams.splits_column] == 'train'].tolist()
+            self.pred_idx = self.df.index[(self.df[self.hparams.splits_column] == 'pred')].tolist()
 
         if stage == "fit" or stage is None:
             self.data_train = self.hparams.dataset(self.df.loc[self.train_idx],
