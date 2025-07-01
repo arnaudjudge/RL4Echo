@@ -501,7 +501,7 @@ class RLmodule3D(LightningModule):
         critic_save_path = Path(critic_save_path)
         critic_save_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(self.actor.critic.net.state_dict(), critic_save_path)
-        print(f"critic saved at: {actor_save_path}")
+        print(f"critic saved at: {critic_save_path}")
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
         # must be batch size 1 as images have varied sizes
@@ -554,13 +554,13 @@ class RLmodule3D(LightningModule):
         if ae_comp > 0.95 and all(action_uns_anatomical_validity):
             self.trainer.datamodule.add_to_gt(id)
 
-            path = self.trainer.datamodule.get_approx_gt_subpath(id)
-            approx_gt_path = self.trainer.datamodule.hparams.approx_gt_dir + '/approx_gt/' + path
-            Path(approx_gt_path).parent.mkdir(parents=True, exist_ok=True)
-            hdr = nib.Nifti1Header()
-            nifti = nib.Nifti1Image(convert_to_numpy(np.round(actions_unsampled_clean).squeeze(0)),
-                                    np.diag(np.asarray([-1, -1, 1, 0])), hdr)
-            nifti.to_filename(approx_gt_path)
+            # path = self.trainer.datamodule.get_approx_gt_subpath(id)
+            # approx_gt_path = self.trainer.datamodule.hparams.approx_gt_dir + '/approx_gt/' + path
+            # Path(approx_gt_path).parent.mkdir(parents=True, exist_ok=True)
+            # hdr = nib.Nifti1Header()
+            # nifti = nib.Nifti1Image(convert_to_numpy(np.round(actions_unsampled_clean).squeeze(0)),
+            #                         np.diag(np.asarray([-1, -1, 1, 0])), hdr)
+            # nifti.to_filename(approx_gt_path)
 
             if self.hparams.predict_do_model_perturb:
                 for j, multiplier in enumerate([0.1, 0.15, 0.2, 0.25]):  # have been adapted from 2d
