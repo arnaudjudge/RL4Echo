@@ -1,3 +1,4 @@
+import os
 import warnings
 from multiprocessing import Pool
 from pathlib import Path
@@ -13,6 +14,7 @@ from scipy import ndimage
 from torchio import Resize, LabelMap
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
+import pandas as pd
 
 from rl4echo.utils.correctors import AEMorphoCorrector
 from rl4echo.utils.test_metrics import full_test_metrics
@@ -28,7 +30,7 @@ def as_batch(action):
 def clean_blobs(action):
     for i in range(action.shape[-1]):
         try:
-            lbl, num = ndimage.label(action[..., i] != 0)
+            lbl, num = ndimage.label(action[..., i].round() != 0)
             # Count the number of elements per label
             count = np.bincount(lbl.flat)
             # Select the largest blob
@@ -43,8 +45,34 @@ def clean_blobs(action):
 def dict_mean(dict_list):
     mean_dict = {}
     for key in dict_list[0].keys():
+        if key == "dicom_uuid":
+            continue
         mean_dict[key] = sum(d[key] for d in dict_list) / len(dict_list)
     return mean_dict
+
+
+def results_to_excel(results, method_name, excel_path):
+    # Convert list of dicts to a DataFrame
+    df = pd.DataFrame(results).set_index("dicom_uuid")
+    df.index = df.index.astype(str)  # ensure consistent string ids
+
+    # If Excel exists, load and update each sheet
+    if os.path.exists(excel_path):
+        with pd.ExcelWriter(excel_path, mode='a', engine='openpyxl', if_sheet_exists='overlay') as writer:
+            for metric in df.columns:
+                try:
+                    existing = pd.read_excel(excel_path, sheet_name=metric.replace("/", "-"), index_col=0)
+                except Exception:
+                    existing = pd.DataFrame()
+
+                existing[method_name] = df[metric]
+                existing.to_excel(writer, sheet_name=metric.replace("/", "-"))
+    else:
+        # First write: create one sheet per metric
+        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            for metric in df.columns:
+                single_metric_df = df[[metric]].rename(columns={metric: method_name})
+                single_metric_df.to_excel(writer, sheet_name=metric.replace("/", "-"))
 
 def do(p, plot=False, split_mask=False):
     #
@@ -60,6 +88,9 @@ def do(p, plot=False, split_mask=False):
         pred = pred + pred2 * 2
         pred[pred > 2] = 2
         # pred = pred * 2
+        new_pred = nib.Nifti1Image(pred, pred_nifti.affine, pred_nifti.header)
+        Path(p.as_posix().replace("/1/", "/merged/")).parent.mkdir(exist_ok=True)
+        nib.save(new_pred, p.as_posix().replace("/1/", "/merged/"))
 
     gt_p = next(Path(GT_PATH).rglob(f"*{p.name}"))  # only one exists
     gt = nib.load(gt_p).get_fdata()
@@ -85,13 +116,23 @@ def do(p, plot=False, split_mask=False):
     # get voxel spacing
     voxel_spacing = np.asarray([img_nifti.header["pixdim"][1:3]]).repeat(repeats=len(pred_b), axis=0)
 
-    pred_corrector = AEMorphoCorrector("nathanpainchaud/echo-arvae")
-    corrected, _, _, _ = pred_corrector.correct_single_seq(
-        torch.tensor(img), torch.tensor(pred), voxel_spacing)
-    pred_b = as_batch(corrected)
+    # pred_corrector = AEMorphoCorrector("nathanpainchaud/echo-arvae")
+    # corrected, _, _, _ = pred_corrector.correct_single_seq(
+    #     torch.tensor(img), torch.tensor(pred), voxel_spacing)
+    # pred_b = as_batch(corrected)
 
     # compute metrics here
     logs = full_test_metrics(pred_b, gt_b, voxel_spacing, device="cpu", verbose=False)
+    logs.update({'endo_epi-Dice': np.mean([logs["test/dice/LV"], logs["test/dice/epi"]]),
+                 "endo_epi-HD": np.mean([logs["test/hd/LV"], logs["test/hd/epi"]]),
+                 "dicom_uuid": img_p.split("/")[-1].split("_0000")[0]})
+    logs = {k: float(v.item()) if hasattr(v, 'item') else v for k, v in logs.items()}
+
+    # from vital.utils.image.us.measure import EchoMeasure
+    # from rl4echo.utils.cardiac_cycle_utils import estimate_num_cycles
+    # lv_area = EchoMeasure.structure_area(gt_b.transpose((0, 2, 1)), labels=1)
+    # n_cardiac_cycles, _, _ = estimate_num_cycles(lv_area)
+    # logs = {"num_cycles": n_cardiac_cycles, "average_frame/cycle": len(gt_b)/n_cardiac_cycles}
 
     #
     # FIGURES
@@ -135,23 +176,29 @@ if __name__ == "__main__":
     GT_PATH = '/data/icardio/subsets/full_3DRL_subset_norm_TESTONLY/segmentation/'
     # SET_PATH = "/home/local/USHERBROOKE/juda2901/dev/MemSAM/SAVED_MASKS/"
     # SET_PATH = "/home/local/USHERBROOKE/juda2901/dev/SAMUS/iCardio_testset_flipped/1/" # SET split_mask=False
+    # SET_PATH = "/home/local/USHERBROOKE/juda2901/dev/SAMUS/iCardio_testset_flipped/merged/"
     # SET_PATH = "/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_CARDINAL_NEW_TESTSET/"
     # SET_PATH = '/data/icardio/subsets/full_3DRL_subset_norm_TESTONLY/2DMICCAI_segmentation/'
     # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/ASCENT/ICARDIO_152TEST/inference_raw/'
-    #SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/MedSAM/iCardio/preds/MedSAM/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/MedSAM/iCardio/preds/MedSAM/'
     # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_CARDINAL_FROM_MASK-SSL/'
     # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_CARDINAL_NO_MASK-SSL/'
-    SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_LM+ANAT_BEST_NARVAL/'
-    
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_LM+ANAT_BEST_NARVAL/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_LM+ANAT_BEST_NARVAL_TTA/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_ANAT_ONLY_BEST_NARVAL_TTA/'
+    SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_ANAT-LM-TEMPO_NARVAL_TTA/'
+
     GIF_PATH = None #'./gifs_RL4Seg_corrected/' # './gifs/'
     if GIF_PATH:
         Path(GIF_PATH).mkdir(exist_ok=True)
 
-    paths = [p for p in Path(SET_PATH).rglob('*.nii.gz')]
+    df = pd.read_csv("/data/icardio/subsets/full_3DRL_subset_norm_TESTONLY/subset_official_splits.csv", index_col=0)
+    df = df[df['split_official_test'] == 'test']
+    paths = [p for p in Path(SET_PATH).rglob('*.nii.gz') if p.name.replace(".nii.gz", "") in df['dicom_uuid'].to_list()]
 
-    all_logs = []
-    for idx, p in enumerate(tqdm(paths[::-1], total=len(paths))):
-        all_logs += [do(p, plot=False, split_mask=False)]
+    # all_logs = []
+    # for idx, p in enumerate(tqdm(paths[::-1], total=len(paths))):
+    #     all_logs += [do(p, plot=False, split_mask=False)]
         # if idx > 5:
         #     break
     # all_logs = []
@@ -165,7 +212,10 @@ if __name__ == "__main__":
     #         )
     #     )
 
-    # all_logs = process_map(do, paths, max_workers=12, chunksize=1)
+    all_logs = process_map(do, paths, max_workers=12, chunksize=1)
+
+    # output to csv on sequence wise basis
+    # results_to_excel(all_logs, "RL4Seg3D", "results.xlsx")
 
     #
     # AGGREGATION AND OUTPUT
