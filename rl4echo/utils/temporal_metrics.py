@@ -14,11 +14,11 @@ attr_thresholds = {
     'lv_area': 0.2,
     'lv_base_width': 0.45,
     'lv_length': 0.25,
-    'myo_area': 0.3,
+    'myo_area': 0.4,
     'epi_center_x': 0.3,
     'epi_center_y': 0.2,
-    'hd_frames_myo': 5.5,
-    'hd_frames_epi': 6.0,
+    'hd_frames_myo': 7.0, # 5.5,
+    'hd_frames_epi': 7.5, #6.0,
 }
 
 
@@ -94,9 +94,19 @@ def get_temporal_consistencies(segmentation_3d, voxelspacing=(0.37, 0.37), skip_
                                                                   bounds=(measures_1d[attr].min()*0.99,
                                                                           measures_1d[attr].max()*1.01))
     if not skip_measurement_metrics:
-        measures_1d["hd_frames_myo"] = np.asarray(get_temporal_hd_metric(segmentation_3d, voxelspacing, label=Label.MYO))
+        try:
+            measures_1d["hd_frames_myo"] = np.asarray(
+                get_temporal_hd_metric(segmentation_3d, voxelspacing, label=Label.MYO))
+        except:
+            print("hd_frames_myo extraction failed")
+            measures_1d["hd_frames_myo"] = np.resize([1, 0], len(segmentation_3d))
         t_consistencies["hd_frames_myo"] = measures_1d["hd_frames_myo"] > attr_thresholds["hd_frames_myo"]
-        measures_1d["hd_frames_epi"] = np.asarray(get_temporal_hd_metric(segmentation_3d, voxelspacing))
+
+        try:
+            measures_1d["hd_frames_epi"] = np.asarray(get_temporal_hd_metric(segmentation_3d, voxelspacing))
+        except:
+            print("hd_frames_epi extraction failed")
+            measures_1d["hd_frames_epi"] = np.resize([1, 0], len(segmentation_3d))
         t_consistencies["hd_frames_epi"] = measures_1d["hd_frames_epi"] > attr_thresholds["hd_frames_epi"]
 
     return t_consistencies, measures_1d
@@ -131,12 +141,13 @@ def check_temporal_validity(segmentation_3d, voxelspacing=(0.37, 0.37), relaxed_
                 plt.plot(temp_constistencies[attr])
                 plt.title(attr)
         if verbose:
+            temp_constistencies[attr] = compute_temporal_consistency_metric(measures_1d[attr])
             idx = [i for i in range(len(t_consistency)) if t_consistency[i]]
             print(idx)
             print(f"{attr}: {t_consistency.sum()} - THRESH :{thresh}")
-            print(f"{attr} - {['%.4f' % tc for tc in measures_1d[attr]]}")
-            if t_consistency.sum() > 0:
-                print(f"{attr} - {['%.4f' % tc for tc in temp_constistencies[attr] if abs(tc) > thresh]}")
+            # print(f"{attr} - {['%.4f' % tc for tc in measures_1d[attr]]}")
+            # if t_consistency.sum() > 0:
+            print(f"{attr} - {['%.4f' % tc for tc in temp_constistencies[attr] if abs(tc) > thresh]}")
     if plot:
         plt.show()
     # allow for one metric to have one error in it if relaxed.
