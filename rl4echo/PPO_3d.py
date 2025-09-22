@@ -5,9 +5,13 @@ import copy
 import torch
 import torch.nn as nn
 from torch import Tensor
+from torchvision.transforms.functional import adjust_contrast
+import random
 
 from rl4echo.RLmodule_3D import RLmodule3D
 import torch.nn.functional as F
+
+from matplotlib import pyplot as plt
 
 
 # class PlasticLayer(nn.Module):
@@ -62,6 +66,52 @@ def get_plastic_params(model):
     return [p for m in model.modules() if isinstance(m, PlasticLayer)
             for p in [m.gain, m.bias]]
 
+import torch.nn as nn
+
+def get_all_layers(module, layers=None):
+    """Recursively collect all leaf layers (modules without children)."""
+    if layers is None:
+        layers = []
+    for child in module.children():
+        if len(list(child.children())) == 0:
+            layers.append(child)
+        else:
+            get_all_layers(child, layers)
+    return layers
+
+def unfreeze_layers(model, mode="first", n=3):
+    """
+    Freeze all params, then unfreeze first/last n leaf layers (e.g., convs).
+    mode: "first", "last", or "hybrid"
+    """
+    # Freeze everything
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # Get all "leaf" layers (like Conv3d, BatchNorm3d, etc.)
+    layers = get_all_layers(model)
+    # layers = [m for m in model.modules() if isinstance(m, torch.nn.Conv3d)]
+
+
+    if mode == "first":
+        selected = layers[:n]
+    elif mode == "last":
+        selected = layers[-n:]
+    elif mode == "hybrid":
+        selected = layers[:n] + layers[-n:]
+    else:
+        raise ValueError("mode must be 'first', 'last', or 'hybrid'")
+
+    # Unfreeze selected layers
+    for layer in selected:
+        for param in layer.parameters():
+            param.requires_grad = True
+
+    print(f"✅ Unfrozen {mode} {n} layers "
+          f"(out of {len(layers)} total). "
+          f"Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+
+    return model
 
 class PPO3D(RLmodule3D):
 
@@ -196,7 +246,7 @@ class PPO3D(RLmodule3D):
 
         return loss, critic_loss, metrics
 
-    def ttoverfit(self, batch_image, num_iter=8, **kwargs):
+    def ttoverfit(self, batch_image, num_iter=4, **kwargs):
         """
             Run a few itercvations of optimization to overfit on one test sequence in unsupervised
         Args:
@@ -209,13 +259,17 @@ class PPO3D(RLmodule3D):
         torch.cuda.empty_cache()
         # self.actor.actor.old_net.load_state_dict(copy.deepcopy(self.actor.actor.net.state_dict()))
 
-        # add_plasticity(self.actor.actor.net)
         # reset_plasticity(self.actor.actor.net)
 
-        # # freeze all main weights
-        # for p in self.actor.actor.net.parameters():
-        #     p.requires_grad = False
+        # freeze all main weights
+        # plastic_params = unfreeze_layers(self.actor.actor.net, n=5)
         #
+        # params_to_optimize = [p for p in plastic_params.parameters() if p.requires_grad]
+        # print(len(params_to_optimize))
+        # optimizer for only those layers
+        # opt_net = torch.optim.Adam(params_to_optimize, lr=1e-2)
+
+
         # # unfreeze only plastic params
         # plastic_params = get_plastic_params(self.actor.actor.net)
         # for p in plastic_params:
@@ -226,50 +280,82 @@ class PPO3D(RLmodule3D):
         # optimizer just for plastic params
         # opt_plastic = torch.optim.Adam(plastic_params, lr=1e-3)
 
+        opt_net, _ = self.configure_optimizers()
+
+        augmentations = 3
         self.divergence_coeff = 0.01
         self.entropy_coef = 0.1
         with torch.enable_grad():
-            batch_image = batch_image.requires_grad_(True)
+            batch_image = batch_image
             # split up the input test sequence into smaller chunks
             split_batch_images = list(torch.split(batch_image, 4, dim=-1))
             # make sure last chunk is same size
             if split_batch_images[-1].shape[-1] != 4:
                 split_batch_images[-1] = batch_image[..., -4:]
 
-            opt_net, _ = self.configure_optimizers()
             best_reward = 0
             best_i = 0
             best_params = None
-            for i in range(num_iter+1):
+            for i in range(num_iter):
                 sum_chunk_reward = 0
-                opt_net.zero_grad()
-                # opt_plastic.zero_grad()
+                # opt_net.zero_grad()
                 lowest_frame_reward = 1.0
                 for chunk in split_batch_images:
-                    chunk = chunk.detach().requires_grad_(True)
-                    prev_actions, prev_log_probs, prev_rewards = self.rollout(chunk, None, None)
+                    chunk = chunk.detach()
+                    opt_net.zero_grad()
+                    avg_lowest_reward_frame = 0
+                    for a in range(augmentations):
+                        with torch.no_grad():
+                            #TRY?: when worst frame is terrible use huge noise and contrast reduction?
+                            chunk_def = adjust_contrast(chunk.clone().permute((4, 0, 1, 2, 3)),
+                                                        random.uniform(0.4, 0.8)).permute((1, 2, 3, 4, 0))
+                            chunk_def += torch.randn(chunk_def.size()).to(
+                                next(self.actor.actor.net.parameters()).device) * random.uniform(0.001, 0.01)
+                            chunk_def /= chunk_def.max()
 
-                    sum_chunk_reward += prev_rewards[0].mean()
-                    lowest_frame_reward = min(prev_rewards[0].mean(axis=(0, 1, 2)).min().item(), lowest_frame_reward)
+                        prev_actions, prev_log_probs, prev_rewards = self.rollout(chunk_def, None, None)
+                        # prev_actions = self.actor.act(chunk_def, sample=True)
+                        # prev_rewards = self.reward_func(prev_actions, chunk_def, None)
+                        # _, _, prev_log_probs, _, _, _ = self.actor.evaluate(chunk_def, prev_action
+                        # plt.figure()
+                        # plt.imshow(chunk_def[0, ..., 0].T.cpu().numpy(), cmap='gray')
+                        # plt.imshow(prev_actions[0, ..., 0].T.cpu().numpy(), alpha=0.3)
 
-                    loss, critic_loss, _ = self.compute_policy_loss((chunk, prev_actions,
-                                                                     prev_rewards[0],
-                                                                     prev_log_probs, None, None))
+                        # plt.figure()
+                        # plt.imshow(chunk[0, ..., 0].T.cpu().numpy(), cmap='gray')
+                        # plt.show()
 
-                    # opt_net.zero_grad()
-                    loss = loss / len(split_batch_images)
-                    self.manual_backward(loss)
+                        sum_chunk_reward += prev_rewards[0].mean()
+                        lowest_frame_reward = min(prev_rewards[0].mean(axis=(0, 1, 2)).min().item(), lowest_frame_reward)
+                        avg_lowest_reward_frame += prev_rewards[0].mean(axis=(0, 1, 2)).min().item() / augmentations
 
-                print("\n", i, (sum_chunk_reward / len(split_batch_images)), lowest_frame_reward)
+                        if i != 0:
+                            loss, _, _ = self.compute_policy_loss((chunk, prev_actions,
+                                                                             prev_rewards[0],
+                                                                             prev_log_probs, None, None))
+
+                            # loss = loss / len(split_batch_images) / 3
+                            loss = loss / augmentations
+                            self.manual_backward(loss)
+                    # plt.show()
+                    lowest_frame_reward = min(avg_lowest_reward_frame, lowest_frame_reward)
+                    # update after checking, as current policy was used for calculating the reward
+                    if i != 0:
+                        if "32" in self.trainer.precision:
+                            nn.utils.clip_grad_norm_(self.actor.actor.parameters(), 0.5)
+                        opt_net.step()
+                print(f"\n{'First, no optimization' if i == 0 else ''}", i, (sum_chunk_reward / len(split_batch_images) / augmentations), lowest_frame_reward)
                 if lowest_frame_reward > best_reward: #(sum_chunk_reward / len(split_batch_images)) > best_reward:
                     best_i = i
                     best_reward = lowest_frame_reward #(sum_chunk_reward / len(split_batch_images))
                     best_params = copy.deepcopy(self.actor.actor.net.state_dict())
+                    # best_params = {k: v.cpu() for k, v in self.actor.actor.net.state_dict().items()}
 
-                # update after checking, as current policy was used for calculating the reward
-                if "32" in self.trainer.precision:
-                    nn.utils.clip_grad_norm_(self.actor.actor.parameters(), 0.5)
-                opt_net.step()
+                # # update after checking, as current policy was used for calculating the reward
+                # if "32" in self.trainer.precision:
+                #     nn.utils.clip_grad_norm_(self.actor.actor.parameters(), 0.5)
+                #     # nn.utils.clip_grad_norm_(self.actor.critic.parameters(), 0.5)
+                # opt_net.step()
                 # opt_plastic.step()
             self.actor.actor.net.load_state_dict(best_params)
             print(best_i)
