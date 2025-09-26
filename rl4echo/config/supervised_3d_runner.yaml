@@ -12,6 +12,8 @@ defaults:
 #  - experiment: supervised_camus
 
 seed: 1
+model:
+  seed: ${seed}
 
 callbacks:
   model_checkpoint:
@@ -24,6 +26,10 @@ datamodule:
 #  subset_frac: 0.01
 
 train: True
+#model:
+#  ckpt_path: cardinal_from_maskedSSL_seed2.ckpt
+#test_from_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/test_logs/RL4Echo/59d316863aa04297bb5d2e787ff52d2c/checkpoints/epoch=37-step=1102.ckpt
+#test_from_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/test_logs/RL4Echo/44b05c298bc84a1dbdfd7e9a6cd87ef5/checkpoints/epoch=48-step=1421.ckpt
 
 trainer:
   _target_: lightning.pytorch.Trainer
@@ -31,4 +37,5 @@ trainer:
   log_every_n_steps: 1
   accelerator: gpu
   devices: 1
+  accumulate_grad_batches: 16
   #num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)

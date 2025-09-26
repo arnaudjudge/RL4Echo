@@ -22,7 +22,8 @@ class Unet3DActorCategorical(nn.Module):
                 self.old_net.requires_grad_(False)
 
     def forward(self, x):
-        logits = torch.softmax(self.net(x), dim=1)
+        with torch.cuda.amp.autocast(enabled=False):  # force float32
+            logits = torch.softmax(self.net(x).float(), dim=1)
         dist = Categorical(probs=logits.permute(0, 2, 3, 4, 1))
 
         if hasattr(self, "old_net"):
@@ -43,4 +44,7 @@ class Unet3DCritic(nn.Module):
             self.net.load_state_dict(torch.load(pretrain_ckpt))
 
     def forward(self, x):
-        return torch.sigmoid(self.net(x))
+        y = self.net(x)
+        if self.net.deep_supervision and self.net.training:
+           return [torch.sigmoid(y_) for y_ in y]
+        return torch.sigmoid(y)

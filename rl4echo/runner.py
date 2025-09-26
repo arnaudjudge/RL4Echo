@@ -1,3 +1,6 @@
+import torch
+torch.set_float32_matmul_precision('medium')
+
 import os
 from pathlib import Path
 
@@ -5,9 +8,11 @@ import pandas as pd
 from dotenv import load_dotenv
 import hydra
 from hydra.utils import instantiate
+from lightning.pytorch.loggers import CometLogger
 from omegaconf import OmegaConf
 from lightning.pytorch import Trainer, seed_everything
 
+from patchless_nnunet.utils import log_hyperparameters
 from rl4echo.utils.instantiators import instantiate_callbacks
 
 OmegaConf.register_new_resolver(
@@ -34,22 +39,42 @@ def main(cfg):
 
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
 
+    if isinstance(trainer.logger, CometLogger):
+        logger.experiment.log_asset_folder(".hydra", log_file_name=True)
+        if cfg.get("comet_tags", None):
+            logger.experiment.add_tags(list(cfg.comet_tags))
+
+    if logger:
+        print("Logging hyperparams")
+        object_dict = {
+            "cfg": cfg,
+            "datamodule": datamodule,
+            "model": model,
+            "callbacks": callbacks,
+            "logger": logger,
+            "trainer": trainer,
+        }
+        log_hyperparameters(object_dict)
+
     if cfg.train:
         trainer.fit(train_dataloaders=datamodule, model=model)
 
     if cfg.trainer.max_epochs > 0 and cfg.train:
         ckpt_path = 'best'
+    elif getattr(cfg, "test_from_ckpt", None):
+        ckpt_path = cfg.test_from_ckpt
     else:
         ckpt_path = None
 
     # test with everything
     datamodule.hparams.subset_frac = 1.0
+    trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger, inference_mode=False)
     trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
     if getattr(cfg.model, "predict_save_dir", None) and cfg.predict_subset_frac > 0:
         datamodule.hparams.subset_frac = cfg.predict_subset_frac
         trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
-        if cfg.save_csv_after_predict and trainer.global_rank == 0:
+        if cfg.get("save_csv_after_predict", None) and trainer.world_size > 1 and trainer.global_rank == 0:
             for p in Path(f"{model.temp_files_path}/").glob("temp_pred_*.csv"):
                 df = pd.read_csv(p, index_col=0)
                 datamodule.df.loc[df.index] = df

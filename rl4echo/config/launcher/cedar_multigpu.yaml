@@ -18,3 +18,5 @@ trainer:
 
 datamodule:
   num_workers: 5
+
+comet_tags: [cedar]

@@ -1,0 +1,25 @@
+defaults:
+  - net: unet
+  - optimizer: adam
+  - scheduler: none
+  - loss: mse
+
+_target_: rl4echo.supervised.mask_selfsupervised_3d_optimizer.MaskSelfSupervised3DOptimizer
+
+ckpt_path: masked_ssl.ckpt
+
+net:
+  num_classes: 1
+
+# stuff from patchless-nnUnet
+
+optimizer_monitor: val/loss
+
+tta: False
+save_predictions: False
+
+name: mask_selfsupervised_3d_RLmodule
+
+common_spacing: [0.37, 0.37, 1]
+
+sliding_window_len: 4

@@ -111,20 +111,20 @@ def main(cfg):
         # set OS data path for copy of data to happen
         # copy data to compute node, next to RL data
         # subprocess.run(["rsync", "-a", f"{output_path}/rewardDS/", f"{os.environ['DATA_PATH']}/rewardDS/"])
-        os.environ['DATA_PATH'] = f"{output_path}/rewardDS/"
+        # os.environ['DATA_PATH'] = f"{output_path}/rewardDS/"
 
         if checkpoint_dict['turn'] == 'reward':
             # train reward net
             overrides = checkpoint_dict['main_overrides'] + checkpoint_dict['trainer_overrides'] + [f"trainer.max_epochs={cfg.rn_num_epochs}",
-                                                              "datamodule.data_path=${oc.env:DATA_PATH}",
+                                                              f"datamodule.data_path={output_path}/rewardDS/",
                                                               f"model.save_model_path={output_path}/{i - 1}/rewardnet.ckpt",
                                                               ]
                                                               # f"+model.var_file={cfg.var_file}"]
             sub_cfg = compose(config_name=f"reward_3d_runner.yaml", overrides=overrides)
-            # print(OmegaConf.to_yaml(sub_cfg))
+            print(OmegaConf.to_yaml(sub_cfg))
             OmegaConf.save(sub_cfg, "config.yaml")
             subprocess.run(
-                shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={cfg.reward_time} --multirun"))
+                shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={int(cfg.reward_time)*(i+1)} --multirun"))
 
             checkpoint_dict['turn'] = 'RL'
             checkpoint_dict['current_it'] = i
@@ -147,13 +147,14 @@ def main(cfg):
                      # f"+datamodule.train_batch_size={8 * i}",
                      f"model.actor.actor.pretrain_ckpt={output_path}/{i - 1}/actor.ckpt",
                      f"model.actor.actor.ref_ckpt={output_path}/{i - 1}/actor.ckpt",
-                     f"model.reward.state_dict_path={output_path}/{i - 1}/rewardnet.ckpt",
+                     f"reward@model.reward={cfg.rl_reward_config_name}"
+                     f"model.reward.state_dict_path.anatomical={output_path}/{i - 1}/rewardnet.ckpt",
                      # f"model.reward.temp_factor={float(saved_vars['Temperature_factor'])}",
                      f"model.actor_save_path={output_path}/{i}/actor.ckpt",
                      f"model.critic_save_path={output_path}/{i}/critic.ckpt",
-                     f'model.predict_save_dir={f"{output_path}/rewardDS/" if iterations > i else None}',
-                     f"model.entropy_coeff={max(0.3 / (i * 2), 0)}",
-                     f"model.divergence_coeff={0.1 / (i * 2)}",
+                     f'model.predict_save_dir={f"{output_path}/rewardDS/"}',
+                     f"model.entropy_coeff={0.15}",
+                     f"model.divergence_coeff={0.015}",
                      f"experiment=ppo_{checkpoint_dict['target_experiment']}",
                      f"++save_csv_after_predict=null",
                      f"++model.temp_files_path={output_path}"
@@ -164,10 +165,10 @@ def main(cfg):
 
         sub_cfg.save_csv_after_predict = \
             f"{sub_cfg.datamodule.data_dir}/{sub_cfg.datamodule.dataset_name}/{sub_cfg.datamodule.csv_file}"
-        # print(OmegaConf.to_yaml(sub_cfg))
+        print(OmegaConf.to_yaml(sub_cfg))
         OmegaConf.save(sub_cfg, "config.yaml")
         subprocess.run(
-            shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={cfg.rl_time} --multirun"))
+            shlex.split(f"python {os.environ['RL4ECHO_HOME']}/runner.py -cd ./ --config-name=config.yaml +launcher={cfg.run_launcher} hydra.launcher.timeout_min={int(cfg.rl_time)*(i+1)} --multirun"))
 
         checkpoint_dict['current_it'] = i
         checkpoint_dict['turn'] = 'reward'

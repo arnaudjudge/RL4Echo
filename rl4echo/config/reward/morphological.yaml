@@ -1,1 +1,1 @@
-_target_: rl4echo.Reward.Morphological
+_target_: rl4echo.reward.classic_reward.Morphological

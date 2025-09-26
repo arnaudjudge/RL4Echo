@@ -2,5 +2,17 @@ defaults:
   - net: unet3d.yaml
 
 _target_: rl4echo.actors.Actors_3d.Unet3DActorCategorical
-pretrain_ckpt: ./actor_3d_first.ckpt
-ref_ckpt: ./actor_3d_first.ckpt
+#pretrain_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/rl4echo/actor_3d_first.ckpt
+#ref_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/rl4echo/actor_3d_first.ckpt
+
+pretrain_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/cardinal_4gpu_longer.ckpt
+ref_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/cardinal_4gpu_longer.ckpt
+
+#pretrain_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/actor_ANAT_LM_BEST.ckpt
+#ref_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/actor_ANAT_LM_BEST.ckpt
+
+#pretrain_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/cardinal_from_maskedSSL_seed2.ckpt
+#ref_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/cardinal_from_maskedSSL_seed2.ckpt
+
+#pretrain_ckpt: /home/local/USHERBROOKE/juda2901/dev/UA-MT/model/US_unlabel_full_fullsized_noSup/iter_1000.pth
+#ref_ckpt: /home/local/USHERBROOKE/juda2901/dev/UA-MT/model/US_unlabel_full_fullsized_noSup/iter_1000.pth

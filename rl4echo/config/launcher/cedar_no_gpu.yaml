@@ -3,3 +3,5 @@
 defaults:
   - alliancecan
   - override /hydra/launcher: cedar_no_gpu
+
+comet_tags: [cedar]

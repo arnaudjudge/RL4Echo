@@ -141,10 +141,10 @@ class RLmodule(LightningModule):
         acc = accuracy(prev_actions, b_img, b_gt)
         dice = dice_score(prev_actions, b_gt)
 
-        logs = {'val_loss': loss,
-                "val_reward": torch.mean(prev_rewards.type(torch.float)),
-                "val_acc": acc.mean(),
-                "val_dice": dice.mean()
+        logs = {'val/loss': loss,
+                "val/reward": torch.mean(prev_rewards.type(torch.float)),
+                "val/acc": acc.mean(),
+                "val/dice": dice.mean()
                 }
 
         # log images

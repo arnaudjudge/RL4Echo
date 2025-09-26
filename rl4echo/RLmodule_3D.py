@@ -4,35 +4,35 @@ import random
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Union, Optional
+from typing import Any, Union
 
-import matplotlib.pyplot as plt
-import h5py
 import SimpleITK as sitk
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from einops import rearrange
-from lightning import LightningModule
 import torch
 import torchio as tio
+from einops import rearrange
+from lightning import LightningModule
 from monai.data import MetaTensor
 from scipy import ndimage
-from torchvision.transforms.functional import adjust_contrast
 from torch import Tensor
 from torch.nn.functional import pad
+from torchvision.transforms.functional import adjust_contrast, rotate
 
 from patchless_nnunet.utils.inferers import SlidingWindowInferer
 from patchless_nnunet.utils.softmax import softmax_helper
-from vital.metrics.camus.anatomical.utils import check_segmentation_validity
-from vital.data.camus.config import Label
-
-from rl4echo.utils.Metrics import accuracy, dice_score, is_anatomically_valid
-from rl4echo.utils.file_utils import get_img_subpath, save_to_reward_dataset
+from rl4echo.utils.Metrics import accuracy, dice_score
+from rl4echo.utils.correctors import AEMorphoCorrector
+from rl4echo.utils.file_utils import save_to_reward_dataset
 from rl4echo.utils.logging_helper import log_sequence, log_video
 from rl4echo.utils.tensor_utils import convert_to_numpy
-from rl4echo.utils.test_metrics import dice, hausdorff
-from rl4echo.utils.correctors import AEMorphoCorrector
+from rl4echo.utils.test_metrics import full_test_metrics
+from rl4echo.utils.Metrics import is_anatomically_valid
+from rl4echo.utils.temporal_metrics import check_temporal_validity
+from vital.metrics.camus.anatomical.utils import check_segmentation_validity
+
+import matplotlib.pyplot as plt
 
 
 def shrink_perturb(model, lamda=0.5, sigma=0.01):
@@ -59,41 +59,43 @@ class RLmodule3D(LightningModule):
                  predict_do_model_perturb=True,
                  predict_do_img_perturb=True,
                  predict_do_corrections=True,
-                 save_on_test=False,
+                 predict_do_temporal_glitches=True,
+                 save_on_test=True,
+                 vae_on_test=False,
+                 worst_frame_thresholds=None, #{"anatomical": 0.985},
                  save_csv_after_predict=None,
+                 val_batch_size=4,
+                 tta=True,
                  temp_files_path='.',
                  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-        #TODO: use automatic hparams
+        self.save_hyperparameters(logger=False, ignore=["actor", "reward", "corrector"])
 
         self.actor = actor
         self.reward_func = reward
         if hasattr(self.reward_func, 'net'):
             self.register_module('rewardnet', self.reward_func.net)
+        elif hasattr(self.reward_func, 'nets'):
+            if isinstance(self.reward_func.nets, list):  # backward compatibility
+                for i, n in enumerate(self.reward_func.nets):
+                    self.register_module(f'rewardnet_{i}', n)
+            elif isinstance(self.reward_func.nets, dict):
+                for i, n in enumerate(self.reward_func.nets.values()):
+                    self.register_module(f'rewardnet_{i}', n)
 
-        self.actor_save_path = actor_save_path
-        self.critic_save_path = critic_save_path
-
-        self.save_uncertainty_path = save_uncertainty_path
-
-        self.predict_save_dir = predict_save_dir
         self.pred_corrector = corrector
         if isinstance(self.pred_corrector, AEMorphoCorrector):
             self.register_module('correctorAE', self.pred_corrector.ae_corrector.temporal_regularization.autoencoder)
 
-        self.predict_do_model_perturb = predict_do_model_perturb
-        self.predict_do_img_perturb = predict_do_img_perturb
-        self.predict_do_corrections = predict_do_corrections
-
-        self.save_on_test = save_on_test
-        self.save_csv_after_predict = save_csv_after_predict
         self.predicted_rows = []
 
         self.temp_files_path = Path(temp_files_path)
         if not self.temp_files_path.exists() and self.trainer.global_rank == 0:
             self.temp_files_path.mkdir(parents=True, exist_ok=True)
 
+        # for test time overfitting
+        self.initial_test_params = None
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()
@@ -146,6 +148,17 @@ class RLmodule3D(LightningModule):
         """
         raise NotImplementedError
 
+    def ttoptimize(self, batch_image, num_iter=10, **kwargs):
+        """
+            Run a few iterations of optimization to overfit on one test sequence in unsupervised
+        Args:
+            batch: batch of images
+            num_iter: number of iterations of the optimization loop
+        Returns:
+            None, actor is modified, ready for inference on batch_image alone
+        """
+        raise NotImplementedError
+
     def validation_step(self, batch: dict[str, Tensor], batch_idx: int):
         """
             Defines validation step (using sampling to show model confidence)
@@ -158,35 +171,49 @@ class RLmodule3D(LightningModule):
         Returns:
             Dict of logs
         """
-        b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['gt'].squeeze(0), batch['use_gt']
+        b_imgs, b_gts, b_use_gts = batch['img'].squeeze(0), batch['gt'].squeeze(0), batch['use_gt'].squeeze(0)
 
-        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt)
-
-        loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
-                                                                    prev_log_probs, b_gt, b_use_gt))
-
-        acc = accuracy(prev_actions, b_img, b_gt)
-        dice = dice_score(prev_actions, b_gt)
-
-        logs = {'val_loss': loss,
-                "val_reward": torch.mean(prev_rewards.type(torch.float)),
-                "val_acc": acc.mean(),
-                "val_dice": dice.mean()
+        logs = {'val/loss': [],
+                "val/reward": [],
+                "val/acc": [],
+                "val/dice": []
                 }
+        for i in range(0, b_imgs.shape[0], self.hparams.val_batch_size):
+            b_img = b_imgs[i:i+self.hparams.val_batch_size]
+            b_gt = b_gts[i:i+self.hparams.val_batch_size]
+            b_use_gt = b_use_gts[i:i+self.hparams.val_batch_size]
 
-        # log images
-        if self.trainer.global_rank == 0:
-            idx = random.randint(0, len(b_img) - 1)  # which image to log
-            log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
-            log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
-                         epoch=self.current_epoch)
-            log_sequence(self.logger, img=prev_actions[idx].unsqueeze(0), title='Prediction', number=batch_idx,
-                      img_text=prev_rewards[idx].mean(), epoch=self.current_epoch)
-            if prev_rewards.shape == prev_actions.shape:
-                log_sequence(self.logger, img=prev_rewards[idx].unsqueeze(0), title='RewardMap', number=batch_idx,
+            prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
+            prev_rewards = torch.mean(torch.stack(prev_rewards, dim=0), dim=0)
+
+            loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
+                                                                        prev_log_probs, b_gt, b_use_gt))
+
+            acc = accuracy(prev_actions, b_img, b_gt)
+            dice = dice_score(prev_actions, b_gt)
+
+            logs["val/loss"] += [loss]
+            logs["val/reward"] += [torch.mean(prev_rewards.type(torch.float))]
+            logs["val/acc"] += [acc.mean()]
+            logs["val/dice"] += [dice.mean()]
+
+            _, _, _, _, v, _ = self.actor.evaluate(b_img, prev_actions)
+            # log images
+            if self.trainer.global_rank == 0:
+                idx = random.randint(0, len(b_img) - 1)  # which image to log
+                log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
+                log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
                              epoch=self.current_epoch)
+                log_sequence(self.logger, img=prev_actions[idx].unsqueeze(0), title='Prediction', number=batch_idx,
+                          img_text=prev_rewards[idx].mean(), epoch=self.current_epoch)
+                log_sequence(self.logger, img=v[idx].unsqueeze(0), title='VFunction', number=batch_idx,
+                             img_text=v[idx].mean(), epoch=self.current_epoch)
+                if prev_rewards.shape == prev_actions.shape:
+                    log_sequence(self.logger, img=prev_rewards[idx].unsqueeze(0), title='RewardMap', number=batch_idx,
+                                 epoch=self.current_epoch)
 
-        self.log_dict(logs, sync_dist=True)
+        logs = {k: torch.tensor(v, device=self.device).mean() for k, v in logs.items()}
+        self.log_dict(logs, on_epoch=True, sync_dist=True)
         return logs
 
     def test_step(self, batch: dict[str, Tensor], batch_idx: int):
@@ -207,23 +234,8 @@ class RLmodule3D(LightningModule):
         self.inferer.roi_size = self.patch_size
 
         start_time = time.time()
-        prev_actions = self.predict(b_img).argmax(dim=1)
-        print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
-
-        # this would not work with a neural net (no sliding window)
-        # should there be a test method in the reward class (which, in the case of 3d rewards
-        # would have a different method, otherwise, only redirect to __call__())
-        prev_rewards = self.reward_func(prev_actions[..., :4], b_img[..., :4], b_gt[..., :4])
-
-        # without sliding window
-        # b_img = b_img[..., :4]
-        # b_gt = b_gt[..., :4]
-        # prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, sample=False)
-        # loss, critic_loss, metrics_dict = self.compute_policy_loss((b_img, prev_actions, prev_rewards,
-        #                                                             prev_log_probs, b_gt, False))
-
-        acc = accuracy(prev_actions, b_img, b_gt)
-        simple_dice = dice_score(prev_actions, b_gt)
+        prev_actions = self.tta_predict(b_img) if self.hparams.tta else self.predict(b_img).argmax(dim=1)
+        print(f"\nFirst Prediction took {round(time.time() - start_time, 4)} (s).")
 
         start_time = time.time()
         y_pred_np_as_batch = prev_actions.cpu().numpy().squeeze(0).transpose((2, 0, 1))
@@ -241,84 +253,107 @@ class RLmodule3D(LightningModule):
         # should be still valid to use resampled spacing for metrics here
         voxel_spacing = np.asarray([[abs(meta_dict['resampled_affine'][0, 0, 0].cpu().numpy()),
                                      abs(meta_dict['resampled_affine'][0, 1, 1].cpu().numpy())]]).repeat(
-            repeats=len(y_pred_np_as_batch), axis=0)
+                                    repeats=len(y_pred_np_as_batch), axis=0)
         print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
 
-        start_time = time.time()
-        test_dice = dice(y_pred_np_as_batch, b_gt_np_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
-                         exclude_bg=True, all_classes=True)
-        test_dice_epi = dice((y_pred_np_as_batch != 0).astype(np.uint8), (b_gt_np_as_batch != 0).astype(np.uint8),
-                             labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False)
-        print(f"Dice took {round(time.time() - start_time, 4)} (s).")
+        anat_errors = is_anatomically_valid(y_pred_np_as_batch)
+        temporal_valid, _ = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
+                                                                      voxel_spacing[0])
+        validated = int(all(anat_errors)) and temporal_valid
+        if not validated:
+            self.actor.actor.net.load_state_dict(self.initial_test_params, strict=False)
 
-        start_time = time.time()
-        test_hd = hausdorff(y_pred_np_as_batch, b_gt_np_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
-                            exclude_bg=True, all_classes=True, voxel_spacing=voxel_spacing)
-        test_hd_epi = hausdorff((y_pred_np_as_batch != 0).astype(np.uint8), (b_gt_np_as_batch != 0).astype(np.uint8),
-                                labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False,
-                                voxel_spacing=voxel_spacing)['Hausdorff']
-        print(f"HD took {round(time.time() - start_time, 4)} (s).")
+            start_time = time.time()
+            self.ttoptimize(b_img)
+            print(f"\nTTOverfit took {round(time.time() - start_time, 4)} (s).")
 
-        start_time = time.time()
-        if test_hd['Hausdorff'] > 10:
-            anat_errors = torch.zeros(len(y_pred_np_as_batch))
-        else:
-            anat_errors = is_anatomically_valid(y_pred_np_as_batch)
-        print(f"AV took {round(time.time() - start_time, 4)} (s).")
+            start_time = time.time()
+            prev_actions = self.tta_predict(b_img) if self.hparams.tta else self.predict(b_img).argmax(dim=1)
+            print(f"\nPost-TTO Prediction took {round(time.time() - start_time, 4)} (s).")
 
-        logs = {#'test_loss': loss,
-                "test_reward": torch.mean(prev_rewards.type(torch.float)),
-                'test_acc': acc.mean(),
-                "test_dice": simple_dice.mean(),
-                "test_anat_valid": torch.tensor(int(all(anat_errors)), device=self.device),
-                'dice_epi': torch.tensor(test_dice_epi, device=self.device),
-                'hd_epi': torch.tensor(test_hd_epi, device=self.device),
-                }
-        logs.update(test_dice)
-        logs.update(test_hd)
+            start_time = time.time()
+            y_pred_np_as_batch = prev_actions.cpu().numpy().squeeze(0).transpose((2, 0, 1))
+            b_gt_np_as_batch = b_gt.cpu().numpy().squeeze(0).transpose((2, 0, 1))
+
+            for i in range(len(y_pred_np_as_batch)):
+                lbl, num = ndimage.measurements.label(y_pred_np_as_batch[i] != 0)
+                # Count the number of elements per label
+                count = np.bincount(lbl.flat)
+                # Select the largest blob
+                maxi = np.argmax(count[1:]) + 1
+                # Remove the other blobs
+                y_pred_np_as_batch[i][lbl != maxi] = 0
+
+            # should be still valid to use resampled spacing for metrics here
+            voxel_spacing = np.asarray([[abs(meta_dict['resampled_affine'][0, 0, 0].cpu().numpy()),
+                                         abs(meta_dict['resampled_affine'][0, 1, 1].cpu().numpy())]]).repeat(
+                                        repeats=len(y_pred_np_as_batch), axis=0)
+            print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
+
+        prev_rewards = torch.stack(self.reward_func.predict_full_sequence(prev_actions, b_img, b_gt), dim=0)
+        prev_rewards_mean = torch.mean(prev_rewards, dim=0)
+
+        logs = full_test_metrics(y_pred_np_as_batch, b_gt_np_as_batch, voxel_spacing, self.device)
+        logs.update({"test/reward": torch.mean(prev_rewards_mean.type(torch.float))})
+
+        if self.hparams.vae_on_test:
+            start_time = time.time()
+            corrected, corrected_validity, ae_comp, _ = self.pred_corrector.correct_single_seq(
+                b_img.squeeze(0), prev_actions.squeeze(0), voxel_spacing)
+            # actions_unsampled_clean = actions_unsampled_clean[None,]
+            corrected = corrected.transpose((2, 0, 1))
+            vae_logs = full_test_metrics(corrected, b_gt_np_as_batch, voxel_spacing, self.device, prefix="test_vae", verbose=False)
+            vae_logs.update({"test_vae/vae_comp": ae_comp})
+            logs.update(vae_logs)
+            print(f"VAE took {round(time.time() - start_time, 4)} (s).")
+
+        if self.hparams.worst_frame_thresholds:
+            # skip if rewards are too low according to thresholds
+            reward_indices = [self.reward_func.get_reward_index(key) for key in self.hparams.worst_frame_thresholds.keys()]
+            reward_frame_mins = np.take(prev_rewards.cpu().numpy().mean(axis=(1, 2, 3)).min(axis=1), reward_indices, 0)
+            thresholds = np.asarray(list(self.hparams.worst_frame_thresholds.values()))
+            validated = (reward_frame_mins > thresholds).all()
+            if validated:
+                fname = meta_dict.get('case_identifier')[0]
+                print(f"{self.trainer.datamodule.get_approx_gt_subpath(fname).rsplit('/', 1)[0]}/{fname} - "
+                      f"Min frame reward higher than threshold: "
+                      f"{reward_frame_mins} vs  thresh:{thresholds}")
+                logs.update({f'{k.replace("test", "test_validated")}': v for k, v in logs.items()})
+                self.log("test_validated/count", 1)
+            else:
+                self.log("test_validated/count", 0)
 
         start_time = time.time()
         # for logging v
         # Use only first 4 for visualization, avoids having to implement sliding window inference for critic
         _, _, _, _, v, _ = self.actor.evaluate(b_img[..., :4], prev_actions[..., :4])
 
-        if self.trainer.global_rank == 0 and batch_idx % 5 == 0:
-            for i in range(len(b_img)):
-                log_video(self.logger, img=b_img[i], title='test_Image', number=batch_idx * (i + 1),
-                             epoch=self.current_epoch)
-                log_video(self.logger, img=b_gt[i].unsqueeze(0), background=b_img[i], title='test_GroundTruth', number=batch_idx * (i + 1),
-                             epoch=self.current_epoch)
-                log_video(self.logger, img=prev_actions[i].unsqueeze(0), background=b_img[i], title='test_Prediction',
-                             number=batch_idx * (i + 1), img_text=simple_dice[i].mean(), epoch=self.current_epoch)
-                if v.shape == prev_actions[..., :4].shape:
-                    log_sequence(self.logger, img=v[i].unsqueeze(0), title='test_v_function', number=batch_idx * (i + 1),
-                              img_text=v[i].mean(), epoch=self.current_epoch)
-                if prev_rewards.shape[:-1] == prev_actions.shape[:-1]:
-                    log_sequence(self.logger, img=prev_rewards[i].unsqueeze(0), title='test_RewardMap', number=batch_idx * (i + 1),
-                              img_text=prev_rewards[i].mean(), epoch=self.current_epoch)
+        if self.trainer.global_rank == 0 and batch_idx % 1 == 1232314:
+            log_video(self.logger, img=b_gt, background=b_img.squeeze(0), title='test_GroundTruth', number=batch_idx,
+                         epoch=self.current_epoch)
+            log_video(self.logger, img=prev_actions, background=b_img.squeeze(0), title='test_Prediction',
+                         number=batch_idx, epoch=self.current_epoch)
+            if v.shape == prev_actions[..., :4].shape:
+                log_sequence(self.logger, img=v, title='test_v_function', number=batch_idx,
+                          img_text=v.mean(), epoch=self.current_epoch)
+            log_video(self.logger, img=prev_rewards_mean, title='test_RewardMap',
+                      number=batch_idx, epoch=self.current_epoch)
+            if self.hparams.vae_on_test:
+                log_video(self.logger, img=corrected.transpose((1, 2, 0))[None,], background=b_img.squeeze(0),
+                          title='test_VAE_corrected', number=batch_idx, epoch=self.current_epoch)
 
         self.log_dict(logs, sync_dist=True)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
-        # if self.save_uncertainty_path:
-        #     with h5py.File(self.save_uncertainty_path, 'a') as f:
-        #         for i in range(len(b_img)):
-        #             dicom = batch['id'][i] + "_" + batch['instant'][i]
-        #             if dicom not in f:
-        #                 f.create_group(dicom)
-        #             f[dicom]['img'] = b_img[i].cpu().numpy()
-        #             f[dicom]['gt'] = b_gt[i].cpu().numpy()
-        #             f[dicom]['pred'] = prev_actions[i].cpu().numpy()
-        #             f[dicom]['reward_map'] = prev_rewards[i].cpu().numpy()
-        #             f[dicom]['accuracy_map'] = (prev_actions[i].cpu().numpy() != b_gt[i].cpu().numpy()).astype(np.uint8)
 
-        if self.save_on_test:
-            prev_actions = prev_actions.squeeze(0).cpu().detach().numpy()
+        if self.hparams.save_on_test:
+            #prev_actions = prev_actions.squeeze(0).cpu().detach().numpy()
+            prev_actions = y_pred_np_as_batch.transpose((1, 2, 0))
             original_shape = meta_dict.get("original_shape").cpu().detach().numpy()[0]
 
             fname = meta_dict.get("case_identifier")[0]
             spacing = meta_dict.get("original_spacing").cpu().detach().numpy()[0]
             resampled_affine = meta_dict.get("resampled_affine").cpu().detach().numpy()[0]
-            save_dir = os.path.join(self.trainer.default_root_dir, f"testing_raw/{self.trainer.datamodule.get_approx_gt_subpath(fname).rsplit('/', 1)[0]}/")
+            save_dir = os.path.join(self.trainer.default_root_dir, f"testing_raw_LM+ANAT_TTO_AVTV_NEW/{self.trainer.datamodule.get_approx_gt_subpath(fname).rsplit('/', 1)[0]}/")
 
             final_preds = np.expand_dims(prev_actions, 0)
             transform = tio.Resample(spacing)
@@ -331,6 +366,12 @@ class RLmodule3D(LightningModule):
 
     def on_test_start(self) -> None:  # noqa: D102
         super().on_test_start()
+
+        if self.trainer.world_size > 1:
+            print(f"\nWorld size is {self.trainer.world_size}, default to skip worse frame threshold and vae_on_test")
+            self.hparams.worst_frame_thresholds = None
+            self.hparams.vae_on_test = False
+
         if self.trainer.datamodule is None:
             sw_batch_size = 2
         else:
@@ -343,6 +384,10 @@ class RLmodule3D(LightningModule):
             mode='gaussian',
             cache_roi_weight_map=True,
         )
+
+        self.reward_func.prepare_for_full_sequence(self.trainer.datamodule.hparams.batch_size)
+        self.initial_test_params = copy.deepcopy(self.actor.actor.net.state_dict())
+
 
     def predict(
         self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
@@ -372,6 +417,59 @@ class RLmodule3D(LightningModule):
                 raise ValueError("Check your patch size. You dummy.")
         if len(image.shape) == 4:
             raise ValueError("No 2D images here. You dummy.")
+
+    def tta_predict(
+        self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
+    ) -> Union[Tensor, MetaTensor]:
+        """Predict with test time augmentation.
+
+        Args:
+            image: Image to predict.
+            apply_softmax: Whether to apply softmax to prediction.
+
+        Returns:
+            Aggregated prediction over number of flips.
+        """
+        preds = self.predict(image, apply_softmax)
+        factors = [1.1, 0.9, 1.25, 0.75]
+        translations = [40, 60, 80, 120]
+        rotations = [5, 10, -5, -10]
+
+        for factor in factors:
+            preds += self.predict(adjust_contrast(
+                image.permute((4, 0, 1, 2, 3)), factor).permute((1, 2, 3, 4, 0)), apply_softmax)
+
+        def x_translate_left(img, amount=20):
+            return pad(img, (0, 0, 0, 0, amount, 0), mode="constant")[:, :, :-amount, :, :]
+        def x_translate_right(img, amount=20):
+            return pad(img, (0, 0, 0, 0, 0, amount), mode="constant")[:, :, amount:, :, :]
+        def y_translate_up(img, amount=20):
+            return pad(img, (0, 0, amount, 0, 0, 0), mode="constant")[:, :, :, :-amount, :]
+        def y_translate_down(img, amount=20):
+            return pad(img, (0, 0, 0, amount, 0, 0), mode="constant")[:, :, :, amount:, :]
+
+        for translation in translations:
+            preds += x_translate_right(self.predict(x_translate_left(image, translation), apply_softmax),
+                                       translation)
+            preds += x_translate_left(self.predict(x_translate_right(image, translation), apply_softmax),
+                                      translation)
+            preds += y_translate_down(self.predict(y_translate_up(image, translation), apply_softmax),
+                                      translation)
+            preds += y_translate_up(self.predict(y_translate_down(image, translation), apply_softmax),
+                                    translation)
+
+        # TODO: optimize this for compute time
+        for rotation in rotations:
+            rotated = torch.zeros_like(image)
+            for i in range(image.shape[-1]):
+                rotated[0, :, :, :, i] = rotate(image[0, :, :, :, i], angle=rotation)
+            rot_pred = self.predict(rotated, apply_softmax)
+            for i in range(image.shape[-1]):
+                rot_pred[0, :, :, :, i] = rotate(rot_pred[0, :, :, :, i], angle=-rotation)
+            preds += rot_pred
+
+        preds /= len(factors) + len(translations) * 4 + len(rotations) + 1
+        return preds.argmax(dim=1)
 
     def predict_3D_3Dconv_tiled(
         self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
@@ -433,15 +531,19 @@ class RLmodule3D(LightningModule):
         sitk.WriteImage(itk_image, os.path.join(save_dir, str(fname) + ".nii.gz"))
 
     def on_test_end(self) -> None:
-        if self.actor_save_path:
-            torch.save(self.actor.actor.net.state_dict(), self.actor_save_path)
+        actor_save_path = self.hparams.actor_save_path if self.hparams.actor_save_path else \
+            f"{self.trainer.log_dir}/{self.trainer.logger.version}/actor.ckpt"
+        actor_save_path = Path(actor_save_path)
+        actor_save_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self.actor.actor.net.state_dict(), actor_save_path)
+        print(f"actor saved at: {actor_save_path}")
 
-            actor_net = shrink_perturb(copy.deepcopy(self.actor.actor.net))
-            torch.save(actor_net.state_dict(), self.actor_save_path.replace('.ckpt', '_s-p.ckpt'))
-        if self.critic_save_path:
-            torch.save(self.actor.critic.net.state_dict(), self.critic_save_path)
-            critic_net = shrink_perturb(copy.deepcopy(self.actor.critic.net))
-            torch.save(critic_net.state_dict(), self.critic_save_path.replace('.ckpt', '_s-p.ckpt'))
+        critic_save_path = self.hparams.critic_save_path if self.hparams.critic_save_path else \
+            f"{self.trainer.log_dir}/{self.trainer.logger.version}/critic.ckpt"
+        critic_save_path = Path(critic_save_path)
+        critic_save_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self.actor.critic.net.state_dict(), critic_save_path)
+        print(f"critic saved at: {critic_save_path}")
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
         # must be batch size 1 as images have varied sizes
@@ -454,26 +556,23 @@ class RLmodule3D(LightningModule):
         actions, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=True)
         actions_unsampled, _, _ = self.rollout(b_img, torch.zeros_like(b_img).squeeze(1), sample=False)
 
-        corrected, corrected_validity, ae_comp = self.pred_corrector.correct_single_seq(b_img.squeeze(0), actions_unsampled.squeeze(0), voxel_spacing)
+        corrected, corrected_validity, ae_comp, actions_unsampled_clean = self.pred_corrector.correct_single_seq(b_img.squeeze(0), actions_unsampled.squeeze(0), voxel_spacing)
+        actions_unsampled_clean = actions_unsampled_clean[None,]
         corrected = corrected[None,]
 
         initial_params = copy.deepcopy(self.actor.actor.net.state_dict())
         itr = 0
 
         self.trainer.datamodule.add_to_train(id)
-        if ae_comp > 0.95 and all([check_segmentation_validity(actions_unsampled[0, ..., i].cpu().numpy().T, voxel_spacing,
-                                                               [0, 1, 2]) for i in range(actions_unsampled.shape[-1])]):
+
+        action_uns_anatomical_validity = [
+            check_segmentation_validity(actions_unsampled_clean[0, ..., i].T, voxel_spacing, [0, 1, 2])
+            for i in range(actions_unsampled_clean.shape[-1])]
+
+        if ae_comp > 0.95 and all(action_uns_anatomical_validity):
             self.trainer.datamodule.add_to_gt(id)
 
-            path = self.trainer.datamodule.get_approx_gt_subpath(id)
-            approx_gt_path = self.trainer.datamodule.hparams.approx_gt_dir + '/approx_gt/' + path
-            Path(approx_gt_path).parent.mkdir(parents=True, exist_ok=True)
-            hdr = nib.Nifti1Header()
-            nifti = nib.Nifti1Image(convert_to_numpy(torch.round(actions_unsampled).squeeze(0)),
-                                    np.diag(np.asarray([-1, -1, 1, 0])), hdr)
-            nifti.to_filename(approx_gt_path)
-
-            if self.predict_do_model_perturb:
+            if self.hparams.predict_do_model_perturb:
                 for j, multiplier in enumerate([0.1, 0.15, 0.2, 0.25]):  # have been adapted from 2d
                     # get random seed based on time to maximise randomness of noise and subsequent predictions
                     # explore as much space around policy as possible
@@ -495,31 +594,21 @@ class RLmodule3D(LightningModule):
                     else:
                         deformed_action = torch.round(deformed_action)
 
-                    # f, (ax1, ax2) = plt.subplots(1, 2)
-                    # ax1.set_title(f"Good initial action")
-                    # ax1.imshow(actions_unsampled[..., 0].cpu().numpy().T)
-                    #
-                    # ax2.set_title(f"Deformed network's action")
-                    # ax2.imshow(deformed_action[..., 0].cpu().numpy().T)
-                    # plt.show()
-
                     if deformed_action.sum() == 0:
                         continue
 
                     filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_weights.nii.gz"
-                    save_to_reward_dataset(self.predict_save_dir,
+                    save_to_reward_dataset(self.hparams.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
-                                           convert_to_numpy(actions_unsampled),
+                                           convert_to_numpy(actions_unsampled_clean),
                                            convert_to_numpy(deformed_action))
                 self.actor.actor.net.load_state_dict(initial_params)
-            if self.predict_do_img_perturb:
+            if self.hparams.predict_do_img_perturb:
                 contrast_factors = [0.4, 0.05]  # check this !!!
                 for factor in contrast_factors:
                     in_img = copy.deepcopy(b_img)
                     in_img = adjust_contrast(in_img.permute((4, 0, 1, 2, 3)), factor).permute((1, 2, 3, 4, 0))
-                    # in_img = ((in_img - in_img.mean()) * factor + in_img.mean())
-                    # in_img /= in_img.max()
 
                     # make prediction
                     contr_action, *_ = self.actor.actor(in_img)
@@ -528,53 +617,15 @@ class RLmodule3D(LightningModule):
                     else:
                         contr_action = torch.round(contr_action)
 
-                    # f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4)
-                    # ax1.set_title(f"Img")
-                    # ax1.imshow(b_img[0, ..., 0].cpu().numpy().T)
-                    #
-                    # ax2.set_title(f"Contrast Img")
-                    # ax2.imshow(in_img[0, ..., 0].cpu().numpy().T, vmin=0, vmax=1)
-                    #
-                    # ax3.set_title(f"Good action")
-                    # ax3.imshow(actions_unsampled[..., 0].cpu().numpy().T)
-                    #
-                    # ax4.set_title(f"contrast action")
-                    # ax4.imshow(contr_action[..., 0].cpu().numpy().T)
-                    # plt.show()
-
-                    # f, (ax1) = plt.subplots(1)
-                    # # ax1.set_title(f"Bad initial action")
-                    # ax1.imshow(actions_unsampled[i, ...].cpu().numpy().T, cmap='gray')
-                    # ax1.axis('off')
-                    # plt.savefig("/data/good_initial.png", bbox_inches='tight', pad_inches=0)
-                    #
-                    # f2, (ax2) = plt.subplots(1)
-                    # ax2.imshow(contr_action[0, ...].cpu().numpy().T, cmap='gray')
-                    # ax2.axis('off')
-                    # plt.savefig('/data/deformed.png', bbox_inches='tight', pad_inches=0)
-                    #
-                    # f3, (ax3) = plt.subplots(1)
-                    # ax3.imshow(b_img[i, ...].cpu().numpy().T, cmap='gray')
-                    # ax3.axis('off')
-                    # plt.savefig('/data/def_image.png', bbox_inches='tight', pad_inches=0)
-                    #
-                    # f4, (ax4) = plt.subplots(1)
-                    # ax4.axis('off')
-                    # ax4.imshow((actions_unsampled[i] == contr_action[0]).cpu().numpy().T, cmap='gray')
-                    # plt.savefig('/data/def_diff.png', bbox_inches='tight', pad_inches=0)
-                    #
-                    # plt.show()
-
-
                     if contr_action.sum() == 0:
                         continue
 
                     time_seed = int(round(datetime.now().timestamp())) + int(factor*10)
                     filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_contrast.nii.gz"
-                    save_to_reward_dataset(self.predict_save_dir,
+                    save_to_reward_dataset(self.hparams.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
-                                           convert_to_numpy(actions_unsampled),
+                                           convert_to_numpy(actions_unsampled_clean),
                                            convert_to_numpy(contr_action))
 
                 gaussian_blurs = [0.3, 0.6]
@@ -590,44 +641,22 @@ class RLmodule3D(LightningModule):
                     else:
                         blurred_action = torch.round(blurred_action)
 
-                    # f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4)
-                    # ax1.set_title(f"Img")
-                    # ax1.imshow(b_img[0, ..., 0].cpu().numpy().T)
-                    #
-                    # ax2.set_title(f"Blurred Img")
-                    # ax2.imshow(in_img[0, ..., 0].cpu().numpy().T, vmin=0, vmax=1)
-                    #
-                    # ax3.set_title(f"Good action")
-                    # ax3.imshow(actions_unsampled[..., 0].cpu().numpy().T)
-                    #
-                    # ax4.set_title(f"Blurred action")
-                    # ax4.imshow(blurred_action[..., 0].cpu().numpy().T)
-                    # plt.show()
-
                     if blurred_action.sum() == 0:
                         continue
 
                     time_seed = int(round(datetime.now().timestamp())) + int(blur*100)
                     filename = f"{batch_idx}_{itr}_{time_seed}_{self.trainer.global_rank}_blur.nii.gz"
-                    save_to_reward_dataset(self.predict_save_dir,
+                    save_to_reward_dataset(self.hparams.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
-                                           convert_to_numpy(actions_unsampled),
+                                           convert_to_numpy(actions_unsampled_clean),
                                            convert_to_numpy(blurred_action))
 
         else:
             if corrected_validity:
-                # f, (ax1, ax2) = plt.subplots(1, 2)
-                # ax1.set_title(f"Bad action")
-                # ax1.imshow(actions[..., 0].cpu().numpy().T)
-                #
-                # ax2.set_title(f"Corrected action")
-                # ax2.imshow(corrected[..., 0].T)
-                # plt.show()
-
-                if self.predict_do_corrections:
+                if self.hparams.predict_do_corrections:
                     filename = f"{batch_idx}_{itr}_{int(round(datetime.now().timestamp()))}_{self.trainer.global_rank}_correction.nii.gz"
-                    save_to_reward_dataset(self.predict_save_dir,
+                    save_to_reward_dataset(self.hparams.predict_save_dir,
                                            filename,
                                            convert_to_numpy(b_img.squeeze(0)),
                                            convert_to_numpy(corrected),
@@ -640,4 +669,5 @@ class RLmodule3D(LightningModule):
 
     def on_predict_epoch_end(self) -> None:
         # for multi gpu cases, save intermediate file before sending to main csv
+        print(f"Saving temporary rows file to : {f'{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv'}")
         pd.concat(self.predicted_rows).to_csv(f"{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv")

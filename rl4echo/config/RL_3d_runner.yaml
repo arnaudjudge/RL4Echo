@@ -19,6 +19,7 @@ datamodule:
 
 predict_subset_frac: 0
 train: True
+test_from_ckpt: null
 
 save_csv_after_predict: null
 

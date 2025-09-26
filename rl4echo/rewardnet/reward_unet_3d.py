@@ -16,7 +16,7 @@ import torch.distributions as distributions
 
 
 class Reward3DOptimizer(LightningModule):
-    def __init__(self, net, save_model_path=None, var_file=None, **kwargs):
+    def __init__(self, net, loss=nn.MSELoss(), save_model_path=None, var_file=None, **kwargs):
         super().__init__(**kwargs)
 
         self.net = net
@@ -24,7 +24,7 @@ class Reward3DOptimizer(LightningModule):
         self.temperature = nn.Parameter(torch.ones(1).to(self.device))
         self.var_file = var_file
 
-        self.loss = nn.BCELoss()
+        self.loss = loss
         self.save_model_path = save_model_path
 
     def forward(self, x):
@@ -38,6 +38,9 @@ class Reward3DOptimizer(LightningModule):
 
     def training_step(self, batch, *args, **kwargs) -> Dict:
         x, y = batch
+        if len(x.shape) > 5:
+            x = x.squeeze(0)
+            y = y.squeeze(0)
 
         y_pred = torch.sigmoid(self(x))
         loss = self.loss(y_pred, y)
@@ -51,7 +54,9 @@ class Reward3DOptimizer(LightningModule):
 
     def validation_step(self, batch, batch_idx: int):
         x, y = batch
-
+        if len(x.shape) > 5:
+            x = x.squeeze(0)
+            y = y.squeeze(0)
 
         y_pred = torch.sigmoid(self(x))
         loss = self.loss(y_pred, y)
@@ -73,6 +78,9 @@ class Reward3DOptimizer(LightningModule):
 
     def test_step(self, batch, batch_idx):
         x, y = batch
+        if len(x.shape) > 5:
+            x = x.squeeze(0)
+            y = y.squeeze(0)
 
         y_pred = torch.sigmoid(self(x))
         loss = self.loss(y_pred, y)
@@ -108,7 +116,6 @@ class Reward3DOptimizer(LightningModule):
         return torch.div(logits, self.temperature)
 
     def on_train_end(self) -> None:
-        return # come back and try to fix this
         val_loader = self.trainer.datamodule.val_dataloader()
 
         logits_list = []
@@ -118,16 +125,20 @@ class Reward3DOptimizer(LightningModule):
                 logits = self(input.to(self.device))
                 logits_list.append(torch.stack((1-logits, logits), dim=1).squeeze(2))
                 labels_list.append(label.squeeze(1).to(torch.long))
-            logits = torch.cat(logits_list).to(self.device)
-            labels = torch.cat(labels_list).to(self.device)
-
+            # logits = torch.cat(logits_list).to(self.device)
+            # labels = torch.cat(labels_list).to(self.device)
+        labels_list.reverse()
+        logits_list.reverse()
         optimizer = optim.LBFGS([self.temperature], lr=0.01, max_iter=10000)
         criterion = nn.CrossEntropyLoss().to(self.device)
+
 
         def eval():
             optimizer.zero_grad()
             # do this in a loop and add all losses together before backward?
-            loss = criterion(self.temperature_scale(logits), labels)
+            loss = criterion(self.temperature_scale(logits_list[0].to(self.device)), labels_list[0].to(self.device))
+            for i in range(1, len(labels_list)):
+                loss += criterion(self.temperature_scale(logits_list[i].to(self.device)), labels_list[i].to(self.device))
             loss.backward()
             return loss
         optimizer.step(eval)

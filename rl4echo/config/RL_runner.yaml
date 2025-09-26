@@ -4,7 +4,7 @@ run_name: default
 logger_run_name: '${get_class_name: ${model._target_}}_${get_class_name: ${model.reward._target_}}_${run_name}'
 
 defaults:
-  - logger: tensorboard
+  - logger: comet
   - model: ppo
   - datamodule: ???
   - callbacks: default
@@ -14,11 +14,11 @@ defaults:
 seed: 1
 
 datamodule:
-  subset_frac: 0.1
+#  subset_frac: 0.1
   gt_column: Gt_0
 
 predict_subset_frac: 10
-train: False
+train: True
 
 trainer:
   _target_: lightning.pytorch.Trainer

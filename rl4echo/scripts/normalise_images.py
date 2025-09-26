@@ -6,11 +6,12 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 if __name__ == "__main__":
-    data_path = "/data/icardio/subsets/subset_40k_RL/"
+    data_path = "/data/icardio/subsets/full_3DRL_subset/"
     img_folder = "img/"
-    output_path = "/data/icardio/subsets/subset_40k_RL/"
-
-    for p in tqdm(Path(data_path + img_folder).rglob('*.nii.gz'), total=40000):
+    output_path = "/data/icardio/subsets/full_3DRL_subset_norm/"
+    files = [p for p in Path(data_path + img_folder).rglob('*.nii.gz')]
+    print(len(files))
+    for p in tqdm(files, total=len(files)):
         print(p)
         img = nib.load(p)
         data = img.get_fdata()
@@ -19,6 +20,7 @@ if __name__ == "__main__":
 
         # data = stats.zscore(data, axis=None)
         data = data / 255
+        print(data.shape)
         # print(data.mean())
         # print(data.std())
 
@@ -29,7 +31,8 @@ if __name__ == "__main__":
         # ax1[0].imshow(data[..., 0].T * 255)
         # ax1[0].set_title("Before Equalization")
 
-        data = exp.equalize_adapthist(data, clip_limit=0.01)
+        for i in range(data.shape[-1]):
+            data[..., i] = exp.equalize_adapthist(data[..., i], clip_limit=0.01)
         # data = exp.equalize_hist(data)
         # data = exp.rescale_intensity(data)
 
@@ -51,6 +54,7 @@ if __name__ == "__main__":
         out_img = nib.Nifti1Image(data, img.affine, img.header)
         out_path = output_path + p.relative_to(data_path).as_posix()
         print(out_path)
+        print(data.min(), data.max())
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         nib.save(out_img, out_path)
 

@@ -15,3 +15,5 @@ trainer:
 
 datamodule:
   num_workers: 9
+
+comet_tags: [narval]

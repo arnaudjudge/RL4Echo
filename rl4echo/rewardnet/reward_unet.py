@@ -184,15 +184,24 @@ class RewardOptimizer(LightningModule):
                 logits = self(input.to(self.device))
                 logits_list.append(torch.stack((1-logits, logits), dim=1).squeeze(2))
                 labels_list.append(label.squeeze(1).to(torch.long))
-            logits = torch.cat(logits_list).to(self.device)
-            labels = torch.cat(labels_list).to(self.device)
+            # logits = torch.cat(logits_list).to(self.device)
+            # labels = torch.cat(labels_list).to(self.device)
 
         optimizer = optim.LBFGS([self.temperature], lr=0.01, max_iter=10000)
         criterion = nn.CrossEntropyLoss().to(self.device)
 
+        # def eval():
+        #     optimizer.zero_grad()
+        #     loss = criterion(self.temperature_scale(logits), labels)
+        #     loss.backward()
+        #     return loss
+        # optimizer.step(eval)
         def eval():
             optimizer.zero_grad()
-            loss = criterion(self.temperature_scale(logits), labels)
+            # do this in a loop and add all losses together before backward?
+            loss = criterion(self.temperature_scale(logits_list[0].to(self.device)), labels_list[0].to(self.device))
+            for i in range(1, len(labels_list) // 2):
+                loss += criterion(self.temperature_scale(logits_list[i].to(self.device)), labels_list[i].to(self.device))
             loss.backward()
             return loss
         optimizer.step(eval)

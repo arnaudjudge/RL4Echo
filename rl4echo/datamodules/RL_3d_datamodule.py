@@ -36,12 +36,13 @@ class RL3dDataset(Dataset):
                  max_tensor_volume=5000000,
                  shape_divisible_by=(32, 32, 4),
                  test=False,
+                 val=False,
                  *args, **kwargs):
         super().__init__()
         self.data_path = data_path
         self.df = df
         self.test = test
-
+        self.val = val
         self.approx_gt_path = approx_gt_path
         self.allow_real_gt = allow_real_gt
         # pass down list of available ground truths
@@ -58,7 +59,6 @@ class RL3dDataset(Dataset):
                   "behavior is set to use largest batch possible "
                   "if max_batch_size is larger than max calculated length")
         self.common_spacing = common_spacing
-
 
     def __len__(self):
         return len(self.df.index)
@@ -80,13 +80,18 @@ class RL3dDataset(Dataset):
         else:
             approx_gt = np.zeros_like(mask)
 
-        # limit size of tensor so it can fit on GPU
-        if not self.test:
+        # img = img[..., 24:28]
+        # mask = mask[..., 24:28]
+        # approx_gt = approx_gt[..., 24:28]
+
+        # limit size of tensor so it can fit on GPU, choose random slice
+        if not self.test and self.max_window_len is None:
             if img.shape[0] * img.shape[1] * img.shape[2] > self.max_tensor_volume:
                 time_len = int(self.max_tensor_volume // (img.shape[0] * img.shape[1]))
-                img = img[..., :time_len]
-                mask = mask[..., :time_len]
-                approx_gt = approx_gt[..., :time_len]
+                start_idx = np.random.randint(low=0, high=max(img.shape[-1] - time_len, 1))
+                img = img[..., start_idx:start_idx + time_len]
+                mask = mask[..., start_idx:start_idx + time_len]
+                approx_gt = approx_gt[..., start_idx:start_idx + time_len]
 
         # transforms and resampling
         if self.common_spacing is None:
@@ -98,24 +103,36 @@ class RL3dDataset(Dataset):
         resampled_cropped = croporpad(resampled)
         resampled_affine = resampled_cropped.affine
         img = resampled_cropped.tensor
-        mask = croporpad(transform(tio.LabelMap(tensor=np.expand_dims(mask, 0), affine=img_nifti.affine))).tensor.squeeze(0)
-        approx_gt = croporpad(transform(tio.LabelMap(tensor=np.expand_dims(approx_gt, 0), affine=img_nifti.affine))).tensor.squeeze(0)
+        mask = croporpad(transform(tio.LabelMap(tensor=np.expand_dims(mask, 0),
+                                                affine=img_nifti.affine))).tensor.squeeze(0)
+        approx_gt = croporpad(transform(tio.LabelMap(tensor=np.expand_dims(approx_gt, 0),
+                                                     affine=img_nifti.affine))).tensor.squeeze(0)
 
         if not self.test:
             if self.max_window_len:
                 # use partial time window, create as many batches as possible with it unless self.max_batch_size not set
-                dynamic_batch_size = max(1, img.shape[-1] // self.max_window_len) \
+                # for validation, use entire sequence split up to batches
+                if self.val:
+                    max_time_len = img.shape[-1]
+                else:
+                    max_time_len = int(self.max_tensor_volume // (img.shape[1] * img.shape[2]))
+                dynamic_batch_size = max(1, max_time_len // self.max_window_len) \
                     if not self.max_batch_size or not (self.max_batch_size > 0 and
-                                                       (self.max_batch_size * self.max_window_len) < img.shape[-1]) \
+                                                       (self.max_batch_size * self.max_window_len) < max_time_len) \
                     else self.max_batch_size
                 b_img = []
                 b_mask = []
                 b_approx_gt = []
                 for i in range(dynamic_batch_size):
-                    start_idx = np.random.randint(low=0, high=max(img.shape[-1] - self.max_window_len, 1))
-                    b_img += [img[..., start_idx:start_idx + self.max_window_len]]
-                    b_mask += [mask[..., start_idx:start_idx + self.max_window_len]]
-                    b_approx_gt += [approx_gt[..., start_idx:start_idx + self.max_window_len]]
+                    if self.val:
+                        b_img += [img[..., (i*self.max_window_len):(i*self.max_window_len+self.max_window_len)]]
+                        b_mask += [mask[..., (i*self.max_window_len):(i*self.max_window_len+self.max_window_len)]]
+                        b_approx_gt += [approx_gt[..., (i*self.max_window_len):(i*self.max_window_len+self.max_window_len)]]
+                    else:
+                        start_idx = np.random.randint(low=0, high=max(img.shape[-1] - self.max_window_len, 1))
+                        b_img += [img[..., start_idx:start_idx + self.max_window_len]]
+                        b_mask += [mask[..., start_idx:start_idx + self.max_window_len]]
+                        b_approx_gt += [approx_gt[..., start_idx:start_idx + self.max_window_len]]
                 img = torch.stack(b_img)
                 mask = torch.stack(b_mask)
                 approx_gt = torch.stack(b_approx_gt)
@@ -129,7 +146,7 @@ class RL3dDataset(Dataset):
         return {'img': img.type(torch.float32),
                 'gt': mask.type(torch.LongTensor) if self.allow_real_gt or self.test else torch.zeros_like(torch.tensor(mask).type(torch.LongTensor)),
                 'approx_gt': approx_gt.type(torch.LongTensor),
-                'use_gt': torch.tensor(self.use_gt[idx]),
+                'use_gt': torch.tensor([self.use_gt[idx] for _ in range(img.shape[0])]),
                 'image_meta_dict': {'case_identifier': self.df.iloc[idx]['dicom_uuid'],
                                     'original_shape': original_shape,
                                     'original_spacing': img_nifti.header['pixdim'][1:4],
@@ -162,6 +179,7 @@ class RL3dDataModule(LightningDataModule):
             batch_size: int = 1,
             seed: int = 0,
             common_spacing: tuple[float, ...] = None,
+            max_image_area: int = 600000,
             max_window_len: int = None,
             max_batch_size: int = None,
             max_tensor_volume: int = 5000000,
@@ -199,6 +217,11 @@ class RL3dDataModule(LightningDataModule):
         self.data_path = self.hparams.data_dir + '/' + self.hparams.dataset_name
         # open dataframe for dataset
         self.df = pd.read_csv(self.data_path + '/' + self.hparams.csv_file, index_col=0)
+
+        # es_ed_df = pd.read_csv(
+        #     "/home/local/USHERBROOKE/juda2901/dev/data/icardio/ES_ED_train_subset_affine/subset_official_test.csv")
+        # es_ed_dicoms = list(es_ed_df[es_ed_df['split_0'] == 'test']['dicom_uuid'].unique())
+        # self.df = self.df[self.df['dicom_uuid'].isin(es_ed_dicoms)]
 
         self.data_train: Optional[torch.utils.Dataset] = None
         self.data_val: Optional[torch.utils.Dataset] = None
@@ -249,7 +272,7 @@ class RL3dDataModule(LightningDataModule):
         if self.hparams.splits_column and self.hparams.splits_column in self.df.columns:
             # splits are already defined in csv file
             print(f"Using split from column: {self.hparams.splits_column}")
-            self.train_idx = self.df.index[self.df[self.hparams.splits_column] == 'train'].tolist()
+            self.train_idx = self.df.index[self.df[self.hparams.splits_column].isin(["train"])].tolist()
             self.val_idx = self.df.index[self.df[self.hparams.splits_column] == 'val'].tolist()
             self.test_idx = self.df.index[self.df[self.hparams.splits_column] == 'test'].tolist()
             self.pred_idx = self.df.index[(self.df[self.hparams.splits_column] == 'pred')].tolist()
@@ -285,6 +308,20 @@ class RL3dDataModule(LightningDataModule):
             self.test_idx = self.test_idx[:min(self.hparams.subset_frac, len(self.test_idx))]
             self.pred_idx = self.pred_idx[:min(self.hparams.subset_frac, len(self.pred_idx))]
 
+        if self.hparams.max_image_area:
+            if not {'H', 'W'}.issubset(self.df.columns):
+                raise "MISSING KEY FOR MAX_IMAGE_AREA!"
+            self.df["expected_area"] = ((self.df["H"] * (self.df["dx"] * 10) / self.hparams.common_spacing[0]) *
+                                        (self.df["W"] * (self.df["dy"] * 10) / self.hparams.common_spacing[1]))
+            print(f"Removing {len(self.df[(self.df[self.hparams.splits_column].isin(['pred', 'train'])) & (self.df['expected_area'] > self.hparams.max_image_area)])} "
+                  f"entries with expected resampled area larger than {self.hparams.max_image_area} (before: {len(self.df['expected_area'])})")
+            self.df = self.df[((self.df[self.hparams.splits_column].isin(['pred', 'train'])) &
+                              (self.df["expected_area"] <= self.hparams.max_image_area)) |
+                              (~self.df[self.hparams.splits_column].isin(['pred', 'train']))]
+            # remake train_idx and pred_idx
+            self.train_idx = self.df.index[self.df[self.hparams.splits_column] == 'train'].tolist()
+            self.pred_idx = self.df.index[(self.df[self.hparams.splits_column] == 'pred')].tolist()
+
         if stage == "fit" or stage is None:
             self.data_train = self.hparams.dataset(self.df.loc[self.train_idx],
                                                      data_path=self.data_path,
@@ -305,7 +342,8 @@ class RL3dDataModule(LightningDataModule):
                                                    data_path=self.data_path,
                                                    common_spacing=common_spacing,
                                                    max_window_len=self.hparams.max_window_len,
-                                                   max_batch_size=self.hparams.max_batch_size,
+                                                   max_batch_size=-1,
+                                                   val=True,
                                                    max_tensor_volume=self.hparams.max_tensor_volume,
                                                    shape_divisible_by=list(self.hparams.shape_divisible_by),
                                                    available_gt=None,
