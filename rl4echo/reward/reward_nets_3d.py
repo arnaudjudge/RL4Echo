@@ -33,14 +33,14 @@ class RewardUnets3D(Reward):
             with torch.cuda.amp.autocast(enabled=False):  # force float32
                 out = net(stack)
             # assert not torch.isnan(o).any(), "NaNs in RewardNet out"
-            rew = torch.sigmoid(out / self.temp_factor).squeeze(1)
+            t = self.temp_factor if len(r) < 1 else 1
+            rew = torch.sigmoid(out / t).squeeze(1)
             for i in range(rew.shape[0]):
                 for j in range(rew.shape[-1]):
                     rew[i, ..., j] = rew[i, ..., j] - rew[i, ..., j].min()
                     rew[i, ..., j] = rew[i, ..., j] / rew[i, ..., j].max()
             # r += [torch.sigmoid(net(stack)/self.temp_factor).squeeze(1)]
             r += [rew]
-        # r[1][r[1] < 0.9] = 0
         if len(r) > 1:
             r = [torch.minimum(r[0], r[1])]
         return r
