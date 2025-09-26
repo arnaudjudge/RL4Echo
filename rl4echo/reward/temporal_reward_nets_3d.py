@@ -42,6 +42,7 @@ class TemporalRewardUnets3D(Reward):
             # r += [torch.sigmoid(net(stack)/self.temp_factor).squeeze(1)]
             r += [rew]
         # r[1][r[1] < 0.9] = 0
+        r_backp = r.copy()
         r = [torch.minimum(r[0], r[1])]
 
         for i in range(len(pred)):
@@ -56,7 +57,7 @@ class TemporalRewardUnets3D(Reward):
             temp_constistencies = torch.tensor(temp_constistencies, device=r[0].device).sum(dim=0)
             # print(temp_constistencies)
             tc_penalty = torch.ones(len(temp_constistencies), device=r[0].device) + temp_constistencies
-            # print(tc_penalty)
+            print(tc_penalty)
 
 
 
@@ -65,36 +66,56 @@ class TemporalRewardUnets3D(Reward):
             # print(temp_constistencies)
             # print(measures_1d)
             import matplotlib.pyplot as plt
-            # f1, ax1 = plt.subplots(1, 4)
-            # ax1[0].imshow(pred_as_b[0, ...])
-            # ax1[1].imshow(pred_as_b[1, ...])
-            # ax1[2].imshow(pred_as_b[2, ...])
-            # ax1[3].imshow(pred_as_b[3, ...])
+            from matplotlib.colors import LinearSegmentedColormap
+            f1, ax1 = plt.subplots(2, 2, figsize=(8, 8))
+            custom_cmap = LinearSegmentedColormap.from_list("custom", [(0, 0, 0), (0, 1, 0), (1, 0, 0)], N=3)
+            ax1[0, 0].imshow(imgs[i, 0, ..., 0].cpu().numpy().T, cmap='gray')
+            ax1[0, 0].imshow(pred_as_b[0, ...], alpha=0.3, cmap=custom_cmap, interpolation="none")
+            # ax1[1].imshow(imgs[i, 0, ..., 1].cpu().numpy().T, cmap='gray')
+            # ax1[1].imshow(pred_as_b[1, ...], alpha=0.3)
+            # ax1[2].imshow(imgs[i, 0, ..., 2].cpu().numpy().T, cmap='gray')
+            # ax1[2].imshow(pred_as_b[2, ...], alpha=0.3)
+            # ax1[3].imshow(imgs[i, 0, ..., 3].cpu().numpy().T, cmap='gray')
+            # ax1[3].imshow(pred_as_b[3, ...], alpha=0.3)
 
             # f, ax = plt.subplots(1, 4)
-            # rew = r[0]
-            # ax[0].imshow(rew[i, ..., 0].cpu().numpy().T, cmap='grey', vmin=0, vmax=1)
-            # ax[1].imshow(rew[i, ..., 1].cpu().numpy().T, cmap='grey', vmin=0, vmax=1)
-            # ax[2].imshow(rew[i, ..., 2].cpu().numpy().T, cmap='grey', vmin=0, vmax=1)
-            # ax[3].imshow(rew[i, ..., 3].cpu().numpy().T, cmap='grey', vmin=0, vmax=1)
+            rew = r[0]
+            # ax[0].imshow(rew[i, ..., 0].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
+            ax1[0, 1].imshow(r_backp[0][i, ..., 0].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
+            ax1[1, 0].imshow(r_backp[1][i, ..., 0].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
+            # ax[2].imshow(rew[i, ..., 2].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
+            # ax[3].imshow(rew[i, ..., 3].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
 
             rew = 1 - r[0].cpu().numpy()
 
             for j in range(rew.shape[-1]):
                 frame_penalty = tc_penalty.cpu().numpy()[i]
+                # frame_penalty = 1.05 # force for fig
                 if frame_penalty != 1:
                     rew[i, ..., j] = scipy.ndimage.gaussian_filter(rew[i, ..., j], sigma=frame_penalty*10)
                     rew[i, ..., j] = rew[i, ..., j] - rew[i, ..., j].min()
                     rew[i, ..., j] = rew[i, ..., j] / rew[i, ..., j].max()
 
-            r[0] = torch.tensor(np.minimum(r[0].cpu().numpy(), 1 - rew), device=r[0].device)
+            rew = np.minimum(r[0].cpu().numpy(), 1 - rew)
             # f, ax2 = plt.subplots(1, 4)
-            # ax2[0].imshow(rew[i, ..., 0].T, cmap='grey', vmin=0, vmax=1)
-            # ax2[1].imshow(rew[i, ..., 1].T, cmap='grey', vmin=0, vmax=1)
-            # ax2[2].imshow(rew[i, ..., 2].T, cmap='grey', vmin=0, vmax=1)
-            # ax2[3].imshow(rew[i, ..., 3].T, cmap='grey', vmin=0, vmax=1)
-            #
-            # plt.show()
+            # ax2[0].imshow(rew[i, ..., 0].T, cmap='gray', vmin=0, vmax=1)
+            # ax2[1].imshow(rew[i, ..., 1].T, cmap='gray', vmin=0, vmax=1)
+            ax1[1, 1].imshow(rew[i, ..., 0].T, cmap='gray', vmin=0, vmax=1)
+            # ax2[3].imshow(rew[i, ..., 3].T, cmap='gray', vmin=0, vmax=1)
+
+            ax1[0, 0].get_xaxis().set_visible(False)
+            ax1[1, 0].get_xaxis().set_visible(False)
+            ax1[0, 1].get_xaxis().set_visible(False)
+            ax1[1, 1].get_xaxis().set_visible(False)
+            ax1[0, 0].get_yaxis().set_visible(False)
+            ax1[1, 0].get_yaxis().set_visible(False)
+            ax1[0, 1].get_yaxis().set_visible(False)
+            ax1[1, 1].get_yaxis().set_visible(False)
+
+            plt.savefig("reward_fig.png")
+            plt.show()
+
+            r[0] = torch.tensor(rew, device=r[0].device)
 
         return r
 
