@@ -14,105 +14,6 @@ import torch.nn.functional as F
 from matplotlib import pyplot as plt
 
 
-# class PlasticLayer(nn.Module):
-#     def __init__(self, num_channels):
-#         super().__init__()
-#         # fast-adapting gain and bias
-#         self.gain = nn.Parameter(torch.ones(num_channels, device="cuda:0"))
-#         self.bias = nn.Parameter(torch.zeros(num_channels, device="cuda:0"))
-#
-#     def forward(self, x):
-#         return self.gain.view(1, -1, 1, 1, 1) * x + self.bias.view(1, -1, 1, 1, 1)
-#
-#     def reset(self):
-#         nn.init.ones_(self.gain)
-#         nn.init.zeros_(self.bias)
-
-class PlasticLayer(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.gain = nn.Parameter(torch.tensor(1.0))
-        self.bias = nn.Parameter(torch.tensor(0.0))
-
-    def forward(self, x):
-        return self.gain * x + self.bias
-
-    def reset(self):
-        self.gain.data.fill_(1.0)
-        self.bias.data.fill_(0.0)
-
-
-def add_plasticity(module):
-    """Wrap every Conv3d with a PlasticLayer right after it."""
-    for name, child in list(module.named_children()):
-        if isinstance(child, nn.Conv3d):
-            # replace Conv3d -> Sequential(Conv3d, PlasticLayer)
-            wrapped = nn.Sequential(
-                child,
-                PlasticLayer()
-            )
-            setattr(module, name, wrapped)
-        else:
-            add_plasticity(child)
-
-
-def reset_plasticity(module):
-    """Reset all PlasticLayers to identity mapping."""
-    for m in module.modules():
-        if isinstance(m, PlasticLayer):
-            m.reset()
-
-def get_plastic_params(model):
-    return [p for m in model.modules() if isinstance(m, PlasticLayer)
-            for p in [m.gain, m.bias]]
-
-import torch.nn as nn
-
-def get_all_layers(module, layers=None):
-    """Recursively collect all leaf layers (modules without children)."""
-    if layers is None:
-        layers = []
-    for child in module.children():
-        if len(list(child.children())) == 0:
-            layers.append(child)
-        else:
-            get_all_layers(child, layers)
-    return layers
-
-def unfreeze_layers(model, mode="first", n=3):
-    """
-    Freeze all params, then unfreeze first/last n leaf layers (e.g., convs).
-    mode: "first", "last", or "hybrid"
-    """
-    # Freeze everything
-    for param in model.parameters():
-        param.requires_grad = False
-
-    # Get all "leaf" layers (like Conv3d, BatchNorm3d, etc.)
-    layers = get_all_layers(model)
-    # layers = [m for m in model.modules() if isinstance(m, torch.nn.Conv3d)]
-
-
-    if mode == "first":
-        selected = layers[:n]
-    elif mode == "last":
-        selected = layers[-n:]
-    elif mode == "hybrid":
-        selected = layers[:n] + layers[-n:]
-    else:
-        raise ValueError("mode must be 'first', 'last', or 'hybrid'")
-
-    # Unfreeze selected layers
-    for layer in selected:
-        for param in layer.parameters():
-            param.requires_grad = True
-
-    print(f"✅ Unfrozen {mode} {n} layers "
-          f"(out of {len(layers)} total). "
-          f"Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
-
-    return model
-
 class PPO3D(RLmodule3D):
 
     def __init__(self,
@@ -145,101 +46,9 @@ class PPO3D(RLmodule3D):
         # TODO: REMOVE GT
         b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['gt'].squeeze(0), batch['use_gt'].squeeze(0)
 
-        print( batch['image_meta_dict'].get("case_identifier")[0])
-        if batch['image_meta_dict'].get("case_identifier")[0] != 'di-30F6-5C3B-EA3A':
-            return {'loss': torch.tensor(0, device=self.device) }
         # get actions, log_probs, rewards, etc from pi (stays constant for all steps k)
         prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_use_gt, sample=False)
         num_rewards = len(prev_rewards)
-
-        gt = b_gt.cpu().detach().numpy()[0]
-        pred = prev_actions.cpu().detach().numpy()[0]
-
-        from vital.utils.image.us.measure import EchoMeasure
-        from skimage.measure import find_contours
-        import matplotlib.pyplot as plt
-        import numpy as np
-        from vital.data.camus.config import Label
-        from scipy import ndimage
-        from scipy.ndimage import gaussian_filter
-        from skimage import draw
-
-        plt.figure()
-        # gt
-        contour = find_contours((gt[..., 0].T == 1).squeeze(), level=0.9)[0]
-        plt.plot(contour[:, 1], contour[:, 0], c='#99FF99', zorder=1)
-        contour = find_contours((gt[..., 0].T == 2).squeeze(), level=0.9)[0]
-        plt.plot(contour[:, 1], contour[:, 0], c='#99FF99', zorder=1, label='Reference')
-
-        # candidate
-        contour = find_contours((pred[..., 0].T == 1).squeeze(), level=0.9)[0]
-        plt.plot(contour[:, 1], contour[:, 0], c='#FF9999', zorder=1)
-        contour = find_contours((pred[..., 0].T == 2).squeeze(), level=0.9)[0]
-        plt.plot(contour[:, 1], contour[:, 0], c='#FF9999', zorder=1, label='Candidate')
-
-        i = 0
-
-        lv_points = np.asarray(
-            EchoMeasure._endo_base(gt[..., i].T, lv_labels=Label.LV, myo_labels=Label.MYO))
-
-        p = pred[..., i]
-        y = np.zeros_like(gt).astype(float)
-
-        lbl, num = ndimage.label(p != 0)
-        # Count the number of elements per label
-        count = np.bincount(lbl.flat)
-        # Select the largest blob
-        maxi = np.argmax(count[1:]) + 1
-        # Remove the other blobs
-        p[lbl != maxi] = 0
-
-        p_points = np.asarray(
-            EchoMeasure._endo_base(p.T, lv_labels=Label.LV, myo_labels=Label.MYO))
-        a = np.zeros_like(p).astype(float)
-        b = np.zeros_like(p).astype(float)
-
-        lv_points = lv_points[np.argsort(lv_points[:, 1])]
-        p_points = p_points[np.argsort(p_points[:, 1])]
-
-        d0_sigma = (np.linalg.norm(lv_points[0] - p_points[0]) / a.shape[0] * 200)
-        print(d0_sigma)
-        d1_sigma = (np.linalg.norm(lv_points[1] - p_points[1]) / b.shape[0] * 200)
-
-        spacing = [0.37, 0.37] #batch['image_meta_dict']['original_spacing'].cpu().numpy()[0, 1:3]
-
-        # larger than 5mm
-        # if (np.linalg.norm((lv_points[0] - p_points[0]) * spacing)) > 4:
-        rr, cc, val = draw.line_aa(p_points[0, 1], p_points[0, 0], lv_points[0, 1], lv_points[0, 0])
-        a[rr, cc] = val
-        a = gaussian_filter(a, sigma=d0_sigma)
-        a = (a - np.min(a)) / (np.max(a) - np.min(a))
-        # if (np.linalg.norm((lv_points[1] - p_points[1]) * spacing)) > 4:
-        rr, cc, val = draw.line_aa(p_points[1, 1], p_points[1, 0], lv_points[1, 1], lv_points[1, 0])
-        b[rr, cc] = val
-        b = gaussian_filter(b, sigma=d1_sigma)
-        b = (b - np.min(b)) / (np.max(b) - np.min(b))
-
-        y[..., i] = np.maximum(a, b)
-
-        plt.plot([p_points[0, 1], lv_points[0, 1]],
-                 [p_points[0, 0], lv_points[0, 0]],
-                 color="yellow", linewidth=3, zorder=2)
-        plt.plot([p_points[1, 1], lv_points[1, 1]],
-                 [p_points[1, 0], lv_points[1, 0]],
-                 color="yellow", linewidth=3, zorder=2)
-
-        plt.scatter(lv_points[..., 1], lv_points[..., 0], c='#009900', zorder=3)
-        plt.scatter(p_points[..., 1], p_points[..., 0], c='#990000', zorder=3)
-
-        plt.imshow(1 - y[..., i].T, cmap='gray', vmin=0, vmax=1, aspect='auto', interpolation='none')
-
-        ax = plt.gca()
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
-        plt.legend(loc='upper left')
-        plt.show()
-
-
 
         # iterate with pi prime k times
         for k in range(self.hparams.k_steps_per_batch*num_rewards):
@@ -338,7 +147,7 @@ class PPO3D(RLmodule3D):
 
         return loss, critic_loss, metrics
 
-    def ttoverfit(self, batch_image, num_iter=4, **kwargs):
+    def ttoptimize(self, batch_image, num_iter=4, **kwargs):
         """
             Run a few itercvations of optimization to overfit on one test sequence in unsupervised
         Args:
@@ -348,42 +157,11 @@ class PPO3D(RLmodule3D):
             None, actor is modified, ready for inference on batch_image alone
         """
         self.train()
-        torch.cuda.empty_cache()
-        # self.actor.actor.old_net.load_state_dict(copy.deepcopy(self.actor.actor.net.state_dict()))
-
-        # reset_plasticity(self.actor.actor.net)
-
-        # freeze all main weights
-        # plastic_params = unfreeze_layers(self.actor.actor.net, n=5)
-        for name, module in self.actor.actor.net.named_modules():
-            if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d, nn.InstanceNorm3d)):
-                for p in module.parameters():
-                    p.requires_grad = True
-            else:
-                for p in module.parameters():
-                    p.requires_grad = False
-
-        params_to_optimize = [p for p in self.actor.actor.net.parameters() if p.requires_grad]
-        print(len(params_to_optimize))
-        # optimizer for only those layers
-        opt_net = torch.optim.Adam(params_to_optimize, lr=0.01)
-
-
-        # # unfreeze only plastic params
-        # plastic_params = get_plastic_params(self.actor.actor.net)
-        # for p in plastic_params:
-        #     p.requires_grad = True
-
-        # for name, p in self.actor.actor.net.named_parameters():
-        #     print(name, p.requires_grad)
-        # optimizer just for plastic params
-        # opt_plastic = torch.optim.Adam(plastic_params, lr=1e-3)
-
-        # opt_net, _ = self.configure_optimizers()
-
         augmentations = 3
         self.divergence_coeff = 0.01
         self.entropy_coef = 0.1
+        opt_net, _ = self.configure_optimizers()
+
         with torch.enable_grad():
             batch_image = batch_image
             # split up the input test sequence into smaller chunks
@@ -397,7 +175,6 @@ class PPO3D(RLmodule3D):
             best_params = None
             for i in range(num_iter+1):
                 sum_chunk_reward = 0
-                # opt_net.zero_grad()
                 lowest_frame_reward = 1.0
                 for chunk in split_batch_images:
                     chunk = chunk.detach()
@@ -412,16 +189,6 @@ class PPO3D(RLmodule3D):
                             chunk_def /= chunk_def.max()
 
                         prev_actions, prev_log_probs, prev_rewards = self.rollout(chunk_def, None, None)
-                        # prev_actions = self.actor.act(chunk_def, sample=True)
-                        # prev_rewards = self.reward_func(prev_actions, chunk_def, None)
-                        # _, _, prev_log_probs, _, _, _ = self.actor.evaluate(chunk_def, prev_action
-                        # plt.figure()
-                        # plt.imshow(chunk_def[0, ..., 0].T.cpu().numpy(), cmap='gray')
-                        # plt.imshow(prev_actions[0, ..., 0].T.cpu().numpy(), alpha=0.3)
-
-                        # plt.figure()
-                        # plt.imshow(chunk[0, ..., 0].T.cpu().numpy(), cmap='gray')
-                        # plt.show()
 
                         sum_chunk_reward += prev_rewards[0].mean()
                         lowest_frame_reward = min(prev_rewards[0].mean(axis=(0, 1, 2)).min().item(), lowest_frame_reward)
@@ -431,11 +198,8 @@ class PPO3D(RLmodule3D):
                             loss, _, _ = self.compute_policy_loss((chunk, prev_actions,
                                                                              prev_rewards[0],
                                                                              prev_log_probs, None, None))
-
-                            # loss = loss / len(split_batch_images) / 3
                             loss = loss / augmentations
                             self.manual_backward(loss)
-                    # plt.show()
                     lowest_frame_reward = min(avg_lowest_reward_frame, lowest_frame_reward)
                     # update after checking, as current policy was used for calculating the reward
                     if i != 0:
@@ -443,11 +207,11 @@ class PPO3D(RLmodule3D):
                             nn.utils.clip_grad_norm_(self.actor.actor.parameters(), 0.5)
                         opt_net.step()
                 print(f"\n{'First, no optimization' if i == 0 else ''}", i, (sum_chunk_reward / len(split_batch_images) / augmentations), lowest_frame_reward)
-                if lowest_frame_reward > best_reward: #(sum_chunk_reward / len(split_batch_images)) > best_reward:
+                if lowest_frame_reward > best_reward:
                     best_i = i
-                    best_reward = lowest_frame_reward #(sum_chunk_reward / len(split_batch_images))
+                    best_reward = lowest_frame_reward
                     best_params = copy.deepcopy(self.actor.actor.net.state_dict())
 
         self.actor.actor.net.load_state_dict(best_params)
-        print(best_i)
+        print("BEST ITERATION", best_i)
         self.eval()
