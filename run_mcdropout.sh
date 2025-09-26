@@ -1,0 +1,2 @@
+#python rl4echo/runner.py model.net.drop_block=True model.ckpt_path=supervised_3d_MCdropout.ckpt datamodule=cardinal_3d +model.do_unc=False train=True
+python rl4echo/runner.py model.net.drop_block=True +model.load_from_ckpt=actor_ANAT_LM_BEST.ckpt datamodule=icardio_3d +model.do_unc=True train=False +model.mcdropout=10

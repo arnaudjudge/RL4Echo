@@ -179,7 +179,7 @@ class RL3dDataModule(LightningDataModule):
             batch_size: int = 1,
             seed: int = 0,
             common_spacing: tuple[float, ...] = None,
-            max_image_area: int = None,
+            max_image_area: int = 600000,
             max_window_len: int = None,
             max_batch_size: int = None,
             max_tensor_volume: int = 5000000,
@@ -272,7 +272,7 @@ class RL3dDataModule(LightningDataModule):
         if self.hparams.splits_column and self.hparams.splits_column in self.df.columns:
             # splits are already defined in csv file
             print(f"Using split from column: {self.hparams.splits_column}")
-            self.train_idx = self.df.index[self.df[self.hparams.splits_column] == 'train'].tolist()
+            self.train_idx = self.df.index[self.df[self.hparams.splits_column].isin(["train"])].tolist()
             self.val_idx = self.df.index[self.df[self.hparams.splits_column] == 'val'].tolist()
             self.test_idx = self.df.index[self.df[self.hparams.splits_column] == 'test'].tolist()
             self.pred_idx = self.df.index[(self.df[self.hparams.splits_column] == 'pred')].tolist()

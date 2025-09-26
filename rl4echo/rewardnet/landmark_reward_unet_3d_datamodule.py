@@ -86,18 +86,21 @@ class RewardNet3DDataset(Dataset):
             lv_points = lv_points[np.argsort(lv_points[:, 1])]
             p_points = p_points[np.argsort(p_points[:, 1])]
 
-            d0 = (np.linalg.norm(lv_points[0] - p_points[0]) / a.shape[0] * 250)
-            d1 = (np.linalg.norm(lv_points[1] - p_points[1]) / b.shape[0] * 250)
+            d0_sigma = (np.linalg.norm(lv_points[0] - p_points[0]) / a.shape[0] * 200)
+            d1_sigma = (np.linalg.norm(lv_points[1] - p_points[1]) / b.shape[0] * 200)
 
-            if d0 > 0:
-                rr, cc, val = skimage.draw.line_aa(p_points[0, 1], p_points[0, 0], lv_points[0, 1], lv_points[0, 0])
+            spacing = img_nifti.header['pixdim'][1:3]
+
+            # larger than 5mm
+            if (np.linalg.norm((lv_points[0] - p_points[0])*spacing)) > 4:
+                rr, cc, val = draw.line_aa(p_points[0, 1], p_points[0, 0], lv_points[0, 1], lv_points[0, 0])
                 a[rr, cc] = val
-                a = gaussian_filter(a, sigma=d0)
+                a = gaussian_filter(a, sigma=d0_sigma)
                 a = (a - np.min(a)) / (np.max(a) - np.min(a))
-            if d1 > 0:
-                rr, cc, val = skimage.draw.line_aa(p_points[1, 1], p_points[1, 0], lv_points[1, 1], lv_points[1, 0])
+            if (np.linalg.norm((lv_points[1] - p_points[1])*spacing)) > 4:
+                rr, cc, val = draw.line_aa(p_points[1, 1], p_points[1, 0], lv_points[1, 1], lv_points[1, 0])
                 b[rr, cc] = val
-                b = gaussian_filter(b, sigma=d1)
+                b = gaussian_filter(b, sigma=d1_sigma)
                 b = (b - np.min(b)) / (np.max(b) - np.min(b))
 
             y[..., i] = np.maximum(a, b)

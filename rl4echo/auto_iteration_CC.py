@@ -153,8 +153,8 @@ def main(cfg):
                      f"model.actor_save_path={output_path}/{i}/actor.ckpt",
                      f"model.critic_save_path={output_path}/{i}/critic.ckpt",
                      f'model.predict_save_dir={f"{output_path}/rewardDS/"}',
-                     f"model.entropy_coeff={max(0.3 / (i * 2), 0)}",
-                     f"model.divergence_coeff={0.1 / (i * 2)}",
+                     f"model.entropy_coeff={0.15}",
+                     f"model.divergence_coeff={0.015}",
                      f"experiment=ppo_{checkpoint_dict['target_experiment']}",
                      f"++save_csv_after_predict=null",
                      f"++model.temp_files_path={output_path}"
