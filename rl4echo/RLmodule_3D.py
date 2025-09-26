@@ -259,7 +259,7 @@ class RLmodule3D(LightningModule):
         anat_errors = is_anatomically_valid(y_pred_np_as_batch)
         temporal_valid, _ = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
                                                                       voxel_spacing[0])
-        validated = int(all(anat_errors)) and temporal_valid and thresh_validated
+        validated = int(all(anat_errors)) and temporal_valid
         if not validated:
             self.actor.actor.net.load_state_dict(self.initial_test_params, strict=False)
 
