@@ -143,11 +143,103 @@ class PPO3D(RLmodule3D):
         opt_net.zero_grad()  # do once first if not done initially in loop
 
         # TODO: REMOVE GT
-        b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['approx_gt'].squeeze(0), batch['use_gt'].squeeze(0)
+        b_img, b_gt, b_use_gt = batch['img'].squeeze(0), batch['gt'].squeeze(0), batch['use_gt'].squeeze(0)
+
         print( batch['image_meta_dict'].get("case_identifier")[0])
+        if batch['image_meta_dict'].get("case_identifier")[0] != 'di-30F6-5C3B-EA3A':
+            return {'loss': torch.tensor(0, device=self.device) }
         # get actions, log_probs, rewards, etc from pi (stays constant for all steps k)
-        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_use_gt)
+        prev_actions, prev_log_probs, prev_rewards = self.rollout(b_img, b_gt, b_use_gt, sample=False)
         num_rewards = len(prev_rewards)
+
+        gt = b_gt.cpu().detach().numpy()[0]
+        pred = prev_actions.cpu().detach().numpy()[0]
+
+        from vital.utils.image.us.measure import EchoMeasure
+        from skimage.measure import find_contours
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from vital.data.camus.config import Label
+        from scipy import ndimage
+        from scipy.ndimage import gaussian_filter
+        from skimage import draw
+
+        plt.figure()
+        # gt
+        contour = find_contours((gt[..., 0].T == 1).squeeze(), level=0.9)[0]
+        plt.plot(contour[:, 1], contour[:, 0], c='#99FF99', zorder=1)
+        contour = find_contours((gt[..., 0].T == 2).squeeze(), level=0.9)[0]
+        plt.plot(contour[:, 1], contour[:, 0], c='#99FF99', zorder=1, label='Reference')
+
+        # candidate
+        contour = find_contours((pred[..., 0].T == 1).squeeze(), level=0.9)[0]
+        plt.plot(contour[:, 1], contour[:, 0], c='#FF9999', zorder=1)
+        contour = find_contours((pred[..., 0].T == 2).squeeze(), level=0.9)[0]
+        plt.plot(contour[:, 1], contour[:, 0], c='#FF9999', zorder=1, label='Candidate')
+
+        i = 0
+
+        lv_points = np.asarray(
+            EchoMeasure._endo_base(gt[..., i].T, lv_labels=Label.LV, myo_labels=Label.MYO))
+
+        p = pred[..., i]
+        y = np.zeros_like(gt).astype(float)
+
+        lbl, num = ndimage.label(p != 0)
+        # Count the number of elements per label
+        count = np.bincount(lbl.flat)
+        # Select the largest blob
+        maxi = np.argmax(count[1:]) + 1
+        # Remove the other blobs
+        p[lbl != maxi] = 0
+
+        p_points = np.asarray(
+            EchoMeasure._endo_base(p.T, lv_labels=Label.LV, myo_labels=Label.MYO))
+        a = np.zeros_like(p).astype(float)
+        b = np.zeros_like(p).astype(float)
+
+        lv_points = lv_points[np.argsort(lv_points[:, 1])]
+        p_points = p_points[np.argsort(p_points[:, 1])]
+
+        d0_sigma = (np.linalg.norm(lv_points[0] - p_points[0]) / a.shape[0] * 200)
+        print(d0_sigma)
+        d1_sigma = (np.linalg.norm(lv_points[1] - p_points[1]) / b.shape[0] * 200)
+
+        spacing = [0.37, 0.37] #batch['image_meta_dict']['original_spacing'].cpu().numpy()[0, 1:3]
+
+        # larger than 5mm
+        # if (np.linalg.norm((lv_points[0] - p_points[0]) * spacing)) > 4:
+        rr, cc, val = draw.line_aa(p_points[0, 1], p_points[0, 0], lv_points[0, 1], lv_points[0, 0])
+        a[rr, cc] = val
+        a = gaussian_filter(a, sigma=d0_sigma)
+        a = (a - np.min(a)) / (np.max(a) - np.min(a))
+        # if (np.linalg.norm((lv_points[1] - p_points[1]) * spacing)) > 4:
+        rr, cc, val = draw.line_aa(p_points[1, 1], p_points[1, 0], lv_points[1, 1], lv_points[1, 0])
+        b[rr, cc] = val
+        b = gaussian_filter(b, sigma=d1_sigma)
+        b = (b - np.min(b)) / (np.max(b) - np.min(b))
+
+        y[..., i] = np.maximum(a, b)
+
+        plt.plot([p_points[0, 1], lv_points[0, 1]],
+                 [p_points[0, 0], lv_points[0, 0]],
+                 color="yellow", linewidth=3, zorder=2)
+        plt.plot([p_points[1, 1], lv_points[1, 1]],
+                 [p_points[1, 0], lv_points[1, 0]],
+                 color="yellow", linewidth=3, zorder=2)
+
+        plt.scatter(lv_points[..., 1], lv_points[..., 0], c='#009900', zorder=3)
+        plt.scatter(p_points[..., 1], p_points[..., 0], c='#990000', zorder=3)
+
+        plt.imshow(1 - y[..., i].T, cmap='gray', vmin=0, vmax=1, aspect='auto', interpolation='none')
+
+        ax = plt.gca()
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+        plt.legend(loc='upper left')
+        plt.show()
+
+
 
         # iterate with pi prime k times
         for k in range(self.hparams.k_steps_per_batch*num_rewards):
@@ -263,11 +355,18 @@ class PPO3D(RLmodule3D):
 
         # freeze all main weights
         # plastic_params = unfreeze_layers(self.actor.actor.net, n=5)
-        #
-        # params_to_optimize = [p for p in plastic_params.parameters() if p.requires_grad]
-        # print(len(params_to_optimize))
+        for name, module in self.actor.actor.net.named_modules():
+            if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d, nn.InstanceNorm3d)):
+                for p in module.parameters():
+                    p.requires_grad = True
+            else:
+                for p in module.parameters():
+                    p.requires_grad = False
+
+        params_to_optimize = [p for p in self.actor.actor.net.parameters() if p.requires_grad]
+        print(len(params_to_optimize))
         # optimizer for only those layers
-        # opt_net = torch.optim.Adam(params_to_optimize, lr=1e-2)
+        opt_net = torch.optim.Adam(params_to_optimize, lr=0.01)
 
 
         # # unfreeze only plastic params
@@ -280,7 +379,7 @@ class PPO3D(RLmodule3D):
         # optimizer just for plastic params
         # opt_plastic = torch.optim.Adam(plastic_params, lr=1e-3)
 
-        opt_net, _ = self.configure_optimizers()
+        # opt_net, _ = self.configure_optimizers()
 
         augmentations = 3
         self.divergence_coeff = 0.01
@@ -296,7 +395,7 @@ class PPO3D(RLmodule3D):
             best_reward = 0
             best_i = 0
             best_params = None
-            for i in range(num_iter):
+            for i in range(num_iter+1):
                 sum_chunk_reward = 0
                 # opt_net.zero_grad()
                 lowest_frame_reward = 1.0
@@ -306,7 +405,6 @@ class PPO3D(RLmodule3D):
                     avg_lowest_reward_frame = 0
                     for a in range(augmentations):
                         with torch.no_grad():
-                            #TRY?: when worst frame is terrible use huge noise and contrast reduction?
                             chunk_def = adjust_contrast(chunk.clone().permute((4, 0, 1, 2, 3)),
                                                         random.uniform(0.4, 0.8)).permute((1, 2, 3, 4, 0))
                             chunk_def += torch.randn(chunk_def.size()).to(
@@ -349,14 +447,7 @@ class PPO3D(RLmodule3D):
                     best_i = i
                     best_reward = lowest_frame_reward #(sum_chunk_reward / len(split_batch_images))
                     best_params = copy.deepcopy(self.actor.actor.net.state_dict())
-                    # best_params = {k: v.cpu() for k, v in self.actor.actor.net.state_dict().items()}
 
-                # # update after checking, as current policy was used for calculating the reward
-                # if "32" in self.trainer.precision:
-                #     nn.utils.clip_grad_norm_(self.actor.actor.parameters(), 0.5)
-                #     # nn.utils.clip_grad_norm_(self.actor.critic.parameters(), 0.5)
-                # opt_net.step()
-                # opt_plastic.step()
-            self.actor.actor.net.load_state_dict(best_params)
-            print(best_i)
+        self.actor.actor.net.load_state_dict(best_params)
+        print(best_i)
         self.eval()

@@ -30,6 +30,8 @@ from rl4echo.utils.tensor_utils import convert_to_numpy
 from rl4echo.utils.test_metrics import full_test_metrics
 from vital.metrics.camus.anatomical.utils import check_segmentation_validity
 
+import matplotlib.pyplot as plt
+
 
 def shrink_perturb(model, lamda=0.5, sigma=0.01):
     for (name, param) in model.named_parameters():
@@ -56,12 +58,12 @@ class RLmodule3D(LightningModule):
                  predict_do_img_perturb=True,
                  predict_do_corrections=True,
                  predict_do_temporal_glitches=True,
-                 save_on_test=False,
+                 save_on_test=True,
                  vae_on_test=False,
-                 worst_frame_thresholds={"anatomical": 0.985},
+                 worst_frame_thresholds=None, #{"anatomical": 0.985},
                  save_csv_after_predict=None,
                  val_batch_size=4,
-                 tta=False,
+                 tta=True,
                  temp_files_path='.',
                  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -89,6 +91,9 @@ class RLmodule3D(LightningModule):
         self.temp_files_path = Path(temp_files_path)
         if not self.temp_files_path.exists() and self.trainer.global_rank == 0:
             self.temp_files_path.mkdir(parents=True, exist_ok=True)
+
+        # for test time overfitting
+        self.initial_test_params = None
 
     def configure_optimizers(self):
         return self.actor.get_optimizers()
@@ -138,6 +143,17 @@ class RLmodule3D(LightningModule):
 
         Returns:
             mean loss(es) for the batch, metrics dictionary
+        """
+        raise NotImplementedError
+
+    def ttoverfit(self, batch_image, num_iter=10, **kwargs):
+        """
+            Run a few iterations of optimization to overfit on one test sequence in unsupervised
+        Args:
+            batch: batch of images
+            num_iter: number of iterations of the optimization loop
+        Returns:
+            None, actor is modified, ready for inference on batch_image alone
         """
         raise NotImplementedError
 
@@ -212,15 +228,225 @@ class RLmodule3D(LightningModule):
         """
         b_img, b_gt, meta_dict = batch['img'], batch['gt'], batch['image_meta_dict']
 
+        # b_img = adjust_contrast(b_img.permute((4, 0, 1, 2, 3)), 0.4).permute((1, 2, 3, 4, 0))
+        # b_img += torch.randn(b_img.size()).to(next(self.actor.actor.net.parameters()).device) * 0.1
+        # b_img /= b_img.max()
+
         self.patch_size = list([b_img.shape[-3], b_img.shape[-2], 4])
         self.inferer.roi_size = self.patch_size
+        #
+        # dicom_list = [
+        #     "di-0CA9-8FC9-25BB", "di-1F8E-37E5-57ED",
+        #     "di-1FD4-CB18-6EFC",
+        #     "di-5A75-9C41-46D7",
+        #     "di-5BB1-44DE-60BA",
+        #     "di-62CF-F093-A156", "di-63D5-7095-7FB9", "di-A540-DBDD-7C1F", "di-AE68-A41B-5185", "di-C910-B188-A16F",
+        #     "di-EB49-9AE0-F0D0", "di-6CF6-853C-CB97", "di-16B9-402D-037F", "di-46D0-7328-762F", "di-47EB-1516-2456",
+        #     "di-7041-D238-665F", "di-8254-6AD3-C7FC", "di-A984-8D28-57F4", "di-B55F-84D9-6833", "di-C9E0-1668-D365",
+        #     "di-E42E-19EA-16E7"
+        # ]
 
-        start_time = time.time()
-        prev_actions = self.tta_predict(b_img) if self.hparams.tta else self.predict(b_img).argmax(dim=1)
-        print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
+        # filtered_dicom_list9655 =  ['di-62CF-F093-A156', 'di-0CA9-8FC9-25BB', 'di-AE68-A41B-5185', 'di-6781-303D-8227',
+        # 'di-47EB-1516-2456', 'di-6C37-9F35-0D42', 'di-4220-E23D-CE04', 'di-63D5-7095-7FB9', 'di-16B9-402D-037F',
+        # 'di-E42E-19EA-16E7', 'di-8254-6AD3-C7FC', 'di-46D0-7328-762F', 'di-1FD4-CB18-6EFC', 'di-BBFD-BFA0-F9FA',
+        # 'di-1E9C-3E1D-87E3', 'di-1CE1-2EF7-3142', 'di-B55F-84D9-6833', 'di-1ECA-EAC3-8EAE', 'di-1599-6138-451C',
+        #                             'di-5F58-9EFC-734D', 'di-3B2D-9F8D-8A3A']
+        # filtered_dicom_list9655 = ['di-6C37-9F35-0D42']
+
+        # filtered_dicom_list97 = ['di-62CF-F093-A156', 'di-0CA9-8FC9-25BB', 'di-AE68-A41B-5185', 'di-6781-303D-8227', 'di-47EB-1516-2456',
+        #  'di-6C37-9F35-0D42', 'di-B17B-8983-52D9', 'di-3E0E-FE3B-8A32', 'di-4220-E23D-CE04', 'di-63D5-7095-7FB9',
+        #  'di-16B9-402D-037F', 'di-E42E-19EA-16E7', 'di-8254-6AD3-C7FC', 'di-46D0-7328-762F', 'di-1FD4-CB18-6EFC',
+        #  'di-BBFD-BFA0-F9FA', 'di-1E9C-3E1D-87E3', 'di-1CE1-2EF7-3142', 'di-B10E-9CBE-3867', 'di-1E5A-7083-58BC',
+        #  'di-B55F-84D9-6833', 'di-1ECA-EAC3-8EAE', 'di-1599-6138-451C', 'di-7291-29A4-97F8', 'di-5F58-9EFC-734D',
+        #  'di-3B2D-9F8D-8A3A']
+
+        # dicom_list = ['di-5A75-9C41-46D7']
+
+        dicom_list_AVTV = ['di-63D5-7095-7FB9']
+        # ['di-C910-B188-A16F', 'di-1063-8366-5D88', 'di-0CA9-8FC9-25BB', 'di-AE68-A41B-5185',
+        #                    'di-47EB-1516-2456', 'di-5A75-9C41-46D7', 'di-7798-9454-7280', 'di-8075-490B-DF12',
+        #                    'di-C9E0-1668-D365', 'di-E42E-19EA-16E7', 'di-9BBB-E0E8-ABFE', 'di-46D0-7328-762F',
+        #                    'di-0343-2269-9415', 'di-1FD4-CB18-6EFC', 'di-A540-DBDD-7C1F', 'di-056D-EBB0-1AF2',
+        #                    'di-BBFD-BFA0-F9FA', 'di-1F8E-37E5-57ED', 'di-C5EF-3C1E-3B51', 'di-B55F-84D9-6833',
+        #                    'di-5BB1-44DE-60BA', 'di-7291-29A4-97F8']
+
+        if batch['image_meta_dict']['case_identifier'][0] in dicom_list_AVTV:
+            start_time = time.time()
+            first_prev_actions = self.tta_predict(b_img) if self.hparams.tta else self.predict(b_img).argmax(dim=1)
+            print(f"\nFirst Prediction took {round(time.time() - start_time, 4)} (s).")
+
+            prev_rewards = torch.stack(self.reward_func.predict_full_sequence(first_prev_actions, b_img, b_gt), dim=0)
+            prev_rewards_mean = torch.mean(prev_rewards, dim=0)
+            prev_rewards_min = torch.minimum(prev_rewards[0], prev_rewards[1])
+
+            # reward_frame_min = prev_rewards_min.cpu().numpy().mean(axis=(0, 1, 2)).argmin()
+        # reward_frame_min = prev_rewards_min.cpu().numpy().mean(axis=(0, 1, 2)).min()
+        # print(batch['image_meta_dict']['case_identifier'][0], reward_frame_min, prev_rewards_mean.mean())
+        # thresholds = 0.95
+        # thresh_validated = reward_frame_min > thresholds
+
+        # start_time = time.time()
+        # y_pred_np_as_batch = prev_actions.cpu().numpy().squeeze(0).transpose((2, 0, 1))
+        # b_gt_np_as_batch = b_gt.cpu().numpy().squeeze(0).transpose((2, 0, 1))
+        #
+        # for i in range(len(y_pred_np_as_batch)):
+        #     lbl, num = ndimage.measurements.label(y_pred_np_as_batch[i] != 0)
+        #     # Count the number of elements per label
+        #     count = np.bincount(lbl.flat)
+        #     # Select the largest blob
+        #     maxi = np.argmax(count[1:]) + 1
+        #     # Remove the other blobs
+        #     y_pred_np_as_batch[i][lbl != maxi] = 0
+        #
+        # # should be still valid to use resampled spacing for metrics here
+        # voxel_spacing = np.asarray([[abs(meta_dict['resampled_affine'][0, 0, 0].cpu().numpy()),
+        #                              abs(meta_dict['resampled_affine'][0, 1, 1].cpu().numpy())]]).repeat(
+        #                             repeats=len(y_pred_np_as_batch), axis=0)
+        # print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
+        # from rl4echo.utils.Metrics import is_anatomically_valid
+        # from rl4echo.utils.temporal_metrics import check_temporal_validity
+        # anat_errors = is_anatomically_valid(y_pred_np_as_batch)
+        # temporal_valid, _ = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
+        #                                                               voxel_spacing[0])
+        # validated = int(all(anat_errors)) and temporal_valid and thresh_validated
+        # if not validated:
+            print(batch['image_meta_dict']['case_identifier'][0])
+            self.actor.actor.net.load_state_dict(self.initial_test_params, strict=False)
+
+            start_time = time.time()
+            self.ttoverfit(b_img)
+            print(f"\nTTOverfit took {round(time.time() - start_time, 4)} (s).")
+
+            start_time = time.time()
+            prev_actions = self.tta_predict(b_img) if self.hparams.tta else self.predict(b_img).argmax(dim=1)
+            print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
+
+            # f, ax = plt.subplots(1, 3, figsize=(12, 6))
+            # ax[0].imshow(b_img[0, 0, ..., reward_frame_min].cpu().numpy().T, cmap='gray')
+            # from matplotlib.colors import LinearSegmentedColormap
+            # custom_cmap = LinearSegmentedColormap.from_list("custom", [(0, 0, 0), (0, 1, 0), (1, 0, 0)], N=3)
+            # ax[0].imshow(first_prev_actions[0, ..., reward_frame_min].cpu().numpy().T, alpha=0.4, cmap=custom_cmap)
+            #
+            # # ax[1].imshow(first_prev_actions[0, ..., reward_frame_min].cpu().numpy().T, cmap=custom_cmap)
+            # ax[1].imshow(prev_rewards_min[0, ..., reward_frame_min].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
+            #
+            # ax[2].imshow(b_img[0, 0, ..., reward_frame_min].cpu().numpy().T, cmap='gray')
+            # ax[2].imshow(prev_actions[0, ..., reward_frame_min].cpu().numpy().T, alpha=0.4, cmap=custom_cmap)
+            #
+            # for a in ax:
+            #     a.get_xaxis().set_visible(False)
+            #     a.get_yaxis().set_visible(False)
+            # ax[0].set_title("Initial Prediction", fontsize=12)
+            # ax[1].set_title("Reward Map", fontsize=12)
+            # ax[2].set_title("TTO Prediction", fontsize=12)
+            # plt.savefig(f"{batch['image_meta_dict']['case_identifier'][0]}_TTO.png")
+            # plt.show()
+
+
+        else:
+            return {"reward": 0}
+        if batch['image_meta_dict']['case_identifier'][0] in dicom_list_AVTV:
+            f, axs = plt.subplots(1, 3, animated=True, figsize=(12, 6), tight_layout=True)
+            ax = axs[0]
+            bk = ax.imshow(b_img.cpu().numpy()[0, 0, ..., 0].T, cmap='gray')
+            from matplotlib.colors import LinearSegmentedColormap
+            custom_cmap = LinearSegmentedColormap.from_list("custom", [(0, 0, 0), (0, 1, 0), (1, 0, 0)], N=3)
+            # custom_cmap2 = LinearSegmentedColormap.from_list("custom2", [(0, 0, 0), (1, 0, 0), (1, 1, 0)], N=3)
+            p1 = ax.imshow(first_prev_actions.cpu().numpy()[0, ..., 0].T, cmap=custom_cmap, alpha=0.4)
+            bk2 = axs[2].imshow(b_img.cpu().numpy()[0, 0, ..., 0].T, cmap='gray')
+            p2 = axs[2].imshow(prev_actions.cpu().numpy()[0, ..., 0].T, cmap=custom_cmap, alpha=0.4)
+
+            # prev_rewards = torch.stack(self.reward_func.predict_full_sequence(prev_actions, b_img, b_gt), dim=0)
+            # prev_rewards = torch.minimum(prev_rewards[0], prev_rewards[1])
+
+            rew = axs[1].imshow(prev_rewards_min.cpu().numpy()[0, ..., 0].T, cmap='gray', vmin=0, vmax=1)
+
+            axs[0].set_title("Initial Prediction", fontsize=12)
+            axs[1].set_title("Reward Map", fontsize=12)
+            axs[2].set_title("TTO Prediction", fontsize=12)
+
+            for a in axs:
+                a.get_xaxis().set_visible(False)
+                a.get_yaxis().set_visible(False)
+            def update(i):
+                bk.set_array(b_img.cpu().numpy()[0, 0, ..., i].T)
+                bk2.set_array(b_img.cpu().numpy()[0, 0, ..., i].T)
+                p1.set_array(first_prev_actions.cpu().numpy()[0, ..., i].T)
+                p2.set_array(prev_actions.cpu().numpy()[0, ..., i].T)
+                rew.set_array(prev_rewards_min.cpu().numpy()[0, ..., i].T)
+                return bk, bk2, p1, p2, rew
+
+            from matplotlib import animation
+            animation_fig = animation.FuncAnimation(f, update, frames=b_img.shape[-1], interval=100, blit=False,
+                                                    repeat_delay=10, )
+            animation_fig.save(f"./TTO_AVTV/{batch['image_meta_dict']['case_identifier'][0]}.gif")
+            # plt.show()
+            plt.close()
 
         prev_rewards = torch.stack(self.reward_func.predict_full_sequence(prev_actions, b_img, b_gt), dim=0)
         prev_rewards_mean = torch.mean(prev_rewards, dim=0)
+
+        # MAKE REWARD FIG HERE
+        # import matplotlib.pyplot as plt
+        # from rl4echo.utils.temporal_metrics import get_temporal_consistencies
+        # pred_as_b = prev_actions.cpu().numpy().squeeze(0).transpose((2, 0, 1))
+        #
+        # fig, axes = plt.subplots(1, 5, tight_layout=True, figsize=(16,4))
+        # bk = axes[0].imshow(b_img.cpu().numpy()[0, ..., 0].T, animated=True, cmap='gray', interpolation='none')
+        # from matplotlib.colors import LinearSegmentedColormap
+        # custom_cmap = LinearSegmentedColormap.from_list("custom", [(0, 0, 0), (0, 1, 0), (1, 0, 0)], N=3)
+        # im = axes[0].imshow(pred_as_b[0].T, animated=True, alpha=0.4, cmap=custom_cmap)
+        # axes[0].set_title("Segmentation Map")
+        # anat = axes[1].imshow(prev_rewards[0].cpu().numpy()[0, ..., 0].T, animated=True, cmap='gray', vmin=0, vmax=1)
+        # axes[1].set_title("Anatomical Reward")
+        # prev_rewards[1] = ((prev_rewards[1] - prev_rewards[1].min()) / (prev_rewards[1].max()-prev_rewards[1].min()))
+        # lm = axes[2].imshow(prev_rewards[1].cpu().numpy()[0, ..., 0].T, animated=True, cmap='gray', vmin=0, vmax=1)
+        # axes[2].set_title("Landmark Reward")
+        # merged_rew = torch.minimum(prev_rewards[0], prev_rewards[1])
+        # merged = axes[3].imshow(merged_rew.cpu().numpy()[0, ..., 0].T, animated=True, cmap='gray', vmin=0, vmax=1)
+        # axes[3].set_title("Merged Reward Map")
+        # from rl4echo.utils.temporal_metrics import get_temporal_consistencies
+        # import scipy
+        # temp_constistencies, measures_1d = get_temporal_consistencies(pred_as_b, skip_measurement_metrics=True)
+        # temp_constistencies = scipy.ndimage.gaussian_filter1d(
+        #     np.array(list(temp_constistencies.values())).astype(np.float), 1.1, axis=1)
+        # tempo_rew = merged_rew.clone().cpu().numpy()[0]
+        # temp_constistencies = torch.tensor(temp_constistencies).mean(dim=0)
+        # tc_penalty = torch.ones(len(temp_constistencies)) + (temp_constistencies / temp_constistencies.max() * 0.01)
+        # tc_penalty.cpu().numpy()
+        #
+        # print(len(tc_penalty))
+        #
+        # for j in range(tempo_rew.shape[-1]):
+        #     frame_penalty =  tc_penalty[j].item()
+        #     if frame_penalty != 1:
+        #         tempo_rew[..., j] = scipy.ndimage.gaussian_filter(tempo_rew[..., j], sigma=frame_penalty * 3.5)
+        #         tempo_rew[..., j] = tempo_rew[..., j] - tempo_rew[..., j].min()
+        #         tempo_rew[..., j] = tempo_rew[..., j] / tempo_rew[..., j].max()
+        #
+        # tempo = axes[4].imshow(tempo_rew[..., 0].T, animated=True, cmap='gray', vmin=0, vmax=1)
+        # axes[4].set_title("Merged w/ Temporal Penalty")
+        #
+        # for a in axes:
+        #     a.get_xaxis().set_visible(False)
+        #     a.get_yaxis().set_visible(False)
+        # def update(i):
+        #     fig.suptitle(f"Frame {i}")
+        #     bk.set_array(b_img.cpu().numpy()[0, ..., i].T)
+        #     im.set_array(pred_as_b[i].T)
+        #     anat.set_array(prev_rewards[0].cpu().numpy()[0, ..., i].T)
+        #     lm.set_array(prev_rewards[1].cpu().numpy()[0, ..., i].T)
+        #     merged.set_array(merged_rew.cpu().numpy()[0, ..., i].T)
+        #     tempo.set_array(tempo_rew[..., i].T)
+        #     return bk, im, anat, lm, merged, tempo
+        #
+        # from matplotlib import animation
+        #
+        # animation_fig = animation.FuncAnimation(fig, update, frames=prev_rewards.shape[-1], interval=100, blit=False,
+        #                                         repeat_delay=10, )
+        # animation_fig.save("REWARD_ANIMFIG_di-30F6-5C3B-EA3A.gif")
+        # plt.show()
+        #
 
         start_time = time.time()
         y_pred_np_as_batch = prev_actions.cpu().numpy().squeeze(0).transpose((2, 0, 1))
@@ -241,8 +467,10 @@ class RLmodule3D(LightningModule):
                                     repeats=len(y_pred_np_as_batch), axis=0)
         print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
 
-        logs = full_test_metrics(y_pred_np_as_batch, b_gt_np_as_batch, voxel_spacing, self.device)
-        logs.update({"test/reward": torch.mean(prev_rewards_mean.type(torch.float))})
+        # logs = full_test_metrics(y_pred_np_as_batch, b_gt_np_as_batch, voxel_spacing, self.device)
+        # logs.update({"test/reward": torch.mean(prev_rewards_mean.type(torch.float))})
+        logs = {"test/reward": torch.mean(prev_rewards_mean.type(torch.float))}
+        print(logs)
 
         if self.hparams.vae_on_test:
             start_time = time.time()
@@ -276,7 +504,7 @@ class RLmodule3D(LightningModule):
         # Use only first 4 for visualization, avoids having to implement sliding window inference for critic
         _, _, _, _, v, _ = self.actor.evaluate(b_img[..., :4], prev_actions[..., :4])
 
-        if self.trainer.global_rank == 0 and batch_idx % 1 == 0:
+        if self.trainer.global_rank == 0 and batch_idx % 1 == 1232314:
             log_video(self.logger, img=b_gt, background=b_img.squeeze(0), title='test_GroundTruth', number=batch_idx,
                          epoch=self.current_epoch)
             log_video(self.logger, img=prev_actions, background=b_img.squeeze(0), title='test_Prediction',
@@ -292,18 +520,18 @@ class RLmodule3D(LightningModule):
 
         self.log_dict(logs, sync_dist=True)
         print(f"Logging took {round(time.time() - start_time, 4)} (s).")
-
-        # with h5py.File('3d_anatomical_reward_100randompred_wclean.h5', 'a') as f:
+        # import h5py
+        # with h5py.File('3d_anatomical_reward_LM+ANAT+T_LAST_TEMPSCALED.h5', 'a') as f:
         #     for i in range(len(b_img)):
         #         dicom = meta_dict.get("case_identifier")[0]
         #         if dicom not in f:
         #             f.create_group(dicom)
-        #         f[dicom]['img'] = b_img[i].cpu().numpy().squeeze(0)
-        #         f[dicom]['gt'] = b_gt[i].cpu().numpy()
-        #         f[dicom]['pred'] = y_pred_np_as_batch.transpose((1, 2, 0))
+        #         f[dicom]['img'] = (b_img[i].cpu().numpy().squeeze(0) * 255 ).astype(np.uint8)
+        #         f[dicom]['gt'] = b_gt[i].cpu().numpy().astype(np.uint8)
+        #         f[dicom]['pred'] = y_pred_np_as_batch.transpose((1, 2, 0)).astype(np.uint8)
         #         clean_reward = self.reward_func.predict_full_sequence(torch.tensor(y_pred_np_as_batch.transpose((1, 2, 0))[None,], device=self.device), b_img, b_gt)
-        #         f[dicom]['reward_map'] = clean_reward[i].cpu().numpy() #prev_rewards_mean[i].cpu().numpy()
-        #         f[dicom]['accuracy_map'] = (prev_actions[i].cpu().numpy() != b_gt[i].cpu().numpy()).astype(np.uint8)
+        #         f[dicom]['reward_map'] = clean_reward[0][i].cpu().numpy() #prev_rewards_mean[i].cpu().numpy()
+        #         f[dicom]['accuracy_map'] = (y_pred_np_as_batch.transpose((1, 2, 0)) != b_gt[i].cpu().numpy()).astype(np.uint8)
 
         if self.hparams.save_on_test:
             #prev_actions = prev_actions.squeeze(0).cpu().detach().numpy()
@@ -313,7 +541,7 @@ class RLmodule3D(LightningModule):
             fname = meta_dict.get("case_identifier")[0]
             spacing = meta_dict.get("original_spacing").cpu().detach().numpy()[0]
             resampled_affine = meta_dict.get("resampled_affine").cpu().detach().numpy()[0]
-            save_dir = os.path.join(self.trainer.default_root_dir, f"testing_raw/{self.trainer.datamodule.get_approx_gt_subpath(fname).rsplit('/', 1)[0]}/")
+            save_dir = os.path.join(self.trainer.default_root_dir, f"testing_raw_LM+ANAT_TTO_AVTV_NEW/{self.trainer.datamodule.get_approx_gt_subpath(fname).rsplit('/', 1)[0]}/")
 
             final_preds = np.expand_dims(prev_actions, 0)
             transform = tio.Resample(spacing)
@@ -346,6 +574,8 @@ class RLmodule3D(LightningModule):
         )
 
         self.reward_func.prepare_for_full_sequence(self.trainer.datamodule.hparams.batch_size)
+        self.initial_test_params = copy.deepcopy(self.actor.actor.net.state_dict())
+
 
     def predict(
         self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
