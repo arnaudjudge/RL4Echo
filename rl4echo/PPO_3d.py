@@ -161,6 +161,8 @@ class PPO3D(RLmodule3D):
         self.divergence_coeff = 0.01
         self.entropy_coef = 0.1
         opt_net, _ = self.configure_optimizers()
+        for g in opt_net.param_groups:
+            g['lr'] = 0.001
 
         with torch.enable_grad():
             batch_image = batch_image
