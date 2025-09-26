@@ -14,7 +14,8 @@ def process(p):
     img = nib.load(p)
     data = img.get_fdata()
     data = data / 255
-    data = exp.equalize_adapthist(data, clip_limit=0.01)
+    for i in range(data.shape[-1]):
+        data[..., i] = exp.equalize_adapthist(data[..., i], clip_limit=0.01)
     out_img = nib.Nifti1Image(data, img.affine, img.header)
     out_path = output_path + p.relative_to(data_path).as_posix()
     # print(out_path)
@@ -24,11 +25,12 @@ def process(p):
 
 
 if __name__ == "__main__":
-    data_path = "/data/icardio/subsets/subset_40k_RL/"
+    data_path = "/data/icardio/subsets/full_3DRL_subset/"
     img_folder = "img/"
-    output_path = "/data/icardio/subsets/subset_40k_RL/"
+    output_path = "/data/icardio/subsets/full_3DRL_subset_norm/"
 
     paths = [p.as_posix() for p in Path(data_path + img_folder).rglob('*.nii.gz')]
+    print(len(paths))
     #pool = multiprocessing.Pool(12)
     #zip(*pool.map(process, paths))
 

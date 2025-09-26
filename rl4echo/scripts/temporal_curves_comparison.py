@@ -16,7 +16,8 @@ from tqdm.contrib.concurrent import process_map
 
 from rl4echo.utils.correctors import AEMorphoCorrector
 from rl4echo.utils.temporal_metrics import get_temporal_consistencies, check_temporal_validity
-from rl4echo.utils.test_metrics import full_test_metrics
+from rl4echo.utils.test_metrics import full_test_metrics, dice, hausdorff
+from vital.data.camus.config import Label
 
 warnings.simplefilter(action='ignore', category=UserWarning)
 
@@ -80,10 +81,32 @@ def do(p, show_plot=False):
     # get voxel spacing
     voxel_spacing = np.asarray([img_nifti.header["pixdim"][1:3]]).repeat(repeats=len(pred_b), axis=0)
 
+
+    test_dice = dice(pred_b, gt_b, labels=(Label.BG, Label.LV, Label.MYO),
+                     exclude_bg=True, all_classes=True)
+    test_dice_epi = dice((pred_b != 0).astype(np.uint8), (gt_b != 0).astype(np.uint8),
+                         labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False)
+    test_hd = hausdorff(pred_b, gt_b, labels=(Label.BG, Label.LV, Label.MYO),
+                        exclude_bg=True, all_classes=True, voxel_spacing=voxel_spacing)
+    test_hd_epi = hausdorff((pred_b != 0).astype(np.uint8), (gt_b != 0).astype(np.uint8),
+                            labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False,
+                            voxel_spacing=voxel_spacing)['Hausdorff']
+    # print(test_dice, test_dice_epi)
+    # print(test_hd, test_hd_epi)
+
     # compute metrics here
-    _, measures = get_temporal_consistencies(pred_b.transpose((0, 2, 1)), (1, 1), skip_measurement_metrics=True)
-    t_val, _ = check_temporal_validity(pred_b.transpose((0, 2, 1)),
+    const, measures = get_temporal_consistencies(pred_b.transpose((0, 2, 1)), (1, 1), skip_measurement_metrics=True)
+    t_val, errors = check_temporal_validity(pred_b.transpose((0, 2, 1)),
                             voxel_spacing[0])
+
+    from vital.metrics.evaluate.attribute import compute_temporal_consistency_metric
+    lv_ = compute_temporal_consistency_metric(measures['lv_area'])
+    print(lv_)
+    lv_errors = [i for i in range(len(const['lv_area'])) if const['lv_area'][i]]
+    myo_ = compute_temporal_consistency_metric(measures['myo_area'])
+    print(myo_)
+    myo_errors = [i for i in range(len(const['myo_area'])) if const['myo_area'][i]]
+    print(lv_errors, myo_errors)
     #
     # FIGURES
     #
@@ -96,7 +119,7 @@ def do(p, show_plot=False):
 
         plt.show()
         print("show")
-    return {p.name : (t_val, measures)}
+    return {p.name : (t_val, measures, lv_errors, myo_errors)}
 
 if __name__ == "__main__":
     GT_PATH = '/data/icardio/subsets/full_3DRL_subset_norm_TESTONLY/segmentation/'
@@ -109,7 +132,8 @@ if __name__ == "__main__":
     # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/MedSAM/iCardio/preds/MedSAM/'
     #     '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_CARDINAL_FROM_MASK-SSL/',
     # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_CARDINAL_NO_MASK-SSL/'
-        '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_LM+ANAT_BEST_NARVAL/']
+        '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_LM+ANAT_BEST_NARVAL/',
+        '/data/icardio/subsets/full_3DRL_subset_norm_TESTONLY/segmentation/']
 
     GIF_PATH = None  # './gifs_RL4Seg_corrected/' # './gifs/'
     if GIF_PATH:
@@ -118,55 +142,76 @@ if __name__ == "__main__":
     measures = []
     for i in range(len(SET_PATHS)):
         m = {}
-        paths = [p for p in Path(SET_PATHS[i]).rglob('*.nii.gz')]
+        paths = [p for p in Path(SET_PATHS[i]).rglob('*di-E60E-*.nii.gz')]
 
         # for idx, p in enumerate(tqdm(paths[::-1], total=len(paths))):
-        #     m.update(do(p, show_plot=False))
+        #     m.update(do(p, show_plot=True))
         all_logs = process_map(do, paths, max_workers=12, chunksize=1)
         for a in all_logs:
             m.update(a)
 
         measures += [m]
-    print(measures[0].keys())
-    print(measures[1].keys())
+    # print(measures[0].keys())
+    # print(measures[1].keys())
 
+    # gt_lv = 0
+    # gt_myo = 0
+    # d2_lv = 0
+    # d2_myo = 0
+    # d3_lv = 0
+    # d3_myo = 0
     for k in measures[0].keys():
+
+        # gt_lv += measures[2][k][2]
+        # gt_myo += measures[2][k][3]
+        # d2_lv += measures[0][k][2]
+        # d2_myo += measures[0][k][3]
+        # d3_lv += measures[1][k][2]
+        # d3_myo += measures[1][k][3]
+
+
         if measures[1][k][0]:
-            fig, ax1 = plt.subplots()
+            fig, ax1 = plt.subplots(figsize=(5,4), tight_layout=True)
+            print(k)
 
             ax1.plot(measures[0][k][1]['lv_area'], color='b')
             ax1.plot(measures[1][k][1]['lv_area'], color='r')
-            # ax1.plot(measures[2][k][1]['lv_area'], color='y')
+            ax1.plot(measures[2][k][1]['lv_area'], color='black')
             # ax1.plot(measures[3][k][1]['lv_area'], color='g')
+            ax1.set_xlabel("Frames", fontsize=12)
+            ax1.set_ylabel("Area (Nb. of pixels)", fontsize=12)
 
+            f, ax2 = plt.subplots(figsize=(5, 4), tight_layout=True)
             # ax2 = ax1.twinx()
-            ax1.plot(measures[0][k][1]['myo_area'], '--',color='b')
-            ax1.plot(measures[1][k][1]['myo_area'], '--', color='r')
-            # ax1.plot(measures[2][k][1]['myo_area'], '--', color='y', )
+            ax2.plot(measures[0][k][1]['myo_area'], color='b')
+            ax2.plot(measures[1][k][1]['myo_area'], color='r')
+            ax2.plot(measures[2][k][1]['myo_area'], color='black')
             # ax1.plot(measures[3][k][1]['myo_area'], '--', color='g', )
 
-            ax1.set_xlabel("Frames")
-            ax1.set_ylabel("Number of pixels")
+            ax2.set_xlabel("Frames", fontsize=12)
+            ax2.set_ylabel("Area (Nb. of pixels)", fontsize=12)
 
             # Create custom handles
             from matplotlib.lines import Line2D
-            attr_handles = [
-                Line2D([], [], color='k', linestyle='-', label='lv_area'),
-                Line2D([], [], color='k', linestyle='--', label='myo_area'),
-            ]
+            # attr_handles = [
+            #     Line2D([], [], color='k', linestyle='-', label='lv_area'),
+            #     Line2D([], [], color='k', linestyle='--', label='myo_area'),
+            # ]
 
             method_handles = [
                 Line2D([], [], color='b', label='RL4Seg (2D)'),
                 Line2D([], [], color='r', label='RL4Seg3D'),
+                Line2D([], [], color='black', label='GT'),
             ]
 
             # Add both legends
-            leg1 = ax1.legend(handles=attr_handles, title="Attribute", loc='upper left')
-            leg2 = ax1.legend(handles=method_handles, title="Method", loc='upper right')
+            # leg1 = ax1.legend(handles=attr_handles, title="Attribute", loc='upper left')
+            leg1 = ax1.legend(handles=method_handles, title="Method", loc='lower left', fontsize=9)
+            leg2 = ax2.legend(handles=method_handles, title="Method", loc='lower right', fontsize=9)
             ax1.add_artist(leg1)
+            ax2.add_artist(leg2)
 
             plt.show()
-
 
     # all_logs = process_map(do, paths, max_workers=12, chunksize=1)
 

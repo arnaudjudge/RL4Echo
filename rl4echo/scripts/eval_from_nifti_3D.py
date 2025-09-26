@@ -111,15 +111,9 @@ def do(p, plot=False, split_mask=False):
 
     pred_b = as_batch(pred)
     gt_b = as_batch(gt)
-    # print(pred_b.shape, gt_b.shape, img.shape)
 
     # get voxel spacing
     voxel_spacing = np.asarray([img_nifti.header["pixdim"][1:3]]).repeat(repeats=len(pred_b), axis=0)
-
-    # pred_corrector = AEMorphoCorrector("nathanpainchaud/echo-arvae")
-    # corrected, _, _, _ = pred_corrector.correct_single_seq(
-    #     torch.tensor(img), torch.tensor(pred), voxel_spacing)
-    # pred_b = as_batch(corrected)
 
     # compute metrics here
     logs = full_test_metrics(pred_b, gt_b, voxel_spacing, device="cpu", verbose=False)
@@ -127,12 +121,6 @@ def do(p, plot=False, split_mask=False):
                  "endo_epi-HD": np.mean([logs["test/hd/LV"], logs["test/hd/epi"]]),
                  "dicom_uuid": img_p.split("/")[-1].split("_0000")[0]})
     logs = {k: float(v.item()) if hasattr(v, 'item') else v for k, v in logs.items()}
-
-    # from vital.utils.image.us.measure import EchoMeasure
-    # from rl4echo.utils.cardiac_cycle_utils import estimate_num_cycles
-    # lv_area = EchoMeasure.structure_area(gt_b.transpose((0, 2, 1)), labels=1)
-    # n_cardiac_cycles, _, _ = estimate_num_cycles(lv_area)
-    # logs = {"num_cycles": n_cardiac_cycles, "average_frame/cycle": len(gt_b)/n_cardiac_cycles}
 
     #
     # FIGURES
@@ -160,6 +148,7 @@ def do(p, plot=False, split_mask=False):
         def update(i):
             im1.set_array(pred[..., i].T)
             im2.set_array(gt[..., i].T)
+            axes[0].set_title(i)
             for b in bk:
                 b.set_array(img[..., i].T)
             return bk[0], bk[1], im1, im2
@@ -177,18 +166,23 @@ if __name__ == "__main__":
     # SET_PATH = "/home/local/USHERBROOKE/juda2901/dev/MemSAM/SAVED_MASKS/"
     # SET_PATH = "/home/local/USHERBROOKE/juda2901/dev/SAMUS/iCardio_testset_flipped/1/" # SET split_mask=False
     # SET_PATH = "/home/local/USHERBROOKE/juda2901/dev/SAMUS/iCardio_testset_flipped/merged/"
-    # SET_PATH = "/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_CARDINAL_NEW_TESTSET/"
+    # SET_PATH = "/home/local/USHERBROOKE/juda2901/dev/RL4Echo/results/testing_raw_CARDINAL_NEW_TESTSET/"
     # SET_PATH = '/data/icardio/subsets/full_3DRL_subset_norm_TESTONLY/2DMICCAI_segmentation/'
     # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/ASCENT/ICARDIO_152TEST/inference_raw/'
     # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/MedSAM/iCardio/preds/MedSAM/'
-    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_CARDINAL_FROM_MASK-SSL/'
-    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_CARDINAL_NO_MASK-SSL/'
-    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_LM+ANAT_BEST_NARVAL/'
-    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_LM+ANAT_BEST_NARVAL_TTA/'
-    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_ANAT_ONLY_BEST_NARVAL_TTA/'
-    SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/testing_raw_ANAT-LM-TEMPO_NARVAL_TTA/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/results/testing_raw_CARDINAL_FROM_MASK-SSL/'
+    SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/results/testing_raw_LM+ANAT_BEST_NARVAL_TTA/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/results/testing_raw_ANAT_ONLY_BEST_NARVAL_TTA/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/results/testing_raw_ANAT-LM-T_NARVAL_TTA_LAST/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/results/testing_raw_UA-MT_fullsize_noSup/'
 
-    GIF_PATH = None #'./gifs_RL4Seg_corrected/' # './gifs/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/results/testing_raw_LM+ANAT_Top3LayerTTO/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/results/testing_raw_LM+ANAT_BEST_TTO_9655/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/results/testing_raw_LM+ANAT_TTO_ONLY_AVTV/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/results/testing_raw_LM+ANAT_TTO_AVTV_NEW/'
+    # SET_PATH = '/home/local/USHERBROOKE/juda2901/dev/RL4Echo/results/testing_raw_LM+ANAT_TTO_AVTV_BEST/'
+
+    GIF_PATH = None
     if GIF_PATH:
         Path(GIF_PATH).mkdir(exist_ok=True)
 
@@ -196,26 +190,17 @@ if __name__ == "__main__":
     df = df[df['split_official_test'] == 'test']
     paths = [p for p in Path(SET_PATH).rglob('*.nii.gz') if p.name.replace(".nii.gz", "") in df['dicom_uuid'].to_list()]
 
+    # if single thread for loop...
     # all_logs = []
-    # for idx, p in enumerate(tqdm(paths[::-1], total=len(paths))):
+    # for idx, p in enumerate(tqdm(reversed(paths[::-1]), total=len(paths))):
     #     all_logs += [do(p, plot=False, split_mask=False)]
         # if idx > 5:
         #     break
-    # all_logs = []
-    # with Pool(processes=10) as pool:
-    #     all_logs = list(
-    #         pool.starmap(
-    #             do,
-    #             zip(
-    #                 paths[:3]
-    #             )
-    #         )
-    #     )
 
     all_logs = process_map(do, paths, max_workers=12, chunksize=1)
 
     # output to csv on sequence wise basis
-    # results_to_excel(all_logs, "RL4Seg3D", "results.xlsx")
+    # results_to_excel(all_logs, "RL4Seg3D_TTO", "results2.xlsx")
 
     #
     # AGGREGATION AND OUTPUT

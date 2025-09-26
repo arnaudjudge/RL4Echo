@@ -111,9 +111,9 @@ def check_temporal_validity(segmentation_3d, voxelspacing, relaxed_factor=None, 
 
 
 if __name__ == "__main__":
-    GT_PATH = '/data/icardio/processed/segmentation/'
-    SET1_PATH = '../../testing_raw_10k16gpu2ndtry/'
-    SET2_PATH = '/data/icardio/MICCAI2024/segmentation/'
+    GT_PATH = '/data/icardio/subsets/full_3DRL_subset_norm_TESTONLY/segmentation/'
+    SET1_PATH = '/data/icardio/subsets/full_3DRL_subset_norm_TESTONLY/2DMICCAI_segmentation/'
+    SET2_PATH = '/data/icardio/subsets/full_3DRL_subset_norm_TESTONLY/2DMICCAI_segmentation/'
 
     GIF_PATH = './gifs/'
     Path(GIF_PATH).mkdir(exist_ok=True)
