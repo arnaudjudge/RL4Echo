@@ -2,7 +2,7 @@
 
 defaults:
   - override /model: ppo
-  - override /datamodule: es_ed
+  - override /datamodule: es_ed_full
   - override /actor/actor@model.actor.actor: categorical_unet_actor
 #  - override /reward@model.reward: pixelwise_accuracy
   - override /corrector@model.corrector: ae

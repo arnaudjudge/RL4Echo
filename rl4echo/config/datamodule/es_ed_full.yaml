@@ -1,0 +1,10 @@
+_target_: rl4echo.datamodules.ES_ED_datamodule.ESEDDataModule
+
+data_dir: ${oc.env:DATA_PATH}/icardio/subsets/full_3DRL_subset_norm_ES_ED/
+csv_file: subset_prelim_splits.csv
+
+subset_frac: 1.0
+test_frac: 0.1
+available_gt: 0.0
+approx_gt_dir: ${logger.save_dir}
+splits_column: split_validated_prelim

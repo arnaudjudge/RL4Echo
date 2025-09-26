@@ -8,6 +8,7 @@ csv_file: cardinal.csv
 splits_column: lm_split2 # column for train-test-val split, will be created if doesn't yet exist
 seed: ${seed}
 
+max_image_area: null
 common_spacing: [0.37, 0.37, 1] # approx average spacing in dataset
 max_window_len: 4
 max_batch_size: 1

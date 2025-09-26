@@ -6,7 +6,7 @@ logger_run_name: '${get_class_name: ${model._target_}}_${run_name}'
 defaults:
   - logger: comet
   - model: rewardnet_3d
-  - datamodule: landmark_rewardnet_diff_3d
+  - datamodule: rewardnet_diff_3d
   - callbacks: default
 
   - _self_
@@ -14,7 +14,7 @@ defaults:
 seed: 1
 
 model:
-  save_model_path: ./reward_net_3d_landmarkbigelipse_mse.ckpt
+  save_model_path: null
 
 callbacks:
   model_checkpoint:

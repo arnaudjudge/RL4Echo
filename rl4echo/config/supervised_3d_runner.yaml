@@ -12,6 +12,8 @@ defaults:
 #  - experiment: supervised_camus
 
 seed: 1
+model:
+  seed: ${seed}
 
 callbacks:
   model_checkpoint:
@@ -31,4 +33,5 @@ trainer:
   log_every_n_steps: 1
   accelerator: gpu
   devices: 1
+  accumulate_grad_batches: 16
   #num_sanity_val_steps: 0 # skip sanity check (convenient for debugging directly in train step)
