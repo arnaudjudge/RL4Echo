@@ -1,3 +1,6 @@
+import torch
+torch.set_float32_matmul_precision('medium')
+
 import os
 from pathlib import Path
 
@@ -65,12 +68,13 @@ def main(cfg):
 
     # test with everything
     datamodule.hparams.subset_frac = 1.0
+    trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger, inference_mode=False)
     trainer.test(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
 
     if getattr(cfg.model, "predict_save_dir", None) and cfg.predict_subset_frac > 0:
         datamodule.hparams.subset_frac = cfg.predict_subset_frac
         trainer.predict(model=model, dataloaders=datamodule, ckpt_path=ckpt_path)
-        if cfg.save_csv_after_predict and trainer.global_rank == 0:
+        if cfg.get("save_csv_after_predict", None) and trainer.world_size > 1 and trainer.global_rank == 0:
             for p in Path(f"{model.temp_files_path}/").glob("temp_pred_*.csv"):
                 df = pd.read_csv(p, index_col=0)
                 datamodule.df.loc[df.index] = df
