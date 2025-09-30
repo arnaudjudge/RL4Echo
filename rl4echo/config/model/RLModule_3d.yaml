@@ -1,5 +1,5 @@
 defaults:
-  - /reward: rewardunet3d
+  - /reward: rewardunets_3d
   - /corrector: ae
 
 actor_save_path: null
