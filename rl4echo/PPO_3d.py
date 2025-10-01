@@ -159,7 +159,7 @@ class PPO3D(RLmodule3D):
         self.train()
         augmentations = 3
         self.divergence_coeff = 0.01
-        self.entropy_coef = 0.1
+        self.entropy_coeff = 0.1
         opt_net, _ = self.configure_optimizers()
         for g in opt_net.param_groups:
             g['lr'] = 0.001

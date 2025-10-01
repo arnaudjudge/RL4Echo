@@ -2,11 +2,9 @@ defaults:
   - net: unet3d.yaml
 
 _target_: rl4echo.actors.Actors_3d.Unet3DActorCategorical
-#pretrain_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/rl4echo/actor_3d_first.ckpt
-#ref_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/rl4echo/actor_3d_first.ckpt
 
-pretrain_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/cardinal_4gpu_longer.ckpt
-ref_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/cardinal_4gpu_longer.ckpt
+pretrain_ckpt: null #/home/local/USHERBROOKE/juda2901/dev/RL4Echo/cardinal_4gpu_longer.ckpt
+ref_ckpt: null #/home/local/USHERBROOKE/juda2901/dev/RL4Echo/cardinal_4gpu_longer.ckpt
 
 #pretrain_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/actor_ANAT_LM_BEST.ckpt
 #ref_ckpt: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/actor_ANAT_LM_BEST.ckpt

@@ -4,14 +4,14 @@ Hydra allows the use of [external plugins](https://hydra.cc/docs/advanced/plugin
 
 ## [SearchPath](https://hydra.cc/docs/advanced/search_path)
 
-The [`patchless_nnunet` module](searchpath/patchless_nnunet.py) for `searchpath` allows other projects to access `patchless_nnunet` configs without specifying the search path in each primary config.
+The [`rl4echo` module](searchpath/patchless_nnunet.py) for `searchpath` allows other projects to access `rl4echo` configs without specifying the search path in each primary config.
 
 It replaces the following lines in primary configs:
 
 ```yaml
 hydra:
  searchpath:
-   - pkg://patchless_nnunet.config
+   - pkg://rl4echo.config
 ```
 
 ### Additional resources

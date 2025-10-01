@@ -66,7 +66,9 @@ class RLmodule3D(LightningModule):
                  save_csv_after_predict=None,
                  val_batch_size=4,
                  tta=True,
+                 tto='off',
                  temp_files_path='.',
+                 inference=False,
                  *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
@@ -260,7 +262,7 @@ class RLmodule3D(LightningModule):
         temporal_valid, _ = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
                                                                       voxel_spacing[0])
         validated = int(all(anat_errors)) and temporal_valid
-        if not validated:
+        if self.hparams.tto == 'force' or (not validated and self.hparams.tto == 'on'):
             self.actor.actor.net.load_state_dict(self.initial_test_params, strict=False)
 
             start_time = time.time()
@@ -546,6 +548,9 @@ class RLmodule3D(LightningModule):
         print(f"critic saved at: {critic_save_path}")
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Any:
+        if self.hparams.inference:
+            final_preds = self.inference_predict_step(batch, batch_idx)
+            return final_preds
         # must be batch size 1 as images have varied sizes
         b_img, meta_dict = batch['img'].squeeze(0), batch['image_meta_dict']
         id = meta_dict['case_identifier'][0]
@@ -667,7 +672,103 @@ class RLmodule3D(LightningModule):
         self.actor.actor.net.load_state_dict(initial_params)
         self.predicted_rows += [self.trainer.datamodule.df.loc[self.trainer.datamodule.df['dicom_uuid'] == id]]
 
+    def on_predict_start(self) -> None:  # noqa: D102
+        if self.hparams.inference:
+            super().on_predict_start()
+            if self.trainer.datamodule is None:
+                sw_batch_size = 2
+            else:
+                sw_batch_size = self.trainer.datamodule.hparams.batch_size
+
+            self.inferer = SlidingWindowInferer(
+                roi_size=self.actor.actor.net.patch_size,
+                sw_batch_size=sw_batch_size,
+                overlap=0.5,
+                mode='gaussian',
+                cache_roi_weight_map=True,
+            )
+
+            print(f"\n\nPredict step parameters: \n"
+                  f"    - Sliding window len: {4}\n"
+                  f"    - Sliding window overlap: {0.5}\n"
+                  f"    - Sliding window importance map: {'gaussian'}\n")
+            self.initial_test_params = copy.deepcopy(self.actor.actor.net.state_dict())
+
+    def inference_predict_step(self, batch: dict[str, Tensor], batch_idx: int):
+        img, properties_dict = batch["image"], batch["image_meta_dict"]
+
+        self.patch_size = list([img.shape[-3], img.shape[-2], 4])
+        self.inferer.roi_size = self.patch_size
+
+        start_time = time.time()
+        preds = self.tta_predict(img) if self.hparams.tta else self.predict(img).argmax(dim=1)
+        print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
+
+        # check if valid or else do TTO if is tto=True
+        if self.hparams.tto in ['force', 'on']:
+            start_time = time.time()
+            y_pred_np_as_batch = preds.squeeze(0).cpu().numpy().transpose((2, 0, 1))
+
+            for i in range(len(y_pred_np_as_batch)):
+                lbl, num = ndimage.measurements.label(y_pred_np_as_batch[i] != 0)
+                # Count the number of elements per label
+                count = np.bincount(lbl.flat)
+                # Select the largest blob
+                maxi = np.argmax(count[1:]) + 1
+                # Remove the other blobs
+                y_pred_np_as_batch[i][lbl != maxi] = 0
+
+            # should be still valid to use resampled spacing for metrics here
+            voxel_spacing = np.asarray([[0.37, 0.37]]).repeat(repeats=len(y_pred_np_as_batch), axis=0)
+            print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
+
+            anat_errors = is_anatomically_valid(y_pred_np_as_batch)
+            temporal_valid, _ = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
+                                                        voxel_spacing[0])
+            validated = int(all(anat_errors)) and temporal_valid
+            if self.hparams.tto == 'force' or (not validated and self.hparams.tto == 'on'):
+                self.actor.actor.net.load_state_dict(self.initial_test_params, strict=False)
+
+                start_time = time.time()
+                self.ttoptimize(img)
+                print(f"\nTTOverfit took {round(time.time() - start_time, 4)} (s).")
+
+                start_time = time.time()
+                preds = self.tta_predict(img) if self.hparams.tta else self.predict(img).argmax(dim=1)
+                print(f"\nPost-TTO Prediction took {round(time.time() - start_time, 4)} (s).")
+
+        preds = preds.squeeze(0).cpu().detach().numpy()
+
+        original_shape = properties_dict.get("original_shape").cpu().detach().numpy()[0]
+        fname = properties_dict.get("case_identifier")[0]
+        spacing = properties_dict.get("original_spacing").cpu().detach().numpy()[0]
+        resampled_affine = properties_dict.get("resampled_affine").cpu().detach().numpy()[0]
+        affine = properties_dict.get('original_affine').cpu().detach().numpy()[0]
+
+        print(preds.shape)
+        final_preds = np.expand_dims(preds, 0)
+        print(final_preds.shape)
+        y_pred_np_as_batch = final_preds[0].transpose((2, 0, 1))
+        for i in range(len(y_pred_np_as_batch)):
+            lbl, num = ndimage.measurements.label(y_pred_np_as_batch[i] != 0)
+            # Count the number of elements per label
+            count = np.bincount(lbl.flat)
+            # Select the largest blob
+            maxi = np.argmax(count[1:]) + 1
+            # Remove the other blobs
+            y_pred_np_as_batch[i][lbl != maxi] = 0
+
+        transform = tio.Resample(spacing)
+        croporpad = tio.CropOrPad(original_shape)
+        final_preds = croporpad(transform(tio.LabelMap(tensor=final_preds, affine=resampled_affine))).numpy()[0]
+
+        save_dir = os.path.join(self.trainer.default_root_dir, "inference_raw")
+
+        self.save_mask(final_preds, fname, spacing, save_dir)
+        return final_preds
+
     def on_predict_epoch_end(self) -> None:
-        # for multi gpu cases, save intermediate file before sending to main csv
-        print(f"Saving temporary rows file to : {f'{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv'}")
-        pd.concat(self.predicted_rows).to_csv(f"{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv")
+        if not self.hparams.inference:
+            # for multi gpu cases, save intermediate file before sending to main csv
+            print(f"Saving temporary rows file to : {f'{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv'}")
+            pd.concat(self.predicted_rows).to_csv(f"{self.temp_files_path}/temp_pred_{self.trainer.global_rank}.csv")

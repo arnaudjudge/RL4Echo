@@ -59,6 +59,7 @@ comet-ml = '>=3.31.0'
 moviepy = "*"
 strenum = "*"
 keras-preprocessing = "*"
+opencv-python = '*'
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^2.20.0"
@@ -77,7 +78,7 @@ nbQA = "==1.7.0"
 
 [tool.poetry.scripts]
 rl_loop = "rl4echo.auto_iteration:main"
-
+predict_3d = "rl4echo.predict_3d:main"
 
 [tool.pytest.ini_options]
 addopts = [
@@ -112,7 +113,7 @@ exclude = "(.eggs|.git|.hg|.mypy_cache|.nox|.tox|.venv|.svn|_build|buck-out|buil
 [tool.isort]
 profile = "black"
 line_length = 99
-src_paths = [""]
+src_paths = ["rl4echo"]
 
 [tool.bandit]
 exclude_dirs = ["tests"]
