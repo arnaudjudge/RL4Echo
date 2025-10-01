@@ -17,3 +17,4 @@ class RL4EchoSearchPathPlugin(SearchPathPlugin):  # noqa: D101
         # Remember to verify the config is packaged properly (build sdist and look inside,
         # and verify MANIFEST.in is correct).
         search_path.append(provider="rl4echo-searchpath-plugin", path="pkg://rl4echo.config")
+        search_path.append(provider="rl4echo-searchpath-plugin", path="pkg://configs")
