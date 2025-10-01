@@ -65,5 +65,5 @@ Preprint available at: https://www.arxiv.org/abs/2406.17902
    predict_3d input_folder=<PATH/TO/DATA/> output_folder=<OUT/> ckpt_path=<checkpoint_file> tta=False tto=off
    ```
 
-To run this code, use the runner.py script for individual runs, 
-or the auto_iteration.py script for full RL loops.
+To run training, use the runner.py script for individual runs, 
+or the auto_iteration.py script for full RL loops. (WILL BE IMPROVED FOR BETTER USABILITY!)
