@@ -704,8 +704,8 @@ class RLmodule3D(LightningModule):
         preds = self.tta_predict(img) if self.hparams.tta else self.predict(img).argmax(dim=1)
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
-        # check if valid or else do TTO is tto=True
-        if self.hparams.tto == 'force' or (not validated and self.hparams.tto == 'on'):
+        # check if valid or else do TTO if is tto=True
+        if self.hparams.tto in ['force', 'on']:
             start_time = time.time()
             y_pred_np_as_batch = preds.squeeze(0).cpu().numpy().transpose((2, 0, 1))
 
@@ -726,7 +726,7 @@ class RLmodule3D(LightningModule):
             temporal_valid, _ = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
                                                         voxel_spacing[0])
             validated = int(all(anat_errors)) and temporal_valid
-            if self.hparams.tto:
+            if self.hparams.tto == 'force' or (not validated and self.hparams.tto == 'on'):
                 self.actor.actor.net.load_state_dict(self.initial_test_params, strict=False)
 
                 start_time = time.time()
@@ -738,10 +738,8 @@ class RLmodule3D(LightningModule):
                 print(f"\nPost-TTO Prediction took {round(time.time() - start_time, 4)} (s).")
 
         preds = preds.squeeze(0).cpu().detach().numpy()
-        original_shape = properties_dict.get("original_shape").cpu().detach().numpy()[0]
-        # if len(preds.shape[1:]) == len(original_shape) - 1:
-        #     preds = preds[..., None]
 
+        original_shape = properties_dict.get("original_shape").cpu().detach().numpy()[0]
         fname = properties_dict.get("case_identifier")[0]
         spacing = properties_dict.get("original_spacing").cpu().detach().numpy()[0]
         resampled_affine = properties_dict.get("resampled_affine").cpu().detach().numpy()[0]
@@ -766,9 +764,7 @@ class RLmodule3D(LightningModule):
 
         save_dir = os.path.join(self.trainer.default_root_dir, "inference_raw")
 
-        # if self.hparams.save_predictions:
         self.save_mask(final_preds, fname, spacing, save_dir)
-            # self.save_mask(croporpad(transform(tio.ScalarImage(tensor=img.cpu().numpy().squeeze(0), affine=resampled_affine))).numpy()[0]*255, "img_"+fname, spacing, save_dir)
         return final_preds
 
     def on_predict_epoch_end(self) -> None:

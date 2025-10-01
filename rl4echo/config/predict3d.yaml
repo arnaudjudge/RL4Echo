@@ -23,9 +23,9 @@ ckpt_path: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/narval_LM+ANAT_30kvalid_
 # whether to use test time augmentation
 tta: True
 
-# whether to use test time optimization scheme: 'force' (always), 'on' (when antomical or temporal metrics fail) or 'off'
+# whether to use test time optimization scheme: 'force' (always), 'on' (anatomical or temporal metrics fail) or 'off'
 # any other value will be considered 'off'
-tto: force
+tto: 'on'
 
 # whether to overwrite existing predictions in the output folder
 overwrite_existing: True

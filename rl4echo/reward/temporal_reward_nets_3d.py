@@ -1,5 +1,6 @@
 from copy import deepcopy
 from typing import Union, List
+from pathlib import Path
 
 import numpy as np
 import scipy.ndimage
@@ -22,7 +23,11 @@ class TemporalRewardUnets3D(Reward):
         self.nets = {}
         for name, path in state_dict_paths.items():
             n = deepcopy(net)
-            n.load_state_dict(torch.load(path))
+            if path and Path(path).exists():
+                n.load_state_dict(torch.load(path))
+            else:
+                print(f"BEWARE! You don't have a valid path for this reward net: {name}"
+                      "Ignore if using full checkpoint file")
             n.eval()
             self.nets.update({name: n})
         self.temp_factor = temp_factor
