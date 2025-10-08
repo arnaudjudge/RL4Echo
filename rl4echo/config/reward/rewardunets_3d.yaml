@@ -4,10 +4,10 @@ defaults:
 _target_: rl4echo.reward.reward_nets_3d.RewardUnets3D
 
 state_dict_paths:
-  anatomical: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/narval_lm+anat-run_RNet1.ckpt # rewardnet_5000best.ckpt
-  landmarks: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/reward_net_3d_landmarks2-0.ckpt
+  anatomical: null #/home/local/USHERBROOKE/juda2901/dev/RL4Echo/narval_lm+anat-run_RNet1.ckpt # rewardnet_5000best.ckpt
+  landmarks: null #/home/local/USHERBROOKE/juda2901/dev/RL4Echo/reward_net_3d_landmarks2-0.ckpt
 
-temp_factor: 1 #4.5989
+temp_factor: 1 #4.5989 optimal factor for LM+ANAT calibration
 
 net:
   in_channels: 2
