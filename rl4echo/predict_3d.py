@@ -104,20 +104,33 @@ class RL4Echo3DPredictor:
         # find all nifti files in input_path
         # open and get relevant information
         # add to list of data
-        for nifti_file_p in Path(input_path).rglob('*.nii*'):
-            nifti_img = nib.load(nifti_file_p)
+        input_path = Path(input_path)
 
-            data = nifti_img.get_fdata()[None,]
+        # Handle single NIfTI file
+        if input_path.is_file() and input_path.suffix.startswith('.nii'):
+            nifti_files = [input_path]
+        # Handle folder of NIfTI files
+        elif input_path.is_dir():
+            nifti_files = list(input_path.rglob('*.nii*'))
+        else:
+            raise ValueError(f"Invalid input path: {input_path}")
+
+        for nifti_file_p in nifti_files:
+            nifti_img = nib.load(nifti_file_p)
+            data = nifti_img.get_fdata()[None,]  # add batch/channel dim
+
+            data = rescale(data)
             if apply_eq_hist:
-                data = rescale(data)
                 data = apply_eq_adapthist(data)
+
             hdr = nifti_img.header
             aff = nifti_img.affine
-
-            meta = {"filename_or_obj": nifti_file_p.stem.split('.')[0].strip("_0000"),
-                    "pixdim": hdr['pixdim'],
-                    "original_affine": aff}
-            tensor_list += [{'image': MetaTensor(torch.tensor(data, dtype=torch.float32), meta=meta)}]
+            meta = {
+                "filename_or_obj": nifti_file_p.stem.split('.')[0].strip("_0000"),
+                "pixdim": hdr['pixdim'],
+                "original_affine": aff
+            }
+            tensor_list.append({'image': MetaTensor(torch.tensor(data, dtype=torch.float32), meta=meta)})
         return tensor_list
 
     @staticmethod
