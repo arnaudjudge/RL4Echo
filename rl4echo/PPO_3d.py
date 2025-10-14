@@ -27,6 +27,8 @@ class PPO3D(RLmodule3D):
 
         # since optimization is done manually, this flag needs to be set
         self.automatic_optimization = False
+        # enable loading of partial model weights
+        self.strict_loading = False
 
     def training_step(self, batch: dict[str, Tensor], nb_batch):
         """

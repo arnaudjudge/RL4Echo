@@ -28,7 +28,7 @@ class PatchlessPreprocess(MapTransform):
     """
 
     def __init__(
-        self, keys, common_spacing,
+        self, keys, common_spacing, inference_dir,
     ) -> None:
         """Initialize class instance.
 
@@ -39,6 +39,7 @@ class PatchlessPreprocess(MapTransform):
         super().__init__(keys)
         self.keys = keys
         self.common_spacing = np.array(common_spacing)
+        self.inference_dir = inference_dir
 
     def __call__(self, data: dict[str, str]):
         # load data
@@ -47,7 +48,8 @@ class PatchlessPreprocess(MapTransform):
 
         image_meta_dict = {"case_identifier": os.path.basename(image._meta["filename_or_obj"]),
                            "original_shape": np.array(image.shape[1:]),
-                           "original_spacing": np.array(image._meta["pixdim"][1:4].tolist())}
+                           "original_spacing": np.array(image._meta["pixdim"][1:4].tolist()),
+                           "inference_save_dir": self.inference_dir}
         original_affine = np.array(image._meta["original_affine"].tolist())
         image_meta_dict["original_affine"] = original_affine
 
@@ -141,10 +143,6 @@ class RL4Echo3DPredictor:
         Raises:
             ValueError: If the checkpoint path is not provided.
         """
-        # apply extra utilities
-        # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
-        utils.extras(cfg)
-
         if not cfg.ckpt_path:
             raise ValueError("ckpt_path must not be empty!")
 
@@ -160,7 +158,7 @@ class RL4Echo3DPredictor:
             "trainer": trainer,
         }
 
-        preprocessed = PatchlessPreprocess(keys='image', common_spacing=cfg.common_spacing)
+        preprocessed = PatchlessPreprocess(keys='image', common_spacing=cfg.common_spacing, inference_dir=cfg.output_folder)
         tf = transforms.compose.Compose([preprocessed, ToTensord(keys="image", track_meta=True)])
 
         numpy_arr_data = RL4Echo3DPredictor.get_array_dataset(cfg.input_folder, cfg.apply_eq_hist)

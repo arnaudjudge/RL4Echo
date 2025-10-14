@@ -513,7 +513,8 @@ class RLmodule3D(LightningModule):
         )
 
     def save_mask(
-        self, preds: np.ndarray, fname: str, spacing: np.ndarray, save_dir: Union[str, Path]
+        self, preds: np.ndarray, fname: str, spacing: np.ndarray, save_dir: Union[str, Path],
+            type: type[np.generic] | type[float] = np.uint8,
     ) -> None:
         """Save segmentation mask to the given save directory.
 
@@ -527,7 +528,7 @@ class RLmodule3D(LightningModule):
 
         os.makedirs(save_dir, exist_ok=True)
 
-        preds = preds.astype(np.uint8)
+        preds = preds.astype(type)
         itk_image = sitk.GetImageFromArray(rearrange(preds, "w h d ->  d h w"))
         itk_image.SetSpacing(spacing)
         sitk.WriteImage(itk_image, os.path.join(save_dir, str(fname) + ".nii.gz"))
@@ -766,6 +767,114 @@ class RLmodule3D(LightningModule):
 
         self.save_mask(final_preds, fname, spacing, save_dir)
         return final_preds
+
+    def on_predict_start(self) -> None:  # noqa: D102
+        if self.hparams.inference:
+            super().on_predict_start()
+            if self.trainer.datamodule is None:
+                sw_batch_size = 2
+            else:
+                sw_batch_size = self.trainer.datamodule.hparams.batch_size
+
+            self.inferer = SlidingWindowInferer(
+                roi_size=self.actor.actor.net.patch_size,
+                sw_batch_size=sw_batch_size,
+                overlap=0.5,
+                mode='gaussian',
+                cache_roi_weight_map=True,
+            )
+
+            self.reward_func.prepare_for_full_sequence()
+
+            print(f"\n\nPredict step parameters: \n"
+                  f"    - Sliding window len: {4}\n"
+                  f"    - Sliding window overlap: {0.5}\n"
+                  f"    - Sliding window importance map: {'gaussian'}\n")
+            self.initial_test_params = copy.deepcopy(self.actor.actor.net.state_dict())
+
+    def inference_predict_step(self, batch: dict[str, Tensor], batch_idx: int):
+        img, properties_dict = batch["image"], batch["image_meta_dict"]
+
+        self.patch_size = list([img.shape[-3], img.shape[-2], 4])
+        self.inferer.roi_size = self.patch_size
+
+        start_time = time.time()
+        preds = self.tta_predict(img) if self.hparams.tta else self.predict(img).argmax(dim=1)
+        print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
+
+        # check if valid or else do TTO if is tto=True
+        if self.hparams.tto in ['force', 'on']:
+            start_time = time.time()
+            y_pred_np_as_batch = preds.squeeze(0).cpu().numpy().transpose((2, 0, 1))
+
+            for i in range(len(y_pred_np_as_batch)):
+                lbl, num = ndimage.measurements.label(y_pred_np_as_batch[i] != 0)
+                # Count the number of elements per label
+                count = np.bincount(lbl.flat)
+                # Select the largest blob
+                maxi = np.argmax(count[1:]) + 1
+                # Remove the other blobs
+                y_pred_np_as_batch[i][lbl != maxi] = 0
+
+            # should be still valid to use resampled spacing for metrics here
+            voxel_spacing = np.asarray([[0.37, 0.37]]).repeat(repeats=len(y_pred_np_as_batch), axis=0)
+            print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
+
+            anat_errors = is_anatomically_valid(y_pred_np_as_batch)
+            temporal_valid, _ = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
+                                                        voxel_spacing[0])
+            validated = int(all(anat_errors)) and temporal_valid
+            if self.hparams.tto == 'force' or (not validated and self.hparams.tto == 'on'):
+                self.actor.actor.net.load_state_dict(self.initial_test_params, strict=False)
+
+                start_time = time.time()
+                self.ttoptimize(img)
+                print(f"\nTTOverfit took {round(time.time() - start_time, 4)} (s).")
+
+                start_time = time.time()
+                preds = self.tta_predict(img) if self.hparams.tta else self.predict(img).argmax(dim=1)
+                print(f"\nPost-TTO Prediction took {round(time.time() - start_time, 4)} (s).")
+
+        # remove extra blobs if any
+        y_pred_np_as_batch = preds[0].cpu().numpy().transpose((2, 0, 1))
+        for i in range(len(y_pred_np_as_batch)):
+            lbl, num = ndimage.measurements.label(y_pred_np_as_batch[i] != 0)
+            # Count the number of elements per label
+            count = np.bincount(lbl.flat)
+            # Select the largest blob
+            maxi = np.argmax(count[1:]) + 1
+            # Remove the other blobs
+            y_pred_np_as_batch[i][lbl != maxi] = 0
+        preds = torch.tensor(y_pred_np_as_batch.transpose((1, 2, 0))[None,], device=self.device)
+
+        # get reward maps
+        rew = self.reward_func.predict_full_sequence(preds, img, None)
+        merged = torch.minimum(rew[0], rew[1]) if len(rew) > 1 else rew[0]
+
+        preds = preds.cpu().detach().numpy()
+        merged = merged.cpu().detach().numpy()
+        rew = [r.cpu().detach().numpy() for r in rew]
+
+        # save stuff
+        original_shape = properties_dict.get("original_shape").cpu().detach().numpy()[0]
+        fname = properties_dict.get("case_identifier")[0]
+        spacing = properties_dict.get("original_spacing").cpu().detach().numpy()[0]
+        resampled_affine = properties_dict.get("resampled_affine").cpu().detach().numpy()[0]
+        affine = properties_dict.get('original_affine').cpu().detach().numpy()[0]
+
+        transform = tio.Resample(spacing)
+        croporpad = tio.CropOrPad(original_shape)
+
+        inference_save_dir = properties_dict.get("inference_save_dir", None)
+        save_dir = inference_save_dir[0] if inference_save_dir else os.path.join(self.trainer.default_root_dir, "inference_raw")
+
+        self.save_mask(croporpad(transform(tio.LabelMap(tensor=preds, affine=resampled_affine))).numpy()[0],
+                       fname, spacing, save_dir)
+        self.save_mask(croporpad(transform(tio.ScalarImage(tensor=merged, affine=resampled_affine))).numpy()[0],
+                       fname + "_merged_reward", spacing, save_dir, type=float)
+        [self.save_mask(croporpad(transform(tio.ScalarImage(tensor=rew[i], affine=resampled_affine))).numpy()[0],
+                       fname + f"_{i}_reward", spacing, save_dir, type=float) for i in range(len(rew))]
+        return preds, merged, rew
 
     def on_predict_epoch_end(self) -> None:
         if not self.hparams.inference:
