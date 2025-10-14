@@ -7,6 +7,7 @@ import nibabel as nib
 import numpy as np
 import torch
 import torchio as tio
+from dotenv import load_dotenv
 from lightning import LightningModule
 from lightning import Trainer
 from monai import transforms
@@ -14,9 +15,10 @@ from monai.data import DataLoader, ArrayDataset, MetaTensor
 from monai.transforms import MapTransform
 from monai.transforms import ToTensord
 from omegaconf import DictConfig
-import skimage.exposure as exp
 
 from patchless_nnunet import utils, setup_root
+from rl4echo.utils.preprocessing import apply_eq_adapthist, rescale
+
 
 log = utils.get_pylogger(__name__)
 
@@ -28,7 +30,7 @@ class PatchlessPreprocess(MapTransform):
     """
 
     def __init__(
-        self, keys, common_spacing, inference_dir,
+            self, keys, common_spacing, inference_dir,
     ) -> None:
         """Initialize class instance.
 
@@ -102,18 +104,13 @@ class RL4Echo3DPredictor:
         # find all nifti files in input_path
         # open and get relevant information
         # add to list of data
-        for nifti_file_p in Path(input_path).rglob('*.nii.gz'):
+        for nifti_file_p in Path(input_path).rglob('*.nii*'):
             nifti_img = nib.load(nifti_file_p)
 
-            data = np.expand_dims(nifti_img.get_fdata(), 0)
-
+            data = nifti_img.get_fdata()[None,]
             if apply_eq_hist:
-                print("Applying equalize_adapthist")
-                # arbitrary 200 for int-equivalent images, improve this
-                data = data / 255 if data.max() > 200 else np.clip(data, 0, 1)
-                for i in range(data.shape[-1]):
-                    data[0, ..., i] = exp.equalize_adapthist(data[0, ..., i], clip_limit=0.01)
-
+                data = rescale(data)
+                data = apply_eq_adapthist(data)
             hdr = nifti_img.header
             aff = nifti_img.affine
 
@@ -187,6 +184,8 @@ class RL4Echo3DPredictor:
 
 def main():
     """Run the script."""
+    load_dotenv()
+
     RL4Echo3DPredictor.main()
 
 
