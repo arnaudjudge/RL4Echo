@@ -762,7 +762,7 @@ class RLmodule3D(LightningModule):
 
         # save stuff
         original_shape = properties_dict.get("original_shape").cpu().detach().numpy()[0]
-        fname = properties_dict.get("case_identifier")[0]
+        fname = properties_dict.get("case_identifier")[0].strip("_0000")
         spacing = properties_dict.get("original_spacing").cpu().detach().numpy()[0]
         resampled_affine = properties_dict.get("resampled_affine").cpu().detach().numpy()[0]
         affine = properties_dict.get('original_affine').cpu().detach().numpy()[0]

@@ -51,7 +51,8 @@ class PatchlessPreprocess(MapTransform):
         image_meta_dict = {"case_identifier": os.path.basename(image._meta["filename_or_obj"]),
                            "original_shape": np.array(image.shape[1:]),
                            "original_spacing": np.array(image._meta["pixdim"][1:4].tolist()),
-                           "inference_save_dir": self.inference_dir}
+                           "inference_save_dir": image._meta["inference_save_dir"], #self.inference_dir}
+                           }
         original_affine = np.array(image._meta["original_affine"].tolist())
         image_meta_dict["original_affine"] = original_affine
 
@@ -131,7 +132,8 @@ class RL4Echo3DPredictor:
             meta = {
                 "filename_or_obj": nifti_file_p.stem.split('.')[0].strip("_0000"),
                 "pixdim": hdr['pixdim'],
-                "original_affine": aff
+                "original_affine": aff,
+                "inference_save_dir": Path(nifti_file_p).parent.as_posix().replace('img', 'segmentation')
             }
             tensor_list.append({'image': MetaTensor(torch.tensor(data, dtype=torch.float32), meta=meta)})
         return tensor_list
