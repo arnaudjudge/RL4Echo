@@ -137,7 +137,9 @@ class RL4Echo3DPredictor:
                 "inference_save_dir": Path(nifti_file_p).parent.as_posix().replace('img', 'segmentation'),
                 "csv_filename": input_path.as_posix().replace(".txt", ".csv")
             }
-            if not Path(Path(nifti_file_p).parent.as_posix().replace('img', 'segmentation') + '/' + nifti_file_p.stem.split('.')[0].strip("_0000") + '.nii.gz').exists():
+            csv_path = Path(input_path.as_posix().replace(".txt", ".csv"))
+            dicom = nifti_file_p.stem.split('.')[0].removesuffix("_0000")
+            if not csv_path.exists() or dicom not in csv_path.read_text():
                 tensor_list.append({'image': MetaTensor(torch.tensor(data, dtype=torch.float32), meta=meta)})
         return tensor_list
 

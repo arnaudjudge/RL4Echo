@@ -729,7 +729,7 @@ class RLmodule3D(LightningModule):
         temporal_valid, temporal_errors = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
                                                     voxel_spacing[0])
         validated = int(all(anat_errors)) and temporal_valid
-
+        tto_used = False
         # check if valid or else do TTO if is tto=True
         if self.hparams.tto in ['force', 'on']:
             if self.hparams.tto == 'force' or (not validated and self.hparams.tto == 'on'):
@@ -742,6 +742,7 @@ class RLmodule3D(LightningModule):
                 start_time = time.time()
                 preds = self.tta_predict(img) if self.hparams.tta else self.predict(img).argmax(dim=1)
                 print(f"\nPost-TTO Prediction took {round(time.time() - start_time, 4)} (s).")
+                tto_used = True
 
                 # remove extra blobs if any
                 y_pred_np_as_batch = preds[0].cpu().numpy().transpose((2, 0, 1))
@@ -790,9 +791,9 @@ class RLmodule3D(LightningModule):
                        fname + f"_{i}_reward", spacing, save_dir) for i in range(len(rew))]
 
         csvfilename = properties_dict.get("csv_filename")[0]
-        header = ['dicom_uuid', 'anat_val', 'anat_val_frames', 'temporal_val', 'temporal_errors', 'min_reward_frame']
+        header = ['dicom_uuid', 'anat_val', 'anat_val_frames', 'temporal_val', 'temporal_errors', 'min_reward_frame', 'tto']
 
-        row = [fname, bool(all(anat_errors)), anat_errors.tolist(), temporal_valid, temporal_errors, min_reward_frame]
+        row = [fname, bool(all(anat_errors)), anat_errors.tolist(), temporal_valid, temporal_errors, min_reward_frame, tto_used]
         file_exists = os.path.isfile(csvfilename)
         with open(csvfilename, 'a', newline='') as file:
             writer = csv.writer(file)
