@@ -135,7 +135,8 @@ class RL4Echo3DPredictor:
                 "original_affine": aff,
                 "inference_save_dir": Path(nifti_file_p).parent.as_posix().replace('img', 'segmentation')
             }
-            tensor_list.append({'image': MetaTensor(torch.tensor(data, dtype=torch.float32), meta=meta)})
+            if not Path(Path(nifti_file_p).parent.as_posix().replace('img', 'segmentation') + '/' + nifti_file_p.stem.split('.')[0].strip("_0000") + '.nii.gz').exists():
+                tensor_list.append({'image': MetaTensor(torch.tensor(data, dtype=torch.float32), meta=meta)})
         return tensor_list
 
     @staticmethod
