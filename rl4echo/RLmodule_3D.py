@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Union
+import csv
 
 import SimpleITK as sitk
 import nibabel as nib
@@ -15,6 +16,7 @@ import torchio as tio
 from einops import rearrange
 from lightning import LightningModule
 from monai.data import MetaTensor
+from numpy.distutils.conv_template import header
 from scipy import ndimage
 from torch import Tensor
 from torch.nn.functional import pad
@@ -707,28 +709,29 @@ class RLmodule3D(LightningModule):
         preds = self.tta_predict(img) if self.hparams.tta else self.predict(img).argmax(dim=1)
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
+        start_time = time.time()
+        y_pred_np_as_batch = preds.squeeze(0).cpu().numpy().transpose((2, 0, 1))
+
+        for i in range(len(y_pred_np_as_batch)):
+            lbl, num = ndimage.measurements.label(y_pred_np_as_batch[i] != 0)
+            # Count the number of elements per label
+            count = np.bincount(lbl.flat)
+            # Select the largest blob
+            maxi = np.argmax(count[1:]) + 1
+            # Remove the other blobs
+            y_pred_np_as_batch[i][lbl != maxi] = 0
+
+        # should be still valid to use resampled spacing for metrics here
+        voxel_spacing = np.asarray([[0.37, 0.37]]).repeat(repeats=len(y_pred_np_as_batch), axis=0)
+        print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
+
+        anat_errors = is_anatomically_valid(y_pred_np_as_batch)
+        temporal_valid, temporal_errors = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
+                                                    voxel_spacing[0])
+        validated = int(all(anat_errors)) and temporal_valid
+
         # check if valid or else do TTO if is tto=True
         if self.hparams.tto in ['force', 'on']:
-            start_time = time.time()
-            y_pred_np_as_batch = preds.squeeze(0).cpu().numpy().transpose((2, 0, 1))
-
-            for i in range(len(y_pred_np_as_batch)):
-                lbl, num = ndimage.measurements.label(y_pred_np_as_batch[i] != 0)
-                # Count the number of elements per label
-                count = np.bincount(lbl.flat)
-                # Select the largest blob
-                maxi = np.argmax(count[1:]) + 1
-                # Remove the other blobs
-                y_pred_np_as_batch[i][lbl != maxi] = 0
-
-            # should be still valid to use resampled spacing for metrics here
-            voxel_spacing = np.asarray([[0.37, 0.37]]).repeat(repeats=len(y_pred_np_as_batch), axis=0)
-            print(f"Cleaning took {round(time.time() - start_time, 4)} (s).")
-
-            anat_errors = is_anatomically_valid(y_pred_np_as_batch)
-            temporal_valid, _ = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
-                                                        voxel_spacing[0])
-            validated = int(all(anat_errors)) and temporal_valid
             if self.hparams.tto == 'force' or (not validated and self.hparams.tto == 'on'):
                 self.actor.actor.net.load_state_dict(self.initial_test_params, strict=False)
 
@@ -740,21 +743,27 @@ class RLmodule3D(LightningModule):
                 preds = self.tta_predict(img) if self.hparams.tta else self.predict(img).argmax(dim=1)
                 print(f"\nPost-TTO Prediction took {round(time.time() - start_time, 4)} (s).")
 
-        # remove extra blobs if any
-        y_pred_np_as_batch = preds[0].cpu().numpy().transpose((2, 0, 1))
-        for i in range(len(y_pred_np_as_batch)):
-            lbl, num = ndimage.measurements.label(y_pred_np_as_batch[i] != 0)
-            # Count the number of elements per label
-            count = np.bincount(lbl.flat)
-            # Select the largest blob
-            maxi = np.argmax(count[1:]) + 1
-            # Remove the other blobs
-            y_pred_np_as_batch[i][lbl != maxi] = 0
+                # remove extra blobs if any
+                y_pred_np_as_batch = preds[0].cpu().numpy().transpose((2, 0, 1))
+                for i in range(len(y_pred_np_as_batch)):
+                    lbl, num = ndimage.measurements.label(y_pred_np_as_batch[i] != 0)
+                    # Count the number of elements per label
+                    count = np.bincount(lbl.flat)
+                    # Select the largest blob
+                    maxi = np.argmax(count[1:]) + 1
+                    # Remove the other blobs
+                    y_pred_np_as_batch[i][lbl != maxi] = 0
+                anat_errors = is_anatomically_valid(y_pred_np_as_batch)
+                temporal_valid, _ = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
+                                                            voxel_spacing[0])
+                validated = int(all(anat_errors)) and temporal_valid
+
         preds = torch.tensor(y_pred_np_as_batch.transpose((1, 2, 0))[None,], device=self.device)
 
         # get reward maps
         rew = self.reward_func.predict_full_sequence(preds, img, None)
         merged = torch.minimum(rew[0], rew[1]) if len(rew) > 1 else rew[0]
+        min_reward_frame =  merged[0].mean(axis=(0, 1)).min().item()
 
         preds = preds.cpu().detach().numpy()
         merged = merged.cpu().detach().numpy()
@@ -779,6 +788,18 @@ class RLmodule3D(LightningModule):
                        fname + "_merged_reward", spacing, save_dir, type=float)
         [self.save_mask(croporpad(transform(tio.ScalarImage(tensor=rew[i], affine=resampled_affine))).numpy()[0],
                        fname + f"_{i}_reward", spacing, save_dir, type=float) for i in range(len(rew))]
+
+        csvfilename = properties_dict.get("csv_filename")[0]
+        header = ['dicom_uuid', 'anat_val', 'anat_val_frames', 'temporal_val', 'temporal_errors', 'min_reward_frame']
+
+        row = [fname, bool(all(anat_errors)), anat_errors.tolist(), temporal_valid, temporal_errors, min_reward_frame]
+        file_exists = os.path.isfile(csvfilename)
+        with open(csvfilename, 'a', newline='') as file:
+            writer = csv.writer(file)
+            if not file_exists:
+                writer.writerow(header)  # Write header only if the file is new
+            writer.writerow(row)  # Append the new data
+
         return preds, merged, rew
 
     def on_predict_epoch_end(self) -> None:
