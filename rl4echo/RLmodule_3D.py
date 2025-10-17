@@ -801,7 +801,7 @@ class RLmodule3D(LightningModule):
                 writer.writerow(header)  # Write header only if the file is new
             writer.writerow(row)  # Append the new data
 
-        return preds, merged, rew
+        # return preds, merged, rew
 
     def on_predict_epoch_end(self) -> None:
         if not self.hparams.inference:
