@@ -79,6 +79,7 @@ nbQA = "==1.7.0"
 [tool.poetry.scripts]
 rl_loop = "rl4echo.auto_iteration:main"
 predict_3d = "rl4echo.predict_3d:main"
+simple_viewer = "rl4echo.simple_viewer:main"
 
 [tool.pytest.ini_options]
 addopts = [
