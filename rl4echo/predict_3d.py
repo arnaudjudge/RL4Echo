@@ -200,9 +200,9 @@ class RL4Echo3DPredictor:
             model.net.load_state_dict(torch.load(cfg.ckpt_path))
             trainer.predict(model=model, dataloaders=dataloader)
 
-        metric_dict = trainer.callback_metrics
-
-        return metric_dict, object_dict
+        # does this create huge result.pkl file?
+        # metric_dict = trainer.callback_metrics
+        # return metric_dict, object_dict
 
 
 def main():
