@@ -111,7 +111,7 @@ class RL4Echo3DPredictor:
         # Handle single NIfTI file
         if input_path.is_file() and input_path.suffix == ".txt":
             with open(input_path) as f:
-                nifti_files = [Path(line.strip()) for line in f if line.strip()]
+                nifti_files = [Path(line.removesuffix("_0000")) for line in f if line.removesuffix("_0000")]
         elif input_path.is_file() and (input_path.suffix == ".nii" or "".join(input_path.suffixes[-2:]) == ".nii.gz"):
             nifti_files = [input_path]
         # Handle folder of NIfTI files
