@@ -43,6 +43,8 @@ def main():
         "input", type=str, help="Path to a single .nii/.nii.gz or .dcm file.")
     parser.add_argument(
         "--save", "-s", type=str, required=False, help="Path to a .gif file.")
+    parser.add_argument(
+        "--overlay", "-o", type=str, required=False, help="Path to a segmentation or overlay file.")
     args = parser.parse_args()
 
     arr = load_image(args.input)
@@ -50,8 +52,14 @@ def main():
 
     f, ax = plt.subplots()
     im = ax.imshow(arr[0, ...], animated=True, cmap='gray')
+    if args.overlay:
+        over = load_image(args.overlay)
+        ov = ax.imshow(over[0, ...], animated=True, cmap='gray', alpha=0.4)
     def update(i):
         im.set_array(arr[i, ...])
+        if args.overlay:
+            ov.set_array(over[i, ...])
+            return im, ov,
         return im,
 
     animation_fig = animation.FuncAnimation(f, update, frames=arr.shape[0], interval=100, blit=True, repeat_delay=10)
