@@ -15,6 +15,8 @@ segmentation_path: /home/local/USHERBROOKE/juda2901/dev/TEMP/first40/first40_dir
 # output folder to save predictions
 output_path: OUTOUT
 
+save_as_gif: True
+
 # passing checkpoint path is necessary for prediction
 ckpt_path: /home/local/USHERBROOKE/juda2901/Téléchargements/cotracker_torchscript-20251021T174250Z-1-001/cotracker_torchscript/cotracker_predict_ts.pt
 

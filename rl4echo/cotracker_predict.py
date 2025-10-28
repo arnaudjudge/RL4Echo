@@ -8,6 +8,10 @@ import torch
 from dotenv import load_dotenv
 from echotk.tracking.create_mesh import get_mesh
 from echotk.tracking.mesh2mask import masks_from_meshes
+from echotk.metrics.segmentation_metrics import dice
+
+from matplotlib import pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
 from monai import transforms
 from monai.data import DataLoader, ArrayDataset, MetaTensor
 from monai.transforms import MapTransform
@@ -147,6 +151,8 @@ class CoTrackerPredictor:
         if not cfg.ckpt_path:
             raise ValueError("ckpt_path must not be empty!")
 
+        ts = torch.jit.load(cfg.ckpt_path, map_location='cuda')
+
         preprocessed = CoTrackerPreprocess(keys=['image', 'segmentation', 'reward_0', 'reward_1'], common_spacing=cfg.common_spacing, inference_dir=cfg.output_path)
         tf = transforms.compose.Compose([preprocessed, ToTensord(keys=['image', 'init_mesh'], track_meta=True)])
 
@@ -167,7 +173,7 @@ class CoTrackerPredictor:
             print(video.shape)
             init_mesh = item['init_mesh'][0].cuda()
             init_index = item['init_index'][0]
-            ts = torch.jit.load(cfg.ckpt_path, map_location='cuda')
+
             with torch.inference_mode():
                 tracks, vis_mask = ts(video, init_mesh, index=init_index)
 
@@ -176,50 +182,50 @@ class CoTrackerPredictor:
             tracks = tracks.cpu().numpy().squeeze()
 
             video = video.cpu()
-            seg = item['segmentation'][0]
-            lm_reward = item['reward_1'][0]
 
-            from echotk.tracking.mesh2mask import masks_from_meshes
-            mask = masks_from_meshes(tracks, video.shape[1:])
+            # save stuff
+            base_output_path = Path(f"{cfg.output_path}/{video._meta['filename_or_obj']}")
+            base_output_path.parent.mkdir(exist_ok=True, parents=True)
+            np.save(f"{base_output_path}.npy", tracks)
 
-            from echotk.metrics.segmentation_metrics import dice
-            print(dice(mask, (seg.cpu().numpy()==2), labels=[1]))
+            # print(dice(mask, (seg.cpu().numpy()==2), labels=[1]))
+            # dices = []
+            # for i in range(len(mask)):
+            #     dices += [dice(mask[i], (seg[i].cpu().numpy()==2), labels=[1])]
+            # dices = np.asarray(dices)
+            # print(dices.argmin(), dices.min())
 
-            dices = []
-            for i in range(len(mask)):
-                dices += [dice(mask[i], (seg[i].cpu().numpy()==2), labels=[1])]
-            dices = np.asarray(dices)
-            print(dices.argmin(), dices.min())
+            # TODO: CLEAN UP GIF SECTION ONCE METRICS AND STUFF IS SET
+            if cfg.save_as_gif:
+                seg = item['segmentation'][0]
+                lm_reward = item['reward_1'][0]
+                mask = masks_from_meshes(tracks, video.shape[1:])
+                error_map = (mask == (seg.cpu().numpy()==2)).astype(float)
+                # error_map *= lm_reward.cpu().numpy()
 
-            error_map = (mask == (seg.cpu().numpy()==2)).astype(float)
-            error_map *= lm_reward.cpu().numpy()
+                fig, ax = plt.subplots(1, 4, figsize=(12, 3))
+                im = ax[0].imshow(video[0], cmap="gray", animated=True)
+                scat = ax[0].scatter([], [], c="r", s=5, animated=True)
 
-            import matplotlib.pyplot as plt
-            from matplotlib.animation import FuncAnimation, PillowWriter
+                im2 = ax[1].imshow(video[0], cmap="gray", animated=True)
+                segm = ax[1].imshow(seg[0], cmap="gray", animated=True, alpha=0.35)
 
-            fig, ax = plt.subplots(1, 4, figsize=(12, 3))
-            im = ax[0].imshow(video[0], cmap="gray", animated=True)
-            scat = ax[0].scatter([], [], c="r", s=5, animated=True)
+                lm = ax[2].imshow(lm_reward[0], cmap="gray", animated=True)
 
-            im2 = ax[1].imshow(video[0], cmap="gray", animated=True)
-            segm = ax[1].imshow(seg[0], cmap="gray", animated=True, alpha=0.35)
-            lm = ax[2].imshow(lm_reward[0], cmap="gray", animated=True)
+                e = ax[3].imshow(error_map[0], cmap="gray", animated=True)
 
-            e = ax[3].imshow(error_map[0], cmap="gray", animated=True)
+                def update(i):
+                    im.set_data(video[i])
+                    im2.set_data(video[i])
+                    scat.set_offsets(tracks[i, :, :2])
+                    segm.set_data(seg[i])
+                    lm.set_data(lm_reward[i])
+                    e.set_data(error_map[i])
+                    return im, scat, im2, segm, lm, e
 
-            def update(i):
-                im.set_data(video[i])
-                im2.set_data(video[i])
-                scat.set_offsets(tracks[i, :, :2])
-                segm.set_data(seg[i])
-                lm.set_data(lm_reward[i])
-                e.set_data(error_map[i])
-                return im, scat, im2, segm, lm, e
-
-            ani = FuncAnimation(fig, update, frames=len(video), blit=True, interval=100)  # ~10 fps
-            ani.save("out.gif", writer=PillowWriter(fps=10))
-            # plt.show()
-            plt.close(fig)
+                ani = FuncAnimation(fig, update, frames=len(video), blit=True, interval=100)  # ~10 fps
+                ani.save(f"{base_output_path}.gif", writer=PillowWriter(fps=10))
+                plt.close(fig)
 
 
 def main():
