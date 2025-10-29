@@ -755,7 +755,7 @@ class RLmodule3D(LightningModule):
                         # Remove the other blobs
                         y_pred_np_as_batch[i][lbl != maxi] = 0
                     anat_errors = is_anatomically_valid(y_pred_np_as_batch)
-                    temporal_valid, _ = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
+                    temporal_valid, temporal_errors = check_temporal_validity(y_pred_np_as_batch.transpose((0, 2, 1)),
                                                                 voxel_spacing[0])
                     validated = int(all(anat_errors)) and temporal_valid
 
