@@ -789,10 +789,12 @@ class RLmodule3D(LightningModule):
 
         self.save_mask(croporpad(transform(tio.LabelMap(tensor=preds, affine=resampled_affine))).numpy()[0],
                        fname, spacing, save_dir)
-        self.save_mask(croporpad(transform(tio.ScalarImage(tensor=merged, affine=resampled_affine))).numpy()[0]*255,
-                       fname + "_merged_reward", spacing, save_dir)
-        [self.save_mask(croporpad(transform(tio.ScalarImage(tensor=rew[i], affine=resampled_affine))).numpy()[0]*255,
-                       fname + f"_{i}_reward", spacing, save_dir) for i in range(len(rew))]
+
+        all_merged = np.stack([rew[0], rew[1], merged], axis=0)
+        self.save_mask(croporpad(transform(tio.ScalarImage(tensor=all_merged, affine=resampled_affine))).numpy()[0]*255,
+                       fname + "_merged_all_rewards_reward", spacing, save_dir)
+        #[self.save_mask(croporpad(transform(tio.ScalarImage(tensor=rew[i], affine=resampled_affine))).numpy()[0]*255,
+        #               fname + f"_{i}_reward", spacing, save_dir) for i in range(len(rew))]
 
         csvfilename = properties_dict.get("csv_filename")[0]
         header = ['dicom_uuid', 'anat_val', 'anat_val_frames', 'temporal_val', 'temporal_errors', 'min_reward_frame', 'tto']
