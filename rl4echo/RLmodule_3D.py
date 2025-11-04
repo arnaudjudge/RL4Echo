@@ -531,7 +531,16 @@ class RLmodule3D(LightningModule):
         os.makedirs(save_dir, exist_ok=True)
 
         preds = preds.astype(type)
-        itk_image = sitk.GetImageFromArray(rearrange(preds, "w h d ->  d h w"))
+
+        # Rearrange axes for SimpleITK: (C, H, W, D) -> (D, H, W, C)
+        if preds.ndim == 4:  # multi-channel
+            itk_array = rearrange(preds, "c h w d -> d h w c")
+        elif preds.ndim == 3:  # single-channel
+            itk_array = rearrange(preds, "h w d -> d h w")
+        else:
+            raise ValueError(f"Unsupported preds shape: {preds.shape}")
+        
+        itk_image = sitk.GetImageFromArray(itk_array)
         itk_image.SetSpacing(spacing)
         sitk.WriteImage(itk_image, os.path.join(save_dir, str(fname) + ".nii.gz"))
 
