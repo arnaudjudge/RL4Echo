@@ -534,8 +534,8 @@ class RLmodule3D(LightningModule):
         print("Original shape:", preds.shape)
     
         if preds.ndim == 4:
-            # (C, H, W, T) -> (T, W, H, C)
-            arr_sitk = np.transpose(preds, (3, 2, 1, 0))
+            arr_sitk = np.moveaxis(preds, 0, -1)  # (H, W, T, C)
+            arr_sitk = np.transpose(arr_sitk, (2, 0, 1, 3))  # (T, H, W, C)
             print("Reordered for SITK:", arr_sitk.shape)
             itk_image = sitk.GetImageFromArray(arr_sitk, isVector=True)
     
