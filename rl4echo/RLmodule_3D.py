@@ -553,15 +553,15 @@ class RLmodule3D(LightningModule):
         preds = preds.astype(dtype)
         print("Original shape:", preds.shape)
         
-        # Nibabel expects (X, Y, Z, T), we want (C, H, W, T) → (H, W, T, C)
-        nib_array = np.moveaxis(preds, 0, -1)  # move channels to last axis
-        print("Array shape for nibabel:", nib_array.shape)
+        # # Nibabel expects (X, Y, Z, T), we want (C, H, W, T) → (H, W, T, C)
+        # nib_array = np.moveaxis(preds, 0, -1)  # move channels to last axis
+        # print("Array shape for nibabel:", nib_array.shape)
         
         # Create a simple diagonal affine using voxel spacing
         affine = np.diag([spacing[0], spacing[1], spacing[2], 1.0])
         
         out_path = os.path.join(save_dir, f"{fname}.nii.gz")
-        nib.save(nib.Nifti1Image(nib_array, affine), out_path)
+        nib.save(nib.Nifti1Image(preds, affine), out_path)
         
         print(f"Saved rewards to {out_path}")
     
