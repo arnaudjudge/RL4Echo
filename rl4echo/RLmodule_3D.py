@@ -531,12 +531,20 @@ class RLmodule3D(LightningModule):
         os.makedirs(save_dir, exist_ok=True)
 
         preds = preds.astype(type)
-        print(preds.shape)
-        # Rearrange axes for SimpleITK: (C, H, W, D) -> (D, H, W, C)
-        if preds.ndim == 4:  # multi-channel
-            itk_array = rearrange(preds, "c h w d -> c d h w")
-        elif preds.ndim == 3:  # single-channel
-            itk_array = rearrange(preds, "h w d -> d h w")
+        print("Original shape:", preds.shape)
+    
+        if preds.ndim == 4:
+            # (C, H, W, T) -> (T, W, H, C)
+            arr_sitk = np.transpose(preds, (3, 2, 1, 0))
+            print("Reordered for SITK:", arr_sitk.shape)
+            itk_image = sitk.GetImageFromArray(arr_sitk, isVector=True)
+    
+        elif preds.ndim == 3:
+            # (H, W, T) -> (T, W, H)
+            arr_sitk = np.transpose(preds, (2, 1, 0))
+            print("Reordered for SITK:", arr_sitk.shape)
+            itk_image = sitk.GetImageFromArray(arr_sitk, isVector=False)
+    
         else:
             raise ValueError(f"Unsupported preds shape: {preds.shape}")
         
@@ -802,7 +810,7 @@ class RLmodule3D(LightningModule):
         merged_resized = croporpad(transform(tio.ScalarImage(tensor=merged, affine=resampled_affine))).numpy()[0]*255
         rew_resized = [croporpad(transform(tio.ScalarImage(tensor=rew[i], affine=resampled_affine))).numpy()[0]*255 for i in range(len(rew))]
         all_merged = np.stack([rew_resized[0], rew_resized[1], merged_resized], axis=0)
-        self.save_mask(all_merged, fname + "_merged_all_rewards_reward", spacing, save_dir)
+        self.save_mask(all_merged, fname + "_merged_all_rewards", spacing, save_dir)
         
         csvfilename = properties_dict.get("csv_filename")[0]
         header = ['dicom_uuid', 'anat_val', 'anat_val_frames', 'temporal_val', 'temporal_errors', 'min_reward_frame', 'tto']
