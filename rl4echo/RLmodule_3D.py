@@ -548,7 +548,6 @@ class RLmodule3D(LightningModule):
         else:
             raise ValueError(f"Unsupported preds shape: {preds.shape}")
         
-        itk_image = sitk.GetImageFromArray(itk_array)
         itk_image.SetSpacing(spacing)
         sitk.WriteImage(itk_image, os.path.join(save_dir, str(fname) + ".nii.gz"))
 
