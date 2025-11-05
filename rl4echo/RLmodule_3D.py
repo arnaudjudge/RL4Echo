@@ -531,10 +531,10 @@ class RLmodule3D(LightningModule):
         os.makedirs(save_dir, exist_ok=True)
 
         preds = preds.astype(type)
-
+        print(preds.shape)
         # Rearrange axes for SimpleITK: (C, H, W, D) -> (D, H, W, C)
         if preds.ndim == 4:  # multi-channel
-            itk_array = rearrange(preds, "c h w d -> d h w c")
+            itk_array = rearrange(preds, "c h w d -> c d h w")
         elif preds.ndim == 3:  # single-channel
             itk_array = rearrange(preds, "h w d -> d h w")
         else:
