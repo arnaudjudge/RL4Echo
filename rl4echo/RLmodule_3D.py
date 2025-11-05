@@ -531,26 +531,40 @@ class RLmodule3D(LightningModule):
         os.makedirs(save_dir, exist_ok=True)
 
         preds = preds.astype(type)
-        print("Original shape:", preds.shape)
-    
-        if preds.ndim == 4:
-            arr_sitk = np.moveaxis(preds, 0, -1)  # (H, W, T, C)
-            arr_sitk = np.transpose(arr_sitk, (2, 0, 1, 3))  # (T, H, W, C)
-            print("Reordered for SITK:", arr_sitk.shape)
-            itk_image = sitk.GetImageFromArray(arr_sitk, isVector=True)
-    
-        elif preds.ndim == 3:
-            # (H, W, T) -> (T, W, H)
-            arr_sitk = np.transpose(preds, (2, 1, 0))
-            print("Reordered for SITK:", arr_sitk.shape)
-            itk_image = sitk.GetImageFromArray(arr_sitk, isVector=False)
-    
-        else:
-            raise ValueError(f"Unsupported preds shape: {preds.shape}")
-        
+        itk_image = sitk.GetImageFromArray(rearrange(preds, "w h d ->  d h w"))
         itk_image.SetSpacing(spacing)
         sitk.WriteImage(itk_image, os.path.join(save_dir, str(fname) + ".nii.gz"))
+        sitk.WriteImage(itk_image, os.path.join(save_dir, str(fname) + ".nii.gz"))
 
+    def save_rewards(self, preds, fname, spacing, save_dir, dtype=np.float32):
+        """
+        Save a multi-channel reward map (C, H, W, T) as a NIfTI file.
+        Reloading with nib.load(...).get_fdata() will return (C, H, W, T).
+        
+        Args:
+            preds (np.ndarray): Reward array of shape (C, H, W, T)
+            fname (str): File name (without extension)
+            save_dir (str): Directory to save the file
+            spacing (tuple): voxel spacing (x, y, z)
+            dtype: numpy dtype for storage (default: float32)
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        
+        preds = preds.astype(dtype)
+        print("Original shape:", preds.shape)
+        
+        # Nibabel expects (X, Y, Z, T), we want (C, H, W, T) → (H, W, T, C)
+        nib_array = np.moveaxis(preds, 0, -1)  # move channels to last axis
+        print("Array shape for nibabel:", nib_array.shape)
+        
+        # Create a simple diagonal affine using voxel spacing
+        affine = np.diag([spacing[0], spacing[1], spacing[2], 1.0])
+        
+        out_path = os.path.join(save_dir, f"{fname}.nii.gz")
+        nib.save(nib.Nifti1Image(nib_array, affine), out_path)
+        
+        print(f"Saved rewards to {out_path}")
+    
     def on_test_end(self) -> None:
         actor_save_path = self.hparams.actor_save_path if self.hparams.actor_save_path else \
             f"{self.trainer.log_dir}/{self.trainer.logger.version}/actor.ckpt"
@@ -809,7 +823,7 @@ class RLmodule3D(LightningModule):
         merged_resized = croporpad(transform(tio.ScalarImage(tensor=merged, affine=resampled_affine))).numpy()[0]*255
         rew_resized = [croporpad(transform(tio.ScalarImage(tensor=rew[i], affine=resampled_affine))).numpy()[0]*255 for i in range(len(rew))]
         all_merged = np.stack([rew_resized[0], rew_resized[1], merged_resized], axis=0)
-        self.save_mask(all_merged, fname + "_merged_all_rewards", spacing, save_dir)
+        self.save_rewards(all_merged, fname + "_merged_all_rewards", spacing, save_dir, dtype=np.uint8)
         
         csvfilename = properties_dict.get("csv_filename")[0]
         header = ['dicom_uuid', 'anat_val', 'anat_val_frames', 'temporal_val', 'temporal_errors', 'min_reward_frame', 'tto']
