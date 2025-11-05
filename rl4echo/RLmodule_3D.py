@@ -549,21 +549,15 @@ class RLmodule3D(LightningModule):
             dtype: numpy dtype for storage (default: float32)
         """
         os.makedirs(save_dir, exist_ok=True)
-        
-        preds = preds.astype(dtype)
-        print("Original shape:", preds.shape)
-        
-        # # Nibabel expects (X, Y, Z, T), we want (C, H, W, T) → (H, W, T, C)
-        # nib_array = np.moveaxis(preds, 0, -1)  # move channels to last axis
-        # print("Array shape for nibabel:", nib_array.shape)
+        print(f"Saving rewards for {fname}... in {save_dir}")
+
+        preds = preds.astype(dtype)        
         
         # Create a simple diagonal affine using voxel spacing
         affine = np.diag([spacing[0], spacing[1], spacing[2], 1.0])
         
         out_path = os.path.join(save_dir, f"{fname}.nii.gz")
         nib.save(nib.Nifti1Image(preds, affine), out_path)
-        
-        print(f"Saved rewards to {out_path}")
     
     def on_test_end(self) -> None:
         actor_save_path = self.hparams.actor_save_path if self.hparams.actor_save_path else \
