@@ -26,7 +26,7 @@ packages = [
 [tool.poetry.dependencies]
 python = "~3.10"
 numpy = "<=1.23.1"
-torch = ">=2.0.0"
+torch = "==2.5.1"
 torchvision = ">=0.15.0"
 lightning = ">=2.0.0"
 torchmetrics = ">=0.11.4"
