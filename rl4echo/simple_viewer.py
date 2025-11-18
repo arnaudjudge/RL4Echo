@@ -6,6 +6,7 @@ import argparse
 import SimpleITK as sitk
 import pydicom
 import os
+import numpy as np
 
 
 def load_image(path):
@@ -45,6 +46,8 @@ def main():
         "--save", "-s", type=str, required=False, help="Path to a .gif file.")
     parser.add_argument(
         "--overlay", "-o", type=str, required=False, help="Path to a segmentation or overlay file.")
+    parser.add_argument(
+        "--mesh", "-m", type=str, required=False, help="Path to a mesh file. (npy)")
     args = parser.parse_args()
 
     arr = load_image(args.input)
@@ -54,13 +57,19 @@ def main():
     im = ax.imshow(arr[0, ...], animated=True, cmap='gray')
     if args.overlay:
         over = load_image(args.overlay)
+        print(f"Loaded overlay with shape {over.shape}")
         ov = ax.imshow(over[0, ...], animated=True, cmap='gray', alpha=0.4)
+    if args.mesh:
+        mesh = np.load(args.mesh)
+        print(f"Loaded mesh with shape {mesh.shape}")
+        scat = ax.scatter([], [], c="r", s=3, animated=True)
     def update(i):
         im.set_array(arr[i, ...])
         if args.overlay:
             ov.set_array(over[i, ...])
-            return im, ov,
-        return im,
+        if args.mesh:
+            scat.set_offsets(mesh[i, :, :2])
+        return im, *( [ov] if args.overlay else [] ), *( [scat] if args.mesh else [] )
 
     animation_fig = animation.FuncAnimation(f, update, frames=arr.shape[0], interval=100, blit=True, repeat_delay=10)
 
