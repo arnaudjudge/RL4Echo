@@ -116,6 +116,7 @@ class RL3dDataset(Dataset):
                     max_time_len = img.shape[-1]
                 else:
                     max_time_len = int(self.max_tensor_volume // (img.shape[1] * img.shape[2]))
+                    max_time_len = (max_time_len // self.shape_divisible_by[-1]) * self.shape_divisible_by[-1]
                 dynamic_batch_size = max(1, max_time_len // self.max_window_len) \
                     if not self.max_batch_size or not (self.max_batch_size > 0 and
                                                        (self.max_batch_size * self.max_window_len) < max_time_len) \
@@ -130,9 +131,9 @@ class RL3dDataset(Dataset):
                         b_approx_gt += [approx_gt[..., (i*self.max_window_len):(i*self.max_window_len+self.max_window_len)]]
                     else:
                         start_idx = np.random.randint(low=0, high=max(img.shape[-1] - self.max_window_len, 1))
-                        b_img += [img[..., start_idx:start_idx + self.max_window_len]]
-                        b_mask += [mask[..., start_idx:start_idx + self.max_window_len]]
-                        b_approx_gt += [approx_gt[..., start_idx:start_idx + self.max_window_len]]
+                        b_img += [img[..., start_idx:start_idx + min(self.max_window_len, max_time_len)]]
+                        b_mask += [mask[..., start_idx:start_idx + min(self.max_window_len, max_time_len)]]
+                        b_approx_gt += [approx_gt[..., start_idx:start_idx + min(self.max_window_len, max_time_len)]]
                 img = torch.stack(b_img)
                 mask = torch.stack(b_mask)
                 approx_gt = torch.stack(b_approx_gt)

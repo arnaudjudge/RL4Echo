@@ -12,7 +12,7 @@ max_image_area: null
 common_spacing: [0.37, 0.37, 1] # approx average spacing in dataset
 max_window_len: 4
 max_batch_size: 1
-max_tensor_volume: 5000000 # alright for 24gb gpu (NOT IN RL USE CASE)
+max_tensor_volume: 6500000 # alright for 24gb gpu (NOT IN RL USE CASE)
 shape_divisible_by: [32, 32, 4]
 
 approx_gt_dir: ${logger.save_dir}

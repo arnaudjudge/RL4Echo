@@ -1,0 +1,8 @@
+#python rl4echo/runner.py train=False +test_from_ckpt=/home/local/USHERBROOKE/juda2901/dev/RL4Echo/checkpoints/fusion/min.ckpt +model.temp_files_path=min logger_run_name=min_test
+python rl4echo/runner.py train=False +test_from_ckpt=/home/local/USHERBROOKE/juda2901/dev/RL4Echo/checkpoints/fusion/min3.ckpt +model.temp_files_path=min3 logger_run_name=min3_test
+#python rl4echo/runner.py train=False +test_from_ckpt=/home/local/USHERBROOKE/juda2901/dev/RL4Echo/checkpoints/fusion/mean2.ckpt +model.temp_files_path=mean2 logger_run_name=mean_test2
+#python rl4echo/runner.py train=False +test_from_ckpt=/home/local/USHERBROOKE/juda2901/dev/RL4Echo/checkpoints/fusion/gmeanp-1-2.ckpt +model.temp_files_path=gmeanp-1-2 logger_run_name=gmeanp-1_test2
+#python rl4echo/runner.py train=False +test_from_ckpt=/home/local/USHERBROOKE/juda2901/dev/RL4Echo/checkpoints/fusion/gmeanp-5-2.ckpt +model.temp_files_path=gmeanp-5-2 logger_run_name=gmeanp-5_test2
+#python rl4echo/runner.py train=False +test_from_ckpt=/home/local/USHERBROOKE/juda2901/dev/RL4Echo/checkpoints/fusion/0703-2.ckpt +model.temp_files_path='0703-2' logger_run_name=0703_test2
+#python rl4echo/runner.py train=False +test_from_ckpt=/home/local/USHERBROOKE/juda2901/dev/RL4Echo/checkpoints/fusion/0307-2.ckpt +model.temp_files_path='0307-2' logger_run_name=0307_test2
+#python rl4echo/runner.py train=False +model.temp_files_path='baseline' logger_run_name=baseline

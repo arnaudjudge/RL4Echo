@@ -15,9 +15,24 @@ from rl4echo.reward.generic_reward import Reward
 Reward functions must each have pred, img, gt as input parameters
 """
 
+def generalized_mean(a, b, p):
+    """
+    Element-wise generalized mean of two tensors a and b.
+
+    Args:
+        a, b: tensors of same shape or broadcastable
+        p: float (order of the mean)
+    """
+    a, b = torch.as_tensor(a), torch.as_tensor(b)
+    # Geometric mean case
+    if p == 0:
+        return torch.sqrt(a * b + 1e-12)
+    # Normal generalized mean
+    return ((a ** p + b ** p) / 2).clamp(min=0) ** (1.0 / p)
+
 
 class RewardUnets3D(Reward):
-    def __init__(self, net, state_dict_paths, temp_factor=1):
+    def __init__(self, net, state_dict_paths, temp_factor=1, fusion_op='min'):
         self.nets = {}
         for name, path in state_dict_paths.items():
             n = deepcopy(net)
@@ -29,6 +44,7 @@ class RewardUnets3D(Reward):
             n.eval()
             self.nets.update({name: n})
         self.temp_factor = temp_factor
+        self.fusion_op = fusion_op
 
     @torch.no_grad()
     def __call__(self, pred, imgs, gt):
@@ -47,7 +63,20 @@ class RewardUnets3D(Reward):
             # r += [torch.sigmoid(net(stack)/self.temp_factor).squeeze(1)]
             r += [rew]
         if len(r) > 1:
-            r = [torch.minimum(r[0], r[1])]
+            if self.fusion_op == 'min':
+                r = [torch.minimum(r[0], r[1])]
+            elif self.fusion_op == 'mean':
+                r = [torch.mean([r[0], r[1]])]
+            elif self.fusion_op == '0.3-0.7':
+                r = [r[0]*0.3 + r[1]*0.7]
+            elif self.fusion_op == '0.7-0.3':
+                r = [r[0] * 0.3 + r[1] * 0.7]
+            elif self.fusion_op == 'gmeanp-1':
+                r = [generalized_mean(r[0], r[1], p=-1)]
+            elif self.fusion_op == 'gmeanp-5':
+                r = [generalized_mean(r[0], r[1], p=-1)]
+            else:
+                raise NotImplementedError("NOT A VALID FUSION OPERATOR")
         return r
 
     def get_nets(self):
