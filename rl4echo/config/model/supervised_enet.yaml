@@ -1,0 +1,7 @@
+_target_: rl4echo.supervised.supervised_enet_optimizer.SupervisedEnetOptimizer
+
+input_shape: [1, 256, 256]
+output_shape: [1, 256, 256]
+
+ckpt_path: null
+

@@ -13,6 +13,65 @@ from torch.utils.data import DataLoader
 from rl4echo.utils.file_utils import get_img_subpath
 
 
+def pad_centered_to_multiple(x: np.ndarray, multiple: int = 8):
+    """
+    Center-pad array so H and W are divisible by `multiple`.
+
+    Supported shapes:
+        (H, W)
+        (C, H, W)
+        (N, C, H, W)
+
+    Returns:
+        x_padded
+        pad_width (usable for unpadding)
+    """
+    if x.ndim == 2:  # (H, W)
+        H, W = x.shape
+        layout = "HW"
+    elif x.ndim == 3:  # (C, H, W)
+        C, H, W = x.shape
+        layout = "CHW"
+    elif x.ndim == 4:  # (N, C, H, W)
+        N, C, H, W = x.shape
+        layout = "NCHW"
+    else:
+        raise ValueError("Unsupported shape")
+
+    new_H = ((H + multiple - 1) // multiple) * multiple
+    new_W = ((W + multiple - 1) // multiple) * multiple
+
+    pad_H = new_H - H
+    pad_W = new_W - W
+
+    pad_top = pad_H // 2
+    pad_bottom = pad_H - pad_top
+    pad_left = pad_W // 2
+    pad_right = pad_W - pad_left
+
+    if layout == "HW":
+        pad_width = (
+            (pad_top, pad_bottom),
+            (pad_left, pad_right),
+        )
+    elif layout == "CHW":
+        pad_width = (
+            (0, 0),
+            (pad_top, pad_bottom),
+            (pad_left, pad_right),
+        )
+    else:  # NCHW
+        pad_width = (
+            (0, 0),
+            (0, 0),
+            (pad_top, pad_bottom),
+            (pad_left, pad_right),
+        )
+
+    x_padded = np.pad(x, pad_width, mode="constant", constant_values=0)
+
+    return x_padded, pad_width
+
 class SectorDataset(Dataset):
     def __init__(self, df, data_path, approx_gt_path=None, subset_frac=1.0, available_gt=None, seed=0, test=False, *args,
                  **kwargs):
@@ -36,7 +95,10 @@ class SectorDataset(Dataset):
         path_dict = json.loads(self.df.iloc[idx]['relative_path'].replace("\'", "\""))
 
         img = np.expand_dims(nib.load(self.data_path + '/raw/' + path_dict['raw']).get_fdata().mean(axis=2), 0)
+        img, _ = pad_centered_to_multiple(img)
+
         mask = nib.load(self.data_path + '/mask/' + path_dict['mask']).get_fdata()[:, :, 0]
+        mask, _ = pad_centered_to_multiple(mask)
 
         if self.use_gt[idx]:
             approx_gt_path = self.approx_gt_path + '/approx_gt/' + path_dict['mask'].replace("_mask", "")
@@ -47,7 +109,7 @@ class SectorDataset(Dataset):
         return {'img': torch.tensor(img, dtype=torch.float32),
                 'gt': torch.tensor(mask, dtype=torch.float32),
                 'approx_gt': torch.tensor(approx_gt, dtype=torch.float32),
-                'use_gt': torch.tensor(self.use_gt[idx], dtype=torch.bool),
+                'use_gt': self.use_gt[idx],
                 'id': self.df.iloc[idx]['dicom_uuid']
                 }
 
@@ -62,7 +124,7 @@ class SectorDataModule(LightningDataModule):
                  csv_file,
                  approx_gt_dir=None,
                  gt_column=None,
-                 splits_column='split_0',
+                 splits_column=None,
                  subset_frac=1.0,
                  test_frac=0.1,
                  gt_frac=None,
@@ -115,8 +177,9 @@ class SectorDataModule(LightningDataModule):
         else:
             # create new splits, save if column name is given
             print(f"Creating new splits!")
+            proportion = max(0.8, 1 - (500 / len(self.df)))
             self.train_idx, val_and_test_idx = train_test_split(self.df.index.to_list(),
-                                                                train_size=0.8,
+                                                                train_size=proportion,
                                                                 random_state=self.hparams.seed)
             self.val_idx, self.test_idx = train_test_split(val_and_test_idx,
                                                            test_size=0.5,
@@ -186,16 +249,16 @@ class SectorDataModule(LightningDataModule):
     # define your dataloaders
     # again, here defined for train, validate and test, not for predict as the project is not there yet.
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=32, num_workers=16, shuffle=True)
+        return DataLoader(self.train, batch_size=1, num_workers=16, shuffle=True)
 
     def val_dataloader(self):
-        return DataLoader(self.validate, batch_size=32, num_workers=16)
+        return DataLoader(self.validate, batch_size=1, num_workers=16)
 
     def test_dataloader(self):
-        return DataLoader(self.test, batch_size=32, num_workers=16)
+        return DataLoader(self.test, batch_size=1, num_workers=16)
 
     def predict_dataloader(self, ):
-        return DataLoader(self.pred, batch_size=32, num_workers=16)
+        return DataLoader(self.pred, batch_size=1, num_workers=16)
 
     def add_to_train(self, id, instant):
         self.df.loc[(self.df['id'] == id), self.trainer.datamodule.hparams.splits_column] = 'train'
@@ -211,8 +274,8 @@ class SectorDataModule(LightningDataModule):
 
 
 if __name__ == "__main__":
-    dl = SectorDataModule(data_dir='/home/local/USHERBROOKE/juda2901/dev/data/icardio/train_subset_10k/',
-                          csv_file='subset.csv',
+    dl = SectorDataModule(data_dir='/data/icardio/processed/',
+                          csv_file='processed.csv',
                           subset_frac=0.1,
                           test_frac=0.1)
 
