@@ -70,12 +70,12 @@ class TemporalRewardUnets3D(Reward):
 
             # print(temp_constistencies)
             # print(measures_1d)
-            import matplotlib.pyplot as plt
-            from matplotlib.colors import LinearSegmentedColormap
-            f1, ax1 = plt.subplots(2, 2, figsize=(8, 8))
-            custom_cmap = LinearSegmentedColormap.from_list("custom", [(0, 0, 0), (0, 1, 0), (1, 0, 0)], N=3)
-            ax1[0, 0].imshow(imgs[i, 0, ..., 0].cpu().numpy().T, cmap='gray')
-            ax1[0, 0].imshow(pred_as_b[0, ...], alpha=0.3, cmap=custom_cmap, interpolation="none")
+            # import matplotlib.pyplot as plt
+            # from matplotlib.colors import LinearSegmentedColormap
+            # f1, ax1 = plt.subplots(2, 2, figsize=(8, 8))
+            # custom_cmap = LinearSegmentedColormap.from_list("custom", [(0, 0, 0), (0, 1, 0), (1, 0, 0)], N=3)
+            # ax1[0, 0].imshow(imgs[i, 0, ..., 0].cpu().numpy().T, cmap='gray')
+            # ax1[0, 0].imshow(pred_as_b[0, ...], alpha=0.3, cmap=custom_cmap, interpolation="none")
             # ax1[1].imshow(imgs[i, 0, ..., 1].cpu().numpy().T, cmap='gray')
             # ax1[1].imshow(pred_as_b[1, ...], alpha=0.3)
             # ax1[2].imshow(imgs[i, 0, ..., 2].cpu().numpy().T, cmap='gray')
@@ -84,10 +84,10 @@ class TemporalRewardUnets3D(Reward):
             # ax1[3].imshow(pred_as_b[3, ...], alpha=0.3)
 
             # f, ax = plt.subplots(1, 4)
-            rew = r[0]
+            # rew = r[0]
             # ax[0].imshow(rew[i, ..., 0].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
-            ax1[0, 1].imshow(r_backp[0][i, ..., 0].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
-            ax1[1, 0].imshow(r_backp[1][i, ..., 0].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
+            # ax1[0, 1].imshow(r_backp[0][i, ..., 0].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
+            # ax1[1, 0].imshow(r_backp[1][i, ..., 0].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
             # ax[2].imshow(rew[i, ..., 2].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
             # ax[3].imshow(rew[i, ..., 3].cpu().numpy().T, cmap='gray', vmin=0, vmax=1)
 
@@ -105,20 +105,20 @@ class TemporalRewardUnets3D(Reward):
             # f, ax2 = plt.subplots(1, 4)
             # ax2[0].imshow(rew[i, ..., 0].T, cmap='gray', vmin=0, vmax=1)
             # ax2[1].imshow(rew[i, ..., 1].T, cmap='gray', vmin=0, vmax=1)
-            ax1[1, 1].imshow(rew[i, ..., 0].T, cmap='gray', vmin=0, vmax=1)
+            # ax1[1, 1].imshow(rew[i, ..., 0].T, cmap='gray', vmin=0, vmax=1)
             # ax2[3].imshow(rew[i, ..., 3].T, cmap='gray', vmin=0, vmax=1)
 
-            ax1[0, 0].get_xaxis().set_visible(False)
-            ax1[1, 0].get_xaxis().set_visible(False)
-            ax1[0, 1].get_xaxis().set_visible(False)
-            ax1[1, 1].get_xaxis().set_visible(False)
-            ax1[0, 0].get_yaxis().set_visible(False)
-            ax1[1, 0].get_yaxis().set_visible(False)
-            ax1[0, 1].get_yaxis().set_visible(False)
-            ax1[1, 1].get_yaxis().set_visible(False)
+            # ax1[0, 0].get_xaxis().set_visible(False)
+            # ax1[1, 0].get_xaxis().set_visible(False)
+            # ax1[0, 1].get_xaxis().set_visible(False)
+            # ax1[1, 1].get_xaxis().set_visible(False)
+            # ax1[0, 0].get_yaxis().set_visible(False)
+            # ax1[1, 0].get_yaxis().set_visible(False)
+            # ax1[0, 1].get_yaxis().set_visible(False)
+            # ax1[1, 1].get_yaxis().set_visible(False)
 
-            plt.savefig("reward_fig.png")
-            plt.show()
+            # plt.savefig("reward_fig.png")
+            # plt.show()
 
             r[0] = torch.tensor(rew, device=r[0].device)
 

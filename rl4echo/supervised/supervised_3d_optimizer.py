@@ -1,4 +1,5 @@
 import copy
+import os
 import random
 import time
 from datetime import datetime
@@ -8,6 +9,7 @@ import lightning
 import scipy
 import numpy as np
 from scipy import ndimage
+import torchio as tio
 import torch
 from torch import nn, Tensor
 from torchmetrics.classification import Dice
@@ -23,7 +25,7 @@ from rl4echo.utils.Metrics import accuracy, dice_score, is_anatomically_valid
 from rl4echo.utils.file_utils import save_to_reward_dataset
 from rl4echo.utils.logging_helper import log_sequence, log_video
 from rl4echo.utils.tensor_utils import convert_to_numpy
-from rl4echo.utils.test_metrics import dice, hausdorff
+from rl4echo.utils.test_metrics import dice, hausdorff, full_test_metrics
 
 from patchless_nnunet.models.patchless_nnunet_module import nnUNetPatchlessLitModule
 
@@ -37,8 +39,8 @@ class DiceLoss(nn.Module):
 
 
 class Supervised3DOptimizer(nnUNetPatchlessLitModule):
-    def __init__(self, ckpt_path=None, corrector=None, predict_save_dir=None, tta=False, do_unc=True,
-                 seed=123, load_from_ckpt=None, mcdropout=None, **kwargs):
+    def __init__(self, ckpt_path=None, corrector=None, predict_save_dir=None, tta=False, do_unc=False,
+                 seed=123, load_from_ckpt=None, mcdropout=None, val_batch_size = 4, **kwargs):
         super().__init__(**kwargs)
 
         self.save_test_results = False
@@ -51,6 +53,7 @@ class Supervised3DOptimizer(nnUNetPatchlessLitModule):
         self.dice = Dice()
         self.seed = seed
         self.mcdropout = mcdropout
+        self.val_batch_size = val_batch_size
         if mcdropout:
             self.net = patch_module(self.net)
         print(f"Seed: {seed}")
@@ -81,7 +84,6 @@ class Supervised3DOptimizer(nnUNetPatchlessLitModule):
 
     def training_step(self, batch: dict[str, Tensor], *args, **kwargs) -> Dict:
         x, y = batch['img'].squeeze(0), batch['gt'].squeeze(0)
-
         y_hat = self.forward(x)
 
         loss = self.loss(y_hat, y)
@@ -94,35 +96,41 @@ class Supervised3DOptimizer(nnUNetPatchlessLitModule):
         return logs
 
     def validation_step(self, batch: dict[str, Tensor], batch_idx: int):
-        b_img, b_gt = batch['img'].squeeze(0), batch['gt'].squeeze(0)
-        y_pred = self.forward(b_img)
-
-        loss = self.loss(y_pred, b_gt)
-
-        if self.net.num_classes > 1:
-            y_pred = y_pred.argmax(dim=1)
-        else:
-            y_pred = torch.round(y_pred)
-
-        acc = accuracy(y_pred, b_img, b_gt)
-        dice = dice_score(y_pred, b_gt)
-        #anat_err = has_anatomical_error(y_pred)
-
-        logs = {'val_loss': loss,
-                'val_acc': acc.mean(),
-                'val_dice': dice.mean(),
-                #'val_anat_errors': anat_err.mean(),
+        b_imgs, b_gts = batch['img'].squeeze(0), batch['gt'].squeeze(0)
+        logs = {'val/loss': [],
+                "val/acc": [],
+                "val/dice": []
                 }
+        for i in range(0, b_imgs.shape[0], self.hparams.val_batch_size):
+            b_img = b_imgs[i:i + self.hparams.val_batch_size]
+            b_gt = b_gts[i:i + self.hparams.val_batch_size]
 
-        # log images
-        if self.trainer.local_rank == 0:
-            idx = random.randint(0, len(b_img) - 1)  # which image to log
-            log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
-            log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
-                         epoch=self.current_epoch)
-            log_sequence(self.logger, img=y_pred[idx].unsqueeze(0), title='Prediction', number=batch_idx,
-                         img_text=acc[idx].mean(), epoch=self.current_epoch)
+            y_pred = self.forward(b_img)
 
+            loss = self.loss(y_pred, b_gt)
+
+            if self.net.num_classes > 1:
+                y_pred = y_pred.argmax(dim=1)
+            else:
+                y_pred = torch.round(y_pred)
+
+            acc = accuracy(y_pred, b_img, b_gt)
+            dice = dice_score(y_pred, b_gt)
+
+            logs["val/loss"] += [loss]
+            logs["val/acc"] += [acc.mean()]
+            logs["val/dice"] += [dice.mean()]
+
+            # log images
+            if self.trainer.local_rank == 0 and i == 0:
+                idx = random.randint(0, len(b_img) - 1)  # which image to log
+                log_sequence(self.logger, img=b_img[idx], title='Image', number=batch_idx, epoch=self.current_epoch)
+                log_sequence(self.logger, img=b_gt[idx].unsqueeze(0), title='GroundTruth', number=batch_idx,
+                             epoch=self.current_epoch)
+                log_sequence(self.logger, img=y_pred[idx].unsqueeze(0), title='Prediction', number=batch_idx,
+                             img_text=acc[idx].mean(), epoch=self.current_epoch)
+
+        logs = {k: torch.tensor(v, device=self.device).mean() for k, v in logs.items()}
         self.log_dict(logs)
 
         return logs
@@ -143,7 +151,7 @@ class Supervised3DOptimizer(nnUNetPatchlessLitModule):
         start_time = time.time()
         if not self.mcdropout:
             if self.tta:
-                y_pred, pred_list = self.tta_predict(b_img)
+                y_pred = self.tta_predict(b_img, conserve_intermediate=True)
             else:
                 y_pred = self.predict(b_img)
                 pred_list = y_pred
@@ -161,8 +169,8 @@ class Supervised3DOptimizer(nnUNetPatchlessLitModule):
             #     pred_list[i] = torch.softmax(pred_list[i], dim=1)
         else:
             y_pred = torch.round(y_pred)
-            for i in range(len(pred_list)):
-                pred_list[i] = torch.round(pred_list[i])
+            # for i in range(len(pred_list)):
+            #     pred_list[i] = torch.round(pred_list[i])
 
         acc = accuracy(y_pred, b_img, b_gt)
         simple_dice = dice_score(y_pred, b_gt)
@@ -234,27 +242,24 @@ class Supervised3DOptimizer(nnUNetPatchlessLitModule):
                                     abs(meta_dict['resampled_affine'][0,1,1].cpu().numpy())]]).repeat(
             repeats=len(y_pred_np_as_batch), axis=0)
 
-        test_dice = dice(y_pred_np_as_batch, b_gt_np_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
-                         exclude_bg=True, all_classes=True)
-        test_dice_epi = dice((y_pred_np_as_batch != 0).astype(np.uint8), (b_gt_np_as_batch != 0).astype(np.uint8),
-                             labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False)
 
-        test_hd = hausdorff(y_pred_np_as_batch, b_gt_np_as_batch, labels=(Label.BG, Label.LV, Label.MYO),
-                            exclude_bg=True, all_classes=True, voxel_spacing=voxel_spacing)
-        test_hd_epi = hausdorff((y_pred_np_as_batch != 0).astype(np.uint8), (b_gt_np_as_batch != 0).astype(np.uint8),
-                                labels=(Label.BG, Label.LV), exclude_bg=True, all_classes=False,
-                                voxel_spacing=voxel_spacing)['Hausdorff']
-        anat_errors = is_anatomically_valid(y_pred_np_as_batch)
+        logs = full_test_metrics(y_pred_np_as_batch, b_gt_np_as_batch, voxel_spacing, self.device)
 
-        logs = {'test_loss': loss,
-                'test_acc': acc.mean(),
-                'test_dice': simple_dice.mean(),
-                'test_anat_valid': anat_errors.mean(),
-                'dice_epi': test_dice_epi,
-                'hd_epi': test_hd_epi,
-                }
-        logs.update(test_dice)
-        logs.update(test_hd)
+        # SAVE OUTPUT ], FOR NOW ALWAYS
+        prev_actions = y_pred_np_as_batch.transpose((1, 2, 0))
+        original_shape = meta_dict.get("original_shape").cpu().detach().numpy()[0]
+
+        fname = meta_dict.get("case_identifier")[0]
+        spacing = meta_dict.get("original_spacing").cpu().detach().numpy()[0]
+        resampled_affine = meta_dict.get("resampled_affine").cpu().detach().numpy()[0]
+        save_dir = os.path.join(self.trainer.default_root_dir, f"testing_raw_supervised/{self.hparams.sliding_window_len}/")
+
+        final_preds = np.expand_dims(prev_actions, 0)
+        transform = tio.Resample(spacing)
+        croporpad = tio.CropOrPad(original_shape)
+        final_preds = croporpad(transform(tio.LabelMap(tensor=final_preds, affine=resampled_affine))).numpy()[0]
+
+        self.save_mask(final_preds, fname, spacing.astype(np.float64), save_dir)
 
         if self.trainer.local_rank == 0:
             for i in range(len(b_img)):

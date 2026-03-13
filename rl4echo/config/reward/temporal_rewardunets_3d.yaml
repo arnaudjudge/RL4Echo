@@ -4,8 +4,8 @@ defaults:
 _target_: rl4echo.reward.temporal_reward_nets_3d.TemporalRewardUnets3D
 
 state_dict_paths:
-  anatomical: rewardnet_5000best.ckpt
-  landmarks: reward_net_3d_landmarks2-0.ckpt
+  anatomical: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/checkpoints/narval_lm+anat-run_RNet1.ckpt #rewardnet_5000best.ckpt
+  landmarks: /home/local/USHERBROOKE/juda2901/dev/RL4Echo/checkpoints/reward_net_3d_landmarks2-0.ckpt
 
 temp_factor: 1
 
